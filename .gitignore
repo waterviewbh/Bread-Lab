@@ -50,3 +50,6 @@ Thumbs.db
 
 # Credentials — never commit
 **/google-service-account.json
+
+# Unused GitHub Actions workflows
+.github/workflows/
