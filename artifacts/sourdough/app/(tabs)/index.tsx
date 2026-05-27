@@ -351,6 +351,9 @@ export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const { reportSyncStart, reportSyncSuccess, reportSyncFailure } = useSyncStatus();
 
+  // Section toggle state
+  const [section, setSection] = useState<"track" | "plan">("track");
+
   const [starterWeight, setStarterWeight] = useState("");
   const [flourWeightStr, setFlourWeightStr] = useState("");
   const [waterWeightStr, setWaterWeightStr] = useState("");
@@ -1718,406 +1721,495 @@ export default function FeedScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1 }}
-    >
-      <ScrollView
-        contentContainerStyle={{
-          paddingTop: insets.top + webTop + 16,
-          paddingBottom: insets.bottom + tabBarPad + 24,
-          paddingHorizontal: 20,
-        }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      {/* ── Top section toggle ─────────────────────────────────────────────── */}
+      <View
+        style={[
+          styles.sectionToggleWrap,
+          {
+            paddingTop: insets.top + webTop + 16,
+            paddingHorizontal: 20,
+            backgroundColor: colors.background,
+            borderBottomColor: colors.border,
+          },
+        ]}
       >
-        <Animated.View
-          entering={FadeIn.duration(400)}
-          style={styles.appHeader}
+        <View
+          style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}
         >
-          <Text style={[styles.appTitle, { color: colors.foreground }]}>
-            Bread Lab
-          </Text>
-          <Text
-            style={[styles.appSubtitle, { color: colors.mutedForeground }]}
-          >
-            log your starter
-          </Text>
-        </Animated.View>
-
-        {/* Feed Amounts */}
-        <Animated.View entering={FadeInDown.delay(60).duration(400)}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Feed Amounts
-          </Text>
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.inputRow}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text
-                  style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}
-                >
-                  Starter (g)
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                      borderRadius: colors.radius,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                  placeholder="e.g. 50"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={starterWeight}
-                  onChangeText={setStarterWeight}
-                  keyboardType="decimal-pad"
-                  testID="starter-weight-input"
-                />
-              </View>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text
-                  style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}
-                >
-                  Flour (g)
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                      borderRadius: colors.radius,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                  placeholder="e.g. 100"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={flourWeightStr}
-                  onChangeText={setFlourWeightStr}
-                  keyboardType="decimal-pad"
-                  testID="flour-weight-input"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}
-                >
-                  Water (g)
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                      borderRadius: colors.radius,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                  placeholder="e.g. 100"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={waterWeightStr}
-                  onChangeText={setWaterWeightStr}
-                  keyboardType="decimal-pad"
-                  testID="water-weight-input"
-                />
-              </View>
-            </View>
-
-            {/* Optional sugar field — a toggle reveals the weight input */}
-            <View style={[styles.sugarRow, { borderTopColor: colors.border }]}>
-              <Pressable
-                onPress={() => {
-                  setSugarEnabled((v) => !v);
-                  if (sugarEnabled) setSugarWeightStr("");
-                }}
-                style={({ pressed }) => ({
-                  opacity: pressed ? 0.7 : 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  flex: 1,
-                })}
-              >
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginBottom: 0 }]}>
-                  Sugar (optional)
-                </Text>
-                {/* Minimal pill toggle */}
-                <View style={[styles.sugarToggle, { backgroundColor: sugarEnabled ? colors.accent : colors.border }]}>
-                  <View style={[styles.sugarThumb, { alignSelf: sugarEnabled ? "flex-end" : "flex-start" }]} />
-                </View>
-              </Pressable>
-            </View>
-            {sugarEnabled && (
-              <View style={{ marginTop: 8 }}>
-                <TextInput
-                  style={[styles.input, {
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                    color: colors.foreground,
-                    fontFamily: "Inter_400Regular",
-                  }]}
-                  placeholder="Sugar (g)"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={sugarWeightStr}
-                  onChangeText={setSugarWeightStr}
-                  keyboardType="decimal-pad"
-                  testID="sugar-weight-input"
-                />
-              </View>
-            )}
-
-            {derivedRatioStr ? (
-              <Animated.View entering={FadeIn.duration(250)} style={styles.calcRow}>
-                <View
-                  style={[
-                    styles.calcChip,
-                    {
-                      backgroundColor: colors.primary + "12",
-                      borderColor: colors.primary + "28",
-                    },
-                  ]}
-                >
-                  <Feather name="sliders" size={13} color={colors.primary} />
-                  <Text style={[styles.calcChipText, { color: colors.primary }]}>
-                    ratio {derivedRatioStr}
-                  </Text>
-                </View>
-              </Animated.View>
-            ) : (
-              <Text style={[styles.calcHint, { color: colors.mutedForeground }]}>
-                Enter all three weights to see ratio
-              </Text>
-            )}
-          </View>
-        </Animated.View>
-
-        {/* Flour Type Slider */}
-        <Animated.View
-          entering={FadeInDown.delay(100).duration(400)}
-          style={{ marginTop: 20 }}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Flour Type
-          </Text>
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <FlourSlider
-              wwPercent={wwPercent}
-              onChange={setWwPercent}
-              flourWeight={flourWeight}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Initial Readings */}
-        <Animated.View
-          entering={FadeInDown.delay(160).duration(400)}
-          style={{ marginTop: 20 }}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Initial Readings
-          </Text>
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.inputRow}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text
-                  style={[
-                    styles.fieldLabel,
-                    { color: colors.mutedForeground, textTransform: "none" },
-                  ]}
-                >
-                  pH
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                      borderRadius: colors.radius,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                  placeholder="e.g. 4.8"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={initialPH}
-                  onChangeText={setInitialPH}
-                  keyboardType="decimal-pad"
-                  testID="initial-ph-input"
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.fieldLabel,
-                    { color: colors.mutedForeground, textTransform: "none" },
-                  ]}
-                >
-                  Volume (mL)
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                      borderRadius: colors.radius,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                  placeholder="e.g. 200"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={initialVolume}
-                  onChangeText={setInitialVolume}
-                  keyboardType="decimal-pad"
-                  testID="initial-volume-input"
-                />
-              </View>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Feed Photo */}
-        <Animated.View
-          entering={FadeInDown.delay(220).duration(400)}
-          style={{ marginTop: 20 }}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Just Fed Photo
-          </Text>
-          <Pressable
-            onPress={() =>
-              pickPhoto((uri) => {
-                setFedPhoto(uri);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              })
-            }
-            style={({ pressed }) => [
-              styles.photoPicker,
-              {
-                backgroundColor: fedPhoto ? "transparent" : colors.card,
-                borderColor: colors.border,
-                borderRadius: colors.radius,
-                opacity: pressed ? 0.8 : 1,
-                borderStyle: fedPhoto ? "solid" : "dashed",
-              },
-            ]}
-            testID="fed-photo-btn"
-          >
-            {fedPhoto ? (
-              <View>
-                <Image
-                  source={{ uri: fedPhoto }}
-                  style={[
-                    styles.photoPreview,
-                    { borderRadius: colors.radius },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.photoChangeOverlay,
-                    { borderRadius: colors.radius },
-                  ]}
-                >
-                  <Feather name="refresh-cw" size={18} color="#fff" />
-                </View>
-              </View>
-            ) : (
-              <View style={styles.photoPlaceholder}>
-                <Feather
-                  name="camera"
-                  size={28}
-                  color={colors.mutedForeground}
-                />
-                <Text
-                  style={[
-                    styles.photoPlaceholderText,
-                    { color: colors.mutedForeground },
-                  ]}
-                >
-                  Add a photo of your starter
-                </Text>
-              </View>
-            )}
-          </Pressable>
-        </Animated.View>
-
-        {/* Save Button */}
-        <Animated.View
-          entering={FadeInDown.delay(280).duration(400)}
-          style={{ marginTop: 28 }}
-        >
-          <Pressable
-            onPress={saveSession}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              {
-                backgroundColor: colors.primary,
-                borderRadius: colors.radius,
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-            testID="save-session-btn"
-          >
-            <Ionicons
-              name="timer-outline"
-              size={20}
-              color={colors.primaryForeground}
-            />
-            <Text
+          {(["track", "plan"] as const).map((sec) => (
+            <Pressable
+              key={sec}
+              onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
               style={[
-                styles.primaryButtonText,
-                { color: colors.primaryForeground },
+                styles.sectionBtn,
+                section === sec && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
               ]}
             >
-              Start Feed Timer
+              <Text
+                style={[
+                  styles.sectionBtnText,
+                  {
+                    color: section === sec ? colors.foreground : colors.mutedForeground,
+                    fontFamily: section === sec ? "Inter_600SemiBold" : "Inter_400Regular",
+                  },
+                ]}
+              >
+                {sec === "track" ? "Track a Feed" : "Plan a Feed"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {/* Track a Feed Section */}
+      {section === "track" && (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <ScrollView
+            contentContainerStyle={{
+              paddingTop: insets.top + webTop + 16,
+              paddingBottom: insets.bottom + tabBarPad + 24,
+              paddingHorizontal: 20,
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View
+              entering={FadeIn.duration(400)}
+              style={styles.appHeader}
+            >
+              <Text style={[styles.appTitle, { color: colors.foreground }]}>
+                Bread Lab
+              </Text>
+              <Text
+                style={[styles.appSubtitle, { color: colors.mutedForeground }]}
+              >
+                log your starter
+              </Text>
+            </Animated.View>
+
+            {/* Feed Amounts */}
+            <Animated.View entering={FadeInDown.delay(60).duration(400)}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Feed Amounts
+              </Text>
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.inputRow}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text
+                      style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}
+                    >
+                      Starter (g)
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                          color: colors.foreground,
+                          borderRadius: colors.radius,
+                          fontFamily: "Inter_400Regular",
+                        },
+                      ]}
+                      placeholder="e.g. 50"
+                      placeholderTextColor={colors.mutedForeground}
+                      value={starterWeight}
+                      onChangeText={setStarterWeight}
+                      keyboardType="decimal-pad"
+                      testID="starter-weight-input"
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text
+                      style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}
+                    >
+                      Flour (g)
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                          color: colors.foreground,
+                          borderRadius: colors.radius,
+                          fontFamily: "Inter_400Regular",
+                        },
+                      ]}
+                      placeholder="e.g. 100"
+                      placeholderTextColor={colors.mutedForeground}
+                      value={flourWeightStr}
+                      onChangeText={setFlourWeightStr}
+                      keyboardType="decimal-pad"
+                      testID="flour-weight-input"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}
+                    >
+                      Water (g)
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                          color: colors.foreground,
+                          borderRadius: colors.radius,
+                          fontFamily: "Inter_400Regular",
+                        },
+                      ]}
+                      placeholder="e.g. 100"
+                      placeholderTextColor={colors.mutedForeground}
+                      value={waterWeightStr}
+                      onChangeText={setWaterWeightStr}
+                      keyboardType="decimal-pad"
+                      testID="water-weight-input"
+                    />
+                  </View>
+                </View>
+
+                {/* Optional sugar field — a toggle reveals the weight input */}
+                <View style={[styles.sugarRow, { borderTopColor: colors.border }]}>
+                  <Pressable
+                    onPress={() => {
+                      setSugarEnabled((v) => !v);
+                      if (sugarEnabled) setSugarWeightStr("");
+                    }}
+                    style={({ pressed }) => ({
+                      opacity: pressed ? 0.7 : 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flex: 1,
+                    })}
+                  >
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground, marginBottom: 0 }]}>
+                      Sugar (optional)
+                    </Text>
+                    {/* Minimal pill toggle */}
+                    <View style={[styles.sugarToggle, { backgroundColor: sugarEnabled ? colors.accent : colors.border }]}>
+                      <View style={[styles.sugarThumb, { alignSelf: sugarEnabled ? "flex-end" : "flex-start" }]} />
+                    </View>
+                  </Pressable>
+                </View>
+                {sugarEnabled && (
+                  <View style={{ marginTop: 8 }}>
+                    <TextInput
+                      style={[styles.input, {
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                        fontFamily: "Inter_400Regular",
+                      }]}
+                      placeholder="Sugar (g)"
+                      placeholderTextColor={colors.mutedForeground}
+                      value={sugarWeightStr}
+                      onChangeText={setSugarWeightStr}
+                      keyboardType="decimal-pad"
+                      testID="sugar-weight-input"
+                    />
+                  </View>
+                )}
+
+                {derivedRatioStr ? (
+                  <Animated.View entering={FadeIn.duration(250)} style={styles.calcRow}>
+                    <View
+                      style={[
+                        styles.calcChip,
+                        {
+                          backgroundColor: colors.primary + "12",
+                          borderColor: colors.primary + "28",
+                        },
+                      ]}
+                    >
+                      <Feather name="sliders" size={13} color={colors.primary} />
+                      <Text style={[styles.calcChipText, { color: colors.primary }]}>
+                        ratio {derivedRatioStr}
+                      </Text>
+                    </View>
+                  </Animated.View>
+                ) : (
+                  <Text style={[styles.calcHint, { color: colors.mutedForeground }]}>
+                    Enter all three weights to see ratio
+                  </Text>
+                )}
+              </View>
+            </Animated.View>
+
+            {/* Flour Type Slider */}
+            <Animated.View
+              entering={FadeInDown.delay(100).duration(400)}
+              style={{ marginTop: 20 }}
+            >
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Flour Type
+              </Text>
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <FlourSlider
+                  wwPercent={wwPercent}
+                  onChange={setWwPercent}
+                  flourWeight={flourWeight}
+                />
+              </View>
+            </Animated.View>
+
+            {/* Initial Readings */}
+            <Animated.View
+              entering={FadeInDown.delay(160).duration(400)}
+              style={{ marginTop: 20 }}
+            >
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Initial Readings
+              </Text>
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.inputRow}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text
+                      style={[
+                        styles.fieldLabel,
+                        { color: colors.mutedForeground, textTransform: "none" },
+                      ]}
+                    >
+                      pH
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                          color: colors.foreground,
+                          borderRadius: colors.radius,
+                          fontFamily: "Inter_400Regular",
+                        },
+                      ]}
+                      placeholder="e.g. 4.8"
+                      placeholderTextColor={colors.mutedForeground}
+                      value={initialPH}
+                      onChangeText={setInitialPH}
+                      keyboardType="decimal-pad"
+                      testID="initial-ph-input"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.fieldLabel,
+                        { color: colors.mutedForeground, textTransform: "none" },
+                      ]}
+                    >
+                      Volume (mL)
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                          color: colors.foreground,
+                          borderRadius: colors.radius,
+                          fontFamily: "Inter_400Regular",
+                        },
+                      ]}
+                      placeholder="e.g. 200"
+                      placeholderTextColor={colors.mutedForeground}
+                      value={initialVolume}
+                      onChangeText={setInitialVolume}
+                      keyboardType="decimal-pad"
+                      testID="initial-volume-input"
+                    />
+                  </View>
+                </View>
+              </View>
+            </Animated.View>
+
+            {/* Feed Photo */}
+            <Animated.View
+              entering={FadeInDown.delay(220).duration(400)}
+              style={{ marginTop: 20 }}
+            >
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Just Fed Photo
+              </Text>
+              <Pressable
+                onPress={() =>
+                  pickPhoto((uri) => {
+                    setFedPhoto(uri);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  })
+                }
+                style={({ pressed }) => [
+                  styles.photoPicker,
+                  {
+                    backgroundColor: fedPhoto ? "transparent" : colors.card,
+                    borderColor: colors.border,
+                    borderRadius: colors.radius,
+                    opacity: pressed ? 0.8 : 1,
+                    borderStyle: fedPhoto ? "solid" : "dashed",
+                  },
+                ]}
+                testID="fed-photo-btn"
+              >
+                {fedPhoto ? (
+                  <View>
+                    <Image
+                      source={{ uri: fedPhoto }}
+                      style={[
+                        styles.photoPreview,
+                        { borderRadius: colors.radius },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.photoChangeOverlay,
+                        { borderRadius: colors.radius },
+                      ]}
+                    >
+                      <Feather name="refresh-cw" size={18} color="#fff" />
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.photoPlaceholder}>
+                    <Feather
+                      name="camera"
+                      size={28}
+                      color={colors.mutedForeground}
+                    />
+                    <Text
+                      style={[
+                        styles.photoPlaceholderText,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      Add a photo of your starter
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            </Animated.View>
+
+            {/* Save Button */}
+            <Animated.View
+              entering={FadeInDown.delay(280).duration(400)}
+              style={{ marginTop: 28 }}
+            >
+              <Pressable
+                onPress={saveSession}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: colors.radius,
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}
+                testID="save-session-btn"
+              >
+                <Ionicons
+                  name="timer-outline"
+                  size={20}
+                  color={colors.primaryForeground}
+                />
+                <Text
+                  style={[
+                    styles.primaryButtonText,
+                    { color: colors.primaryForeground },
+                  ]}
+                >
+                  Start Feed Timer
+                </Text>
+              </Pressable>
+            </Animated.View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      )}
+
+      {/* Plan a Feed Section */}
+      {section === "plan" && (
+        <ScrollView
+          contentContainerStyle={{
+            paddingTop: 24,
+            paddingBottom: insets.bottom + tabBarPad + 24,
+            paddingHorizontal: 20,
+            flexGrow: 1,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View entering={FadeIn.duration(400)} style={{ alignItems: "center" }}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground, fontSize: 24, marginBottom: 16 }]}>
+              Plan a Feed
             </Text>
-          </Pressable>
-        </Animated.View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-    {showNudge && (
-      <NudgeBanner
-        onNameMyData={() => setShowAuthModal(true)}
-        onDismiss={() => setShowNudge(false)}
+            <Text style={[styles.appSubtitle, { color: colors.mutedForeground, textAlign: "center", marginBottom: 32 }]}>
+              Coming soon
+            </Text>
+          </Animated.View>
+        </ScrollView>
+      )}
+
+      {showNudge && (
+        <NudgeBanner
+          onNameMyData={() => setShowAuthModal(true)}
+          onDismiss={() => setShowNudge(false)}
+        />
+      )}
+      <AuthModal
+        visible={showAuthModal}
+        currentUser={currentUser}
+        onClose={() => setShowAuthModal(false)}
+        onAuthChange={(user) => {
+          setCurrentUser(user);
+          if (user) setShowNudge(false);
+        }}
       />
-    )}
-    <AuthModal
-      visible={showAuthModal}
-      currentUser={currentUser}
-      onClose={() => setShowAuthModal(false)}
-      onAuthChange={(user) => {
-        setCurrentUser(user);
-        if (user) setShowNudge(false);
-      }}
-    />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Section toggle
+  sectionToggleWrap: {
+    paddingBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sectionToggle: {
+    flexDirection: "row",
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 3,
+    gap: 3,
+  },
+  sectionBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionBtnText: { fontSize: 14 },
+
   appHeader: { marginBottom: 28 },
   appTitle: {
     fontSize: 28,
