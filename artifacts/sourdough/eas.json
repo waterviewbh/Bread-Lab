@@ -1,0 +1,47 @@
+{
+  "cli": {
+    "version": ">= 12.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "bread-lab.clanmcmains.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://kzueaxbloujtudxzqoju.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UWxEXEJvzJ_7xOkbNj3HHg_3Z9g4PK_"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "bread-lab.clanmcmains.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://kzueaxbloujtudxzqoju.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UWxEXEJvzJ_7xOkbNj3HHg_3Z9g4PK_"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "bread-lab.clanmcmains.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://kzueaxbloujtudxzqoju.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UWxEXEJvzJ_7xOkbNj3HHg_3Z9g4PK_"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json"
+      }
+    }
+  }
+}

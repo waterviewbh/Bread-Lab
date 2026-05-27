@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "4703df4f-2928-4b50-8de9-17d5ac69ec18"
+      }
+    },
+    "android": {
+      "package": "com.clanmcmains.breadlab"
+    }
+  }
+}

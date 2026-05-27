@@ -1,0 +1,390 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: recipes
+    description: Saved bread recipes
+  - name: history
+    description: Feed and bake session history
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /recipes:
+    get:
+      operationId: listRecipes
+      tags: [recipes]
+      summary: List recipes for a device
+      parameters:
+        - in: query
+          name: deviceId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of recipes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recipe"
+    post:
+      operationId: createRecipe
+      tags: [recipes]
+      summary: Create a recipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertRecipeBody"
+      responses:
+        "201":
+          description: Created recipe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+
+  /recipes/{id}:
+    put:
+      operationId: updateRecipe
+      tags: [recipes]
+      summary: Update a recipe
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertRecipeBody"
+      responses:
+        "200":
+          description: Updated recipe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteRecipe
+      tags: [recipes]
+      summary: Delete a recipe
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /history/feed:
+    get:
+      operationId: listFeedSessions
+      tags: [history]
+      summary: List feed sessions for a device
+      parameters:
+        - in: query
+          name: deviceId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of feed sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FeedSession"
+    post:
+      operationId: upsertFeedSession
+      tags: [history]
+      summary: Upsert a feed session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertFeedSessionBody"
+      responses:
+        "200":
+          description: Saved feed session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedSession"
+
+  /history/bakes:
+    get:
+      operationId: listBakeSessions
+      tags: [history]
+      summary: List bake sessions for a device
+      parameters:
+        - in: query
+          name: deviceId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of bake sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BakeSession"
+    post:
+      operationId: upsertBakeSession
+      tags: [history]
+      summary: Upsert a bake session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertBakeSessionBody"
+      responses:
+        "200":
+          description: Saved bake session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BakeSession"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    RecipePhase:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        ingredients:
+          type: string
+        instructions:
+          type: string
+      required:
+        - key
+        - name
+
+    Recipe:
+      type: object
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+        name:
+          type: string
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipePhase"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - deviceId
+        - name
+        - phases
+        - createdAt
+        - updatedAt
+
+    UpsertRecipeBody:
+      type: object
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+        name:
+          type: string
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipePhase"
+      required:
+        - id
+        - deviceId
+        - name
+        - phases
+
+    FeedSession:
+      type: object
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+        savedAt:
+          type: number
+        startedAt:
+          type: number
+          nullable: true
+        data:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - deviceId
+        - savedAt
+        - data
+        - createdAt
+
+    UpsertFeedSessionBody:
+      type: object
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+        savedAt:
+          type: number
+        startedAt:
+          type: number
+          nullable: true
+        data:
+          type: object
+          additionalProperties: true
+      required:
+        - id
+        - deviceId
+        - savedAt
+        - data
+
+    BakePhase:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        startedAt:
+          type: number
+          nullable: true
+        completedAt:
+          type: number
+          nullable: true
+      required:
+        - key
+        - name
+
+    BakeSession:
+      type: object
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+        recipeId:
+          type: string
+          nullable: true
+        recipeName:
+          type: string
+        savedAt:
+          type: number
+        startedAt:
+          type: number
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/BakePhase"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - deviceId
+        - recipeName
+        - savedAt
+        - startedAt
+        - phases
+        - createdAt
+
+    UpsertBakeSessionBody:
+      type: object
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+        recipeId:
+          type: string
+          nullable: true
+        recipeName:
+          type: string
+        savedAt:
+          type: number
+        startedAt:
+          type: number
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/BakePhase"
+      required:
+        - id
+        - deviceId
+        - recipeName
+        - savedAt
+        - startedAt
+        - phases

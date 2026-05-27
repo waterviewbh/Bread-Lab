@@ -1,0 +1,48 @@
+name: Daily database backup
+
+on:
+  schedule:
+    # 03:00 UTC every day
+    - cron: "0 3 * * *"
+  # Allow triggering manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: pg_dump → S3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Install AWS CLI
+        run: |
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp/awscli
+          sudo /tmp/awscli/aws/install --update
+
+      - name: Run backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_AWS_SECRET_ACCESS_KEY }}
+          # Set for non-AWS providers. Examples:
+          #   Backblaze B2:   https://s3.us-west-004.backblazeb2.com
+          #   Cloudflare R2:  https://<account-id>.r2.cloudflarestorage.com
+          AWS_ENDPOINT_URL: ${{ secrets.BACKUP_AWS_ENDPOINT_URL }}
+          AWS_REGION: ${{ secrets.BACKUP_AWS_REGION }}
+        run: bash deploy/backup.sh
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Database backup failed. Check the logs above and investigate immediately."
+          echo "Backup failure at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"
