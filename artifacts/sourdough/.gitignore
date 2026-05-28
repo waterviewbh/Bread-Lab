@@ -39,3 +39,7 @@ yarn-error.*
 .vercel
 
 .env
+
+# Generated app.json and local version overrides
+app.json
+version.local.json
