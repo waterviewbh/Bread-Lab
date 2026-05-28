@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bread Lab",
     "slug": "sourdough",
-    "version": "1.0.9", // Increment for users to see
+    "version": "1.0.9",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "sourdough",
@@ -22,7 +22,7 @@
     },
     "android": {
       "package": "com.waterviewbakehouse.breadlab",
-      "versionCode": 7, // Increment so Play Store accepts update
+      "versionCode": 7,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -40,12 +40,7 @@
       "backgroundColor": "#F5F0E6"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font",
       "expo-web-browser",
       [
