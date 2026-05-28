@@ -117,7 +117,7 @@ const HELP: HelpTab[] = [
         bullets: [
           "Purpose: The active dashboard used while you are hands-on in the kitchen during a live bake.",
           "Dynamic Scaling Controls: Provides instant global multiplier buttons (0.5× to 3×) that flash a reminder banner to help you scale your ingredient math.",
-          "Non-Linear Navigation: Features independent 'Start' buttons next to every step row, allowing you to jump around or execute steps out of order based on how your dough looks. Note: starting a new phase auto-completes any other active phase.",
+          "Non-Linear Navigation: Features independent 'Start' buttons next to every step row, allowing you to jump around or execute steps out of order based on how your dough looks. Note: starting a new step pauses the previous one.",
           "Independent Step Timers: Tracks the real-time duration of your active step alongside a global phase counter and a segmented progress bar.",
           "Phase Specs: Per-phase sections that act as read-only instructions from the Recipe Builder for that step.",
         ],
@@ -227,7 +227,7 @@ function HelpAccordion({ tab, colors }: { tab: HelpTab; colors: ReturnType<typeo
   );
 }
 
-// ── Screen ────────────────────────────────────────────────────────────────────
+// ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function AboutScreen() {
   const colors = useColors();
@@ -372,7 +372,7 @@ export default function AboutScreen() {
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Visual: </Text>
             {"The line plateaus aggressively high on the Y-axis (well above 0.35 \u0394pH/hr), refusing to drop from feed to feed.\n"}
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Diagnostic [Standard]: </Text>
-            {"Hyper-acidic runaway. The bacteria are completely outrunning the yeast, dropping the pH into the high 3s almost immediately. This creates an extreme risk of proteolysis (gluten-melt). "}
+            {"Hyper-acidic runaway. The bacteria are completely outrunning the yeast, dropping the pH into the high 3s almost immediately. This creates an extreme risk of proteolysis (gluten-melt).\n"}
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>[Sweet]: </Text>
             {"Severe acid shock. The yeast is completely paralyzed by sugar pressure, stretching the hours-to-peak denominator out, while high-stress bacteria panic-produce acid.\n"}
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Baker's Insight: </Text>
@@ -390,7 +390,7 @@ export default function AboutScreen() {
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Diagnostic [Standard]: </Text>
             {"Systemic exhaustion or product inhibition. The starter has accumulated so much residual acid that it is beginning to inhibit its own bacteria. "}
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>[Sweet]: </Text>
-            {"The yeast population has adapted to the sugar and is exploding. Because the yeast is crushing the timeline and driving down the \u201Chours to peak\u201D window, it compresses the hourly acidification rate.\n"}
+            {"The yeast population has adapted to the sugar and is exploding. Because the yeast is crushing the timeline and driving down the \u201Chours to peak\u201D window, it compresses the h[...]
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Baker's Insight: </Text>
             {"Acid velocity is tapering down. "}
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>[Standard] </Text>
@@ -406,10 +406,10 @@ export default function AboutScreen() {
             Lifting Index
           </Text>
           <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-            Bars show how many hours it took your starter to reach peak volume; open triangles show how much it expanded at peak (rise %). Bar fill varies by starter type: solid for standard, diagonal hatch for sugar, cross-hatch for whole wheat.
+            Bars show how many hours it took your starter to reach peak volume; open triangles show how much it expanded at peak (rise %). Bar fill varies by starter type: solid for standard, dia[...]
           </Text>
           <Text style={[styles.interpretBody, { color: colors.foreground, marginTop: 6 }]}>
-            The two axes are locked to a shared metabolic baseline: 4 hours to peak and 100% expansion always sit at the same vertical position. Both axes scale up together when either value exceeds that target — so the spatial relationship between the top of a bar and its triangle is directly diagnostic. Check the baker's notes for any session to bring in context you recorded at the time.
+            The two axes are locked to a shared metabolic baseline: 4 hours to peak and 100% expansion always sit at the same vertical position. Both axes scale up together when either value exce[...]
           </Text>
 
           <Text style={[styles.interpretBody, { color: colors.foreground, fontFamily: "Inter_600SemiBold", marginTop: 14 }]}>
@@ -447,7 +447,7 @@ export default function AboutScreen() {
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Diagnostic: </Text>
             {"Sluggish endurance — the yeast has gas capacity but its metabolic rate is slow.\n"}
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Baker's Insight: </Text>
-            {"The yeast population is viable but likely sparse or cold-dormant. If used in a final dough now, bulk fermentation will drag on for hours, risking over-acidification before the dough doubles.\n"}
+            {"The yeast population is viable but likely sparse or cold-dormant. If used in a final dough now, bulk fermentation will drag on for hours, risking over-acidification before the dough[...]
             Check the baker's notes for this session — a cold kitchen overnight or a reduced feed ratio are the most common culprits.
           </Text>
 
@@ -460,7 +460,7 @@ export default function AboutScreen() {
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Diagnostic: </Text>
             {"A structural or metabolic wall — the yeast took a long time and still achieved very little lift.\n"}
             <Text style={{ fontFamily: "Inter_600SemiBold" }}>Baker's Insight: </Text>
-            {"Severe stress — either osmotic shock (too much sugar paralyzing the yeast cells) or proteolysis (acid produced so fast, or the starter sat so long, that the gluten network liquefied and dropped the gas before momentum built).\n"}
+            {"Severe stress — either osmotic shock (too much sugar paralyzing the yeast cells) or proteolysis (acid produced so fast, or the starter sat so long, that the gluten network liquefi[...]
             Check the baker's notes for this session; a higher sugar ratio, a missed feed, or an unusually long ferment will point to the cause.
           </Text>
 
@@ -491,7 +491,7 @@ export default function AboutScreen() {
           <Text style={[styles.changelogVersion, { color: colors.foreground }]}>v1.0.9</Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
-            {" "}Acidification Index interpretation guide on this screen — four diagnostic patterns (The Sweet Spot, The Awakening, The Acid Tank, The Compression Slide) with standard and sweet-starter variants.
+            {" "}Acidification Index interpretation guide on this screen — four diagnostic patterns (The Sweet Spot, The Awakening, The Acid Tank, The Compression Slide) with standard and sweet[...]
           </Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground, marginTop: 6 }]}>
             <Text style={styles.changelogLabel}>Changed:</Text>
@@ -499,7 +499,7 @@ export default function AboutScreen() {
           </Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground, marginTop: 6 }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
-            {" "}Outlier pill badges: when a data point exceeds the computed ceiling, the line clips at the top and a badge shows the exact value (e.g.\u00a06.65) aligned to that feed's x-position.
+            {" "}Outlier pill badges: when a data point exceeds the computed ceiling, the line clips at the top and a badge shows the exact value (e.g.\u00a06.65) aligned to that feed's x-positio[...]
           </Text>
         </View>
 
@@ -511,7 +511,7 @@ export default function AboutScreen() {
           </Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground, marginTop: 6 }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
-            {" "}Live Vitality Curve — the Feed tab pH chart now includes a right y-axis temperature overlay, three fermentation temperature bands (Warm / Balanced / Cool), and dumbbell markers connecting pH and temperature at each reading.
+            {" "}Live Vitality Curve — the Feed tab pH chart now includes a right y-axis temperature overlay, three fermentation temperature bands (Warm / Balanced / Cool), and dumbbell markers[...]
           </Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground, marginTop: 6 }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
@@ -535,7 +535,7 @@ export default function AboutScreen() {
           <Text style={[styles.changelogVersion, { color: colors.foreground }]}>v1.0.6</Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
-            {" "}Graph tab now shows individual session lines for the selected tag (Sugar or WW Blend) alongside the all-time average as a reference — makes it easy to see how each variable compares to your baseline.
+            {" "}Graph tab now shows individual session lines for the selected tag (Sugar or WW Blend) alongside the all-time average as a reference — makes it easy to see how each variable com[...]
           </Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground, marginTop: 6 }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
@@ -547,7 +547,7 @@ export default function AboutScreen() {
           </Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground, marginTop: 6 }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
-            {" "}Recipe list A–Z index tabs — tap a letter to jump to recipes starting with that letter. The tabs use a vintage keycap design with two rows (A–M on top, N–Z below) that overlap slightly at the edges, like a recipe card index deck.
+            {" "}Recipe list A–Z index tabs — tap a letter to jump to recipes starting with that letter. The tabs use a vintage keycap design with two rows (A–M on top, N–Z below) that ov[...]
           </Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground, marginTop: 6 }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
@@ -567,7 +567,7 @@ export default function AboutScreen() {
           <Text style={[styles.changelogVersion, { color: colors.foreground }]}>v1.0.4</Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
-            {" "}Cloud sync via Supabase — feed sessions, bake history, and recipes are now backed up and accessible across devices. Sign in with your name and starter name under Calendar → account icon to link your data.
+            {" "}Cloud sync via Supabase — feed sessions, bake history, and recipes are now backed up and accessible across devices. Sign in with your name and starter name under Calendar → a[...]
           </Text>
           <Text style={[styles.changelogBullet, { color: colors.foreground, marginTop: 6 }]}>
             <Text style={styles.changelogLabel}>Added:</Text>
@@ -621,7 +621,7 @@ export default function AboutScreen() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
