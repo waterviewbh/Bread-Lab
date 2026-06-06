@@ -100,6 +100,26 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
   };
 
   const handleClearIdentity = async () => {
+
+  const performClear = async () => {
+    await api.auth.signout().catch(() => {});
+    await clearAuth();
+    await clearMigrationPending().catch(() => {});
+    await AsyncStorage.multiRemove([HISTORY_KEY, BAKE_HISTORY_KEY, RECIPES_KEY]).catch(() => {});
+    onAuthChange(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onClose();
+  };
+
+  // WEB FIX: Use window.confirm if on web, otherwise use native Alert
+  if (Platform.OS === "web") {
+    if (window.confirm("Remove name? Your data stays synced to the server. You can re-enter your name any time to reconnect.")) {
+      await performClear();
+    }
+    return;
+  }
+
+  // Original Mobile Alert logic
     Alert.alert(
       "Remove name?",
       "Your data stays synced to the server. You can re-enter your name any time to reconnect.",

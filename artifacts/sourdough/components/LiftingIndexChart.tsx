@@ -253,7 +253,7 @@ export default function LiftingIndexChart({ data }: Props) {
                       {/* Triangle marker */}
                       <Polygon
                         points={triPts}
-                        fill="none"
+                        fill={colors.card}
                         stroke={colors.accent}
                         strokeWidth={1.5}
                       />
@@ -309,7 +309,7 @@ export default function LiftingIndexChart({ data }: Props) {
             <Svg width={10} height={10} viewBox="0 0 10 10">
               <Polygon
                 points="5,1 0,9 10,9"
-                fill="none"
+                fill={colors.card}
                 stroke={colors.accent}
                 strokeWidth={1.5}
               />

@@ -38,6 +38,7 @@ export type ApiRecipe = {
   phases: ApiRecipePhase[];
   createdAt: string;
   updatedAt: string;
+  yield_value: number;
 };
 
 export type ApiFeedSession = {
@@ -68,6 +69,7 @@ export type ApiBakePhase = {
   completedAt?: number | null;
   readings?: ApiBakePhaseReading[];
   startVolume?: string;
+
 };
 
 export type ApiBakeSession = {
@@ -80,6 +82,7 @@ export type ApiBakeSession = {
   phases: ApiBakePhase[];
   inProgress: boolean;
   createdAt: string;
+  yield_value: number;
 };
 
 export type ApiAuthUser = { id: string; firstName: string; starterName: string };
@@ -102,6 +105,7 @@ interface RecipeRow {
   phases: ApiRecipePhase[];
   created_at: string;
   updated_at: string | null;
+  yield_value: number;
 }
 
 interface FeedSessionRow {
@@ -131,6 +135,7 @@ interface BakeSessionRow {
   phases: ApiBakePhase[];
   in_progress: boolean;
   created_at: string;
+  yield_value: number;
 }
 
 interface StarterAnalyticsRow {
@@ -154,6 +159,7 @@ function rowToApiRecipe(r: RecipeRow): ApiRecipe {
     phases: r.phases ?? [],
     createdAt: r.created_at,
     updatedAt: r.updated_at ?? r.created_at,
+    yield_value: r.yield_value,
   };
 }
 
@@ -179,6 +185,7 @@ function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
     phases: r.phases ?? [],
     inProgress: r.in_progress ?? false,
     createdAt: r.created_at,
+    yield_value: r.yield_value,
   };
 }
 
@@ -234,70 +241,92 @@ function ownerFilter(
 export const api = {
   auth: {
     /**
-     * Create or retrieve a user by first name + starter name (case-insensitive).
-     * Returns a "token" that is just the user's DB row ID. This ID is stored in
-     * AsyncStorage and passed as `userId` to all subsequent data operations so
-     * that history can be recovered on any device.
+     * Create or retrieve a user by first name + starter name.
+     * This uses Supabase Auth internally (Shadow Account) to satisfy RLS
+     * requirements while keeping the "no-login" UX.
      */
     identify: async (body: {
       firstName: string;
       starterName: string;
     }): Promise<ApiAuthResponse> => {
+      console.log(">>> IDENTIFY BUTTON CLICKED <<<");
       if (!supabase) throw new Error("Supabase not configured");
       const fn = body.firstName.trim();
       const sn = body.starterName.trim();
 
-      // Case-insensitive lookup for an existing user.
-      const { data: existing } = await supabase
-        .from("users")
-        .select("*")
-        .ilike("first_name", fn)
-        .ilike("starter_name", sn)
-        .returns<UserRow[]>()
-        .maybeSingle();
+      // 1. Generate a "Shadow" identity
+      // We create a deterministic email and a password of at least 6 chars.
+      const sanitizedFn = fn.toLowerCase().replace(/\s/g, "");
+      const sanitizedSn = sn.toLowerCase().replace(/\s/g, "");
+      const email = `${sanitizedFn}.${sanitizedSn}@breadlab.user`;
 
-      if (existing) {
-        return {
-          token: existing.id,
-          user: {
-            id: existing.id,
-            firstName: existing.first_name,
-            starterName: existing.starter_name,
+      // Ensure password is at least 6 characters for Supabase Auth
+      const password = sn.length >= 6 ? sn : `${sn}breadlab`.slice(0, 10);
+
+      // 2. Attempt to Sign In
+      let { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      // 3. If User doesn't exist (First time), Sign Up
+      if (signInError && signInError.message.includes("Invalid login credentials")) {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { first_name: fn, starter_name: sn },
           },
-        };
+        });
+        if (signUpError) throw signUpError;
+        authData = signUpData;
+      } else if (signInError) {
+        throw signInError;
       }
 
-      // First time — create a new user row.
-      const id = genId();
-      const { data: created, error } = await supabase
+      if (!authData.user) throw new Error("Authentication failed");
+
+      // 4. Sync the public 'users' table (Backward compatibility for metadata)
+      const { data: userRow, error: upsertError } = await supabase
         .from("users")
-        .insert({ id, first_name: fn, starter_name: sn })
+        .upsert({
+          id: authData.user.id, // Now using the real Auth UUID
+          first_name: fn,
+          starter_name: sn,
+        })
         .select()
         .returns<UserRow[]>()
         .single();
-      if (error) throw error;
+
+      if (upsertError) console.error("Metadata sync error:", upsertError);
+
       return {
-        token: created.id,
+        token: authData.user.id,
         user: {
-          id: created.id,
-          firstName: created.first_name,
-          starterName: created.starter_name,
+          id: authData.user.id,
+          firstName: userRow?.first_name ?? fn,
+          starterName: userRow?.starter_name ?? sn,
         },
       };
     },
 
     /**
-     * Look up a user by their ID (the stored "token").
-     * Used to verify that the stored identity is still valid after reinstall.
+     * Look up a user by their ID.
+     * Uses the active Supabase session to verify the user is who they say they are.
      */
     me: async (userId?: string): Promise<{ user: ApiAuthUser }> => {
       if (!supabase || !userId) throw new Error("Not authenticated");
+
+      // Get the current verified session
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from("users")
         .select("*")
-        .eq("id", userId)
+        .eq("id", authUser?.id ?? userId) // Prefer the verified Auth ID
         .returns<UserRow[]>()
         .single();
+
       if (error || !data) throw new Error("User not found");
       return {
         user: {
@@ -367,6 +396,7 @@ export const api = {
       deviceId: string;
       userId?: string;
       name: string;
+      yield_value: number;
       phases: ApiRecipePhase[];
     }): Promise<ApiRecipe> => {
       if (!supabase) throw new Error("Supabase not configured");
@@ -377,6 +407,7 @@ export const api = {
           device_id: body.deviceId,
           user_id: body.userId ?? null,
           name: body.name,
+          yield_value: body.yield_value,
           phases: body.phases,
           updated_at: new Date().toISOString(),
         })
@@ -527,6 +558,7 @@ export const api = {
         userId?: string;
         recipeId?: string | null;
         recipeName: string;
+        yield_value: number;
         savedAt: number;
         startedAt: number;
         phases: ApiBakePhase[];
@@ -541,6 +573,7 @@ export const api = {
             user_id: body.userId ?? null,
             recipe_id: body.recipeId ?? null,
             recipe_name: body.recipeName,
+            yield_value: body.yield_value,
             saved_at: body.savedAt,
             started_at: body.startedAt,
             phases: body.phases,

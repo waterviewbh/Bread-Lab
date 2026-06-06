@@ -11,6 +11,7 @@ import * as Haptics from "expo-haptics";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { YieldPill } from "@/components/YieldPill";
 import {
   Alert,
   AppState,
@@ -97,6 +98,7 @@ interface SavedRecipe {
   createdAt: number;
   updatedAt?: number;
   phases: RecipePhaseConfig[];
+  yieldValue?: string;
 }
 
 interface BakePhase extends RecipePhaseConfig {
@@ -113,6 +115,7 @@ interface ActiveBake {
   startedAt: number;
   phases: BakePhase[];
   notes?: string;
+  yieldValue?: string;
 }
 
 // ─── Phase catalogue (hierarchical) ──────────────────────────────────────────
@@ -149,6 +152,7 @@ const PHASE_CATEGORIES: {
     name: "Fermentation",
     phases: [
       { key: "stretching_folding", name: "Stretching and Folding", hint: "Develop gluten strength during bulk fermentation" },
+      { key: "kneading", name: "Kneading", hint: "Working the dough on a bench or in a machine to build strength" },
       { key: "laminating", name: "Laminating", hint: "Open dough flat and fold to incorporate inclusions" },
       { key: "bulk_fermenting", name: "Bulk Fermenting", hint: "Main fermentation period at room temperature" },
     ],
@@ -231,15 +235,30 @@ function scalePhaseText(text: string, multiplier: number): string {
       const original = parseFloat(numStr);
       const scaled = original * multiplier;
 
-      // Round to 1 decimal, then coerce back through parseFloat to drop
-      // trailing zeros — e.g. 500.0 → "500", 250.5 → "250.5".
-      const formatted = parseFloat(scaled.toFixed(1)).toString();
-
-      // Preserve the original spacing style between number and unit.
-      // When space is undefined (condensed "250g"), fall back to "".
+      let formatted: string;
+      if (scaled < 1) {
+        formatted = "<1";
+      } else if (scaled % 1 === 0) {
+        formatted = scaled.toString();
+      } else if (scaled > 100) {
+        formatted = Math.ceil(scaled).toString();
+      } else {
+        formatted = `${Math.floor(scaled)}-${Math.ceil(scaled)}`;
+      }
       return `${formatted}${space ?? ""}${unit}`;
     }
   );
+}
+
+function formatScaledYield(yieldStr: string | undefined, multiplier: number): string {
+  if (!yieldStr || yieldStr.trim() === "" || yieldStr === "0") return "unk";
+  const base = parseFloat(yieldStr);
+  const scaled = base * multiplier;
+
+  if (scaled < 1) return "<1";
+  if (scaled % 1 === 0) return scaled.toString();
+  if (scaled > 100) return Math.ceil(scaled).toString();
+  return `${Math.floor(scaled)}-${Math.ceil(scaled)}`;
 }
 
 function formatTimer(ms: number): string {
@@ -625,6 +644,8 @@ export default function RecipeScreen() {
           ingredients: p.ingredients ?? "",
           instructions: p.instructions ?? "",
         })),
+    // In mapped recipes:
+    yieldValue: (r.yield_value && r.yield_value > 0) ? r.yield_value.toString() : "",
       }));
       if (token || apiRecipes.length > 0) {
         setRecipes(mapped);
@@ -646,6 +667,8 @@ export default function RecipeScreen() {
             readings: p.readings ?? [],
             startVolume: p.startVolume,
           })),
+      // In restored activeBake:
+      yieldValue: (activeBake.yield_value && activeBake.yield_value > 0) ? activeBake.yield_value.toString() : "",
         };
         setBake(restored);
         await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(restored));
@@ -669,6 +692,7 @@ export default function RecipeScreen() {
           userId: userId ?? undefined,
           recipeId: updated.recipeId,
           recipeName: updated.recipeName,
+          yield_value: updated.yieldValue ? parseInt(updated.yieldValue, 10) : 0,
           savedAt: Date.now(),
           startedAt: updated.startedAt,
           phases: updated.phases.map((p) => ({
@@ -727,6 +751,7 @@ export default function RecipeScreen() {
           userId: userId ?? undefined,
           recipeId: b.recipeId,
           recipeName: b.recipeName,
+          yield_value: b.yieldValue ? parseInt(b.yieldValue, 10) : 0,
           savedAt,
           startedAt: b.startedAt,
           phases,
@@ -874,6 +899,7 @@ export default function RecipeScreen() {
           deviceId,
           userId: userId ?? undefined,
           name: saved.name,
+          yield_value: editingRecipe.yieldValue ? parseInt(editingRecipe.yieldValue, 10) : 0,
           phases: saved.phases.map((p) => ({
             key: p.key,
             name: p.name,
@@ -1036,6 +1062,7 @@ export default function RecipeScreen() {
       recipeName: selectedRecipe.name,
       startedAt: Date.now(),
       phases,
+      yieldValue: selectedRecipe.yieldValue || "1",
     };
     await persistBake(newBake);
     setSelectedRecipe(null);
@@ -1043,6 +1070,54 @@ export default function RecipeScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const resetBake = () => {
+    const doReset = async () => {
+      const abandonedBake = bake;
+      if (abandonedBake) await saveBakeToHistory(abandonedBake);
+      await checkAndShowNudge();
+      await AsyncStorage.removeItem(BAKE_KEY);
+      setBake(null);
+      setElapsed({});
+      setExpandedDone(new Set());
+      setExpandedRecipeInfo(new Set());
+      setScaleMultiplier(1);
+
+      if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+          }
+
+      if (abandonedBake) {
+        reportSyncStart();
+        getDeviceId()
+          .then((deviceId) => api.history.bakes.delete(abandonedBake.id, deviceId))
+          .then(() => reportSyncSuccess())
+          .catch(() => reportSyncFailure());
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      // REFINEMENT: Use a tiny timeout to keep the browser thread alive
+          // and prevent the 6000ms timeout crash.
+          setTimeout(() => {
+            if (window.confirm("New Bake? This clears all logged phases for the current bake.")) {
+              doReset();
+            }
+          }, 100);
+
+    } else {
+      // Mobile Alert
+      Alert.alert(
+        "New Bake?",
+        "This clears all logged phases for the current bake.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Reset", style: "destructive", onPress: doReset },
+        ]
+      );
+    }
+  };
+
+/* DELETE THIS BLOCK IF THE WRAP CHECK WORKS
   const resetBake = () => {
     Alert.alert(
       "New Bake?",
@@ -1075,7 +1150,7 @@ export default function RecipeScreen() {
       ]
     );
   };
-
+*/
   const startPhase = async (key: string) => {
     if (!bake) return;
     const phases = bake.phases.map((p) => {
@@ -1594,9 +1669,21 @@ export default function RecipeScreen() {
                 returnKeyType="done"
               />
 
+              {/* ADDED: Yield Pill Entry */}
+              <YieldPill
+               isBuilder={true}
+                value={editingRecipe.yieldValue || ""}
+                onChangeValue={(text) => {
+                  setEditingRecipe(prev => prev ? { ...prev, yieldValue: text } : null);
+                }}
+              />
+
               {/* Phase list */}
               <Text style={[s.fieldLabel, { color: colors.mutedForeground, marginTop: 24 }]}>
                 Phases
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.mutedForeground, fontStyle: 'italic', marginBottom: 12, lineHeight: 18 }}>
+                Tip: Use single numbers for amounts (e.g. 500 g) rather than a quantity range to ensure proper scaling results. Enter one ingredient per line for the best readability. Where possible, this app complies with ISO 80000-1, meaning "a numerical value and its unit symbol should be separated by a space."
               </Text>
 
               {editingRecipe.phases.length === 0 && (
@@ -1670,7 +1757,7 @@ export default function RecipeScreen() {
                           fontFamily: "Inter_400Regular",
                         },
                       ]}
-                      placeholder="e.g. 500g bread flour, 350g water, 100g levain…"
+                      placeholder="e.g. 500 g bread flour, 350 g water, 100 g levain…"
                       placeholderTextColor={colors.mutedForeground}
                       value={phase.ingredients}
                       onChangeText={(v) => updatePhaseField(phase.key, "ingredients", v)}
@@ -1722,9 +1809,9 @@ export default function RecipeScreen() {
                   <Text style={[s.addPhaseBtnText, { color: colors.accent }]}>
                     Add Phase
                   </Text>
-                  <Text style={[s.addPhaseHint, { color: colors.mutedForeground }]}>
-                    {availablePhases.length} remaining
-                  </Text>
+                     <Text style={[s.addPhaseHint, { color: colors.mutedForeground }]}>
+                                      {availablePhases.length} possi
+                                    </Text>
                 </Pressable>
               )}
 
@@ -1855,6 +1942,12 @@ export default function RecipeScreen() {
                 <Text style={[s.preStartName, { color: colors.foreground }]} numberOfLines={2}>
                   {selectedRecipe.name}
                 </Text>
+
+                 {/* ADDED: Yield Pill for Runner Confirmation Mode */}
+                  <YieldPill
+                    isBuilder={false}
+                   value={formatScaledYield(selectedRecipe.yieldValue, scaleMultiplier)}
+                  />
               </View>
               <Pressable
                 onPress={() => setSelectedRecipe(null)}
@@ -1974,6 +2067,14 @@ export default function RecipeScreen() {
               <Text style={[s.trackerRecipeName, { color: colors.mutedForeground }]}>
                 {bake.recipeName}
               </Text>
+
+               {/* ADDED: Yield Pill for Runner Confirmation Mode */}
+                <YieldPill
+                  isBuilder={false}
+                  value={formatScaledYield(bake.yieldValue, scaleMultiplier)}
+                />
+                </View>
+
               <View style={s.statusRow}>
                 {activePhase ? (
                   <>
@@ -2025,7 +2126,6 @@ export default function RecipeScreen() {
                 <Text style={[s.newBakeBtnText, { color: colors.mutedForeground }]}>New Bake</Text>
               </Pressable>
             </View>
-          </View>
 
           {/* Recipe version warning */}
           {recipeStale && (
@@ -2142,7 +2242,7 @@ export default function RecipeScreen() {
                               Ingredients
                             </Text>
                             <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 20, fontFamily: "Inter_400Regular" }}>
-                              {phase.ingredients}
+                              {scalePhaseText(phase.ingredients, scaleMultiplier)}
                             </Text>
                           </>
                         )}
@@ -2152,7 +2252,7 @@ export default function RecipeScreen() {
                               Instructions
                             </Text>
                             <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 20, fontFamily: "Inter_400Regular" }}>
-                              {phase.instructions}
+                              {scalePhaseText(phase.instructions, scaleMultiplier)}
                             </Text>
                           </>
                         )}
@@ -2238,7 +2338,7 @@ export default function RecipeScreen() {
                                   Ingredients
                                 </Text>
                                 <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 20, fontFamily: "Inter_400Regular" }}>
-                                  {phase.ingredients}
+                                  {scalePhaseText(phase.ingredients, scaleMultiplier)}
                                 </Text>
                               </>
                             )}
@@ -2248,7 +2348,7 @@ export default function RecipeScreen() {
                                   Instructions
                                 </Text>
                                 <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 20, fontFamily: "Inter_400Regular" }}>
-                                  {phase.instructions}
+                                  {scalePhaseText(phase.instructions, scaleMultiplier)}
                                 </Text>
                               </>
                             )}
