@@ -34,7 +34,8 @@
         "EXPO_PUBLIC_DOMAIN": "bread-lab.clanmcmains.com",
         "EXPO_PUBLIC_SUPABASE_URL": "https://kzueaxbloujtudxzqoju.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UWxEXEJvzJ_7xOkbNj3HHg_3Z9g4PK_",
-        "NPM_CONFIG_FROZEN_LOCKFILE": "false"
+        "NPM_CONFIG_FROZEN_LOCKFILE": "false",
+        "PNPM_SKIP_LOCKFILE_CHECK": "true"
       }
     }
   },
