@@ -145,12 +145,14 @@ export const CHANGELOG: ChangelogVersion[] = [
   {
       version: "v1.0.10",
       changes: [
+        { type: "Added", content: "Enabled React Native 'New Architecture' (Fabric) — significantly boosting UI responsiveness and gesture performance across the app." },
         { type: "Changed", content: "Switched to Row-Level Security (RLS) with passwordless anonymous sign-ins, cryptographically locking your data to your identity." },
         { type: "Added", content: "Yield Pill persistence — batch sizes now sync from the Recipe Builder and are preserved in the cloud and Bake History." },
         { type: "Added", content: "Dynamic Scaling Engine — the Recipe Runner now live-scales yield counts and all ingredient measurements based on your selected multiplier (0.5× to 3×)." },
         { type: "Added", content: "Smart Rounding Logic — scaled measurements follow professional baker rules for precision." },
         { type: "Changed", content: "Yield entry UX — the default '1' in the Builder is now a grey breadcrumb placeholder that is overwritten instantly." },
         { type: "Fixed", content: "Resolved a 6000ms timeout crash on Web/Emulator browsers caused by blocking reset dialogs." },
+        { type: "Fixed", content: "Modernized workspace infrastructure to resolve cloud synchronization and dependency conflicts." },
       ],
     },
     {
