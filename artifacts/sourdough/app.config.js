@@ -29,6 +29,8 @@ module.exports = {
   android: {
     package: "com.waterviewbakehouse.breadlab",
     versionCode: versionData.versionCode,
+    targetSdkVersion: 34,    // Force stable SDK 34 (Android 14)
+    compileSdkVersion: 35,   // Use stable SDK 35 (Android 15)
     permissions: [
       "android.permission.CAMERA",
       "android.permission.READ_EXTERNAL_STORAGE",
