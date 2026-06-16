@@ -2046,7 +2046,7 @@ export default function FeedScreen() {
                 onPress={() =>
                   pickPhoto((uri) => {
                     setFedPhoto(uri);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   })
                 }
                 style={({ pressed }) => [
