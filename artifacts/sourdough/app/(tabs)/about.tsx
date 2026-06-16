@@ -13,8 +13,12 @@ import { useState } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { useFontSize } from "@/contexts/FontSizeContext";
+import { useTour } from "@/contexts/TourContext";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+const CopilotView = walkthroughable(View);
 // import appConfig from "../../app.json";  red tagged 1.0.10-candidate remove after 3 revs
- import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA } from "../../constants/aboutContents";
+import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA } from "../../constants/aboutContents";
 
 const SUPPORT_EMAIL = "waterviewbakehouse@gmail.com";
 const WEB_TOP = Platform.OS === "web" ? 67 : 0;
@@ -194,6 +198,7 @@ function InterpretationCard({ data, colors }: { data: any; colors: ReturnType<ty
 export default function AboutScreen() {
   const colors = useColors();
   const { fullFontSize, setFullFontSize } = useFontSize();
+  const { startChapter } = useTour();
 
   const handleEmail = () => {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}`);
@@ -224,25 +229,31 @@ export default function AboutScreen() {
       </Text>
 
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={styles.settingRow}>
-          <View style={styles.settingText}>
-            <Text style={[styles.settingTitle, { color: colors.foreground }]}>
-              Respect full system font size
-            </Text>
-            <Text style={[styles.settingDescription, { color: colors.mutedForeground }]}>
-              Allows the app to scale text beyond the default cap for improved accessibility.
-            </Text>
-          </View>
-          <Switch
-            value={fullFontSize}
-            onValueChange={setFullFontSize}
-            trackColor={{ false: colors.muted, true: colors.primary }}
-            thumbColor={colors.primaryForeground}
-            accessibilityLabel="Respect full system font size"
-            accessibilityRole="switch"
-            accessibilityState={{ checked: fullFontSize }}
-          />
-        </View>
+        <CopilotStep
+          text="Toggle advanced accessibility settings here."
+          order={22}
+          name="font-setting-toggle"
+        >
+          <CopilotView style={styles.settingRow}>
+            <View style={styles.settingText}>
+              <Text style={[styles.settingTitle, { color: colors.foreground }]}>
+                Respect full system font size
+              </Text>
+              <Text style={[styles.settingDescription, { color: colors.mutedForeground }]}>
+                Allows the app to scale text beyond the default cap for improved accessibility.
+              </Text>
+            </View>
+            <Switch
+              value={fullFontSize}
+              onValueChange={setFullFontSize}
+              trackColor={{ false: colors.muted, true: colors.primary }}
+              thumbColor={colors.primaryForeground}
+              accessibilityLabel="Respect full system font size"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: fullFontSize }}
+            />
+          </CopilotView>
+        </CopilotStep>
       </View>
 
       {/* ── Contact ── */}
@@ -265,72 +276,113 @@ export default function AboutScreen() {
       </View>
 
       {/* ── Help ── */}
-      <Text style={[styles.sectionLabel, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>
-        Help
-      </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderBottomColor: colors.border,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            marginBottom: 10,
+            paddingBottom: 6
+          }}
+        >
+          <Text style={[styles.sectionLabel, { marginBottom: 0, borderBottomWidth: 0 }]}>
+            Help
+          </Text>
+          <Pressable
+            onPress={() => startChapter('feed')}
+            style={({ pressed }) => ({
+              backgroundColor: colors.primary + "15",
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 12,
+              opacity: pressed ? 0.7 : 1
+            })}
+          >
+            <Text style={{ color: colors.primary, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>
+              Take the Tour
+            </Text>
+          </Pressable>
+        </View>
 
-      {HELP.map((tab, i) => (
-        <HelpAccordion key={i} tab={tab} colors={colors} />
-      ))}
+        <CopilotStep
+          text="Detailed help for every tab in the Bread Lab."
+          order={23}
+          name="help-section"
+        >
+          <CopilotView>
+            {HELP.map((tab, i) => (
+              <HelpAccordion key={i} tab={tab} colors={colors} />
+            ))}
+          </CopilotView>
+        </CopilotStep>
 
       {/* ── Interpreting Your Data ── */}
-<Text
-  style={[
-    styles.sectionLabel,
-    { color: colors.mutedForeground, borderBottomColor: colors.border, marginTop: 28 },
-  ]}
->
-  {"Interpreting Your Data"}
-</Text>
-
-<InterpretationCard data={ACIDIFICATION_DATA} colors={colors} />
-<InterpretationCard data={LIFTING_DATA} colors={colors} />
-
-<Text
-  style={[
-    styles.sectionLabel,
-    { color: colors.mutedForeground, borderBottomColor: colors.border, marginTop: 28 },
-  ]}
->
-  {"Changelog"}
-</Text>
-
-<View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-
-  {/* Render the changelog from the data array above */}
-  {CHANGELOG.map((entry, index) => (
-    <View
-      key={entry.version}
-      style={[
-        styles.changelogEntry,
-        // Hide the border on the very last item in the list
-        index === CHANGELOG.length - 1 ? { borderBottomWidth: 0 } : { borderBottomColor: colors.border }
-      ]}
-    >
-      <Text style={[styles.changelogVersion, { color: colors.foreground }]}>
-        {entry.version}
+      <Text
+        style={[
+          styles.sectionLabel,
+          { color: colors.mutedForeground, borderBottomColor: colors.border, marginTop: 28 },
+        ]}
+      >
+        {"Interpreting Your Data"}
       </Text>
-      {entry.changes.map((change, ci) => (
-        <Text
-          key={ci}
-          style={[
-            styles.changelogBullet,
-            { color: colors.foreground, marginTop: ci > 0 ? 6 : 4 }
-          ]}
-        >
-          <Text style={styles.changelogLabel}>{change.type}: </Text>
-          {change.content}
-        </Text>
-      ))}
-    </View>
-  ))}
-</View>
-     {/* ── Version ── */}
+      <CopilotStep
+        text="A deep dive into how to read your dough and the data you collect from it."
+        order={24}
+        name="interpreting-data-section"
+      >
+        <CopilotView>
+          <InterpretationCard data={ACIDIFICATION_DATA} colors={colors} />
+          <InterpretationCard data={LIFTING_DATA} colors={colors} />
+        </CopilotView>
+      </CopilotStep>
+
+      <Text
+        style={[
+          styles.sectionLabel,
+          { color: colors.mutedForeground, borderBottomColor: colors.border, marginTop: 28 },
+        ]}
+      >
+        {"Changelog"}
+      </Text>
+
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        {/* Render the changelog from the data array above */}
+        {CHANGELOG.map((entry, index) => (
+          <View
+            key={entry.version}
+            style={[
+              styles.changelogEntry,
+              // Hide the border on the very last item in the list
+              index === CHANGELOG.length - 1 ? { borderBottomWidth: 0 } : { borderBottomColor: colors.border }
+            ]}
+          >
+            <Text style={[styles.changelogVersion, { color: colors.foreground }]}>
+              {entry.version}
+            </Text>
+            {entry.changes.map((change, ci) => (
+              <Text
+                key={ci}
+                style={[
+                  styles.changelogBullet,
+                  { color: colors.foreground, marginTop: ci > 0 ? 6 : 4 }
+                ]}
+              >
+                <Text style={styles.changelogLabel}>{change.type}: </Text>
+                {change.content}
+              </Text>
+            ))}
+          </View>
+        ))}
+      </View>
+
+      {/* ── Version ── */}
       <Text style={[styles.versionLabel, { color: colors.mutedForeground }]}>
         Version {versionData.version} ({versionData.versionCode})
       </Text>
-</ScrollView>
-);
+    </ScrollView>
+  );
 }
 // ── Styles ───────────────────────────────────────────────────────────────────
 

@@ -142,7 +142,13 @@ export const HELP: HelpTab[] = [
 ];
 
 export const CHANGELOG: ChangelogVersion[] = [
-  {
+{
+      version: "v1.0.11",
+      changes: [
+        { type: "Added", content: "A tour of the app is now available from the About tab. Click the Take a tour button to see a complete tour, or revisit just an updated section of the app." },
+      ],
+    },
+{
       version: "v1.0.10",
       changes: [
         { type: "Added", content: "Enabled React Native 'New Architecture' (Fabric) — significantly boosting UI responsiveness and gesture performance across the app." },

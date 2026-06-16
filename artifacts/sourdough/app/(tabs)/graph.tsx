@@ -23,6 +23,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+const CopilotView = walkthroughable(View);
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const STORAGE_KEY = "sourdough_feed_session_v1";
@@ -247,40 +250,65 @@ export default function GraphScreen() {
         </Text>
 
         {/* ── Acidification Index ── */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Acidification Index
-          </Text>
-          <Text
-            style={[
-              styles.sectionSubtitle,
-              { color: colors.mutedForeground },
-            ]}
-          >
-            Bacterial Vitality
-          </Text>
-        </View>
+        <CopilotStep
+          text="Monitor your bacterial vitality with the Acidification Index."
+          order={9}
+          name="acidification-index"
+        >
+          <CopilotView>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Acidification Index
+              </Text>
+              <Text
+                style={[
+                  styles.sectionSubtitle,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Bacterial Vitality
+              </Text>
+            </View>
 
-        <ReadingHint body={ACID_HINT} onAbout={goToAbout} colors={colors} />
-        <AcidificationChart data={acidSeries} hasLivePoint={hasLiveAcidPoint} />
+            <ReadingHint body={ACID_HINT} onAbout={goToAbout} colors={colors} />
+            <AcidificationChart data={acidSeries} hasLivePoint={hasLiveAcidPoint} />
+          </CopilotView>
+        </CopilotStep>
 
         {/* ── Lifting Index ── */}
-        <View style={[styles.sectionHeader, { marginTop: 32 }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Lifting Index
-          </Text>
-          <Text
-            style={[
-              styles.sectionSubtitle,
-              { color: colors.mutedForeground },
-            ]}
-          >
-            Yeast Velocity & Capacity
-          </Text>
-        </View>
+        <CopilotStep
+          text="Track your yeast velocity and rise capacity here."
+          order={10}
+          name="lifting-index"
+        >
+          <CopilotView style={{ marginTop: 32 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Lifting Index
+              </Text>
+              <Text
+                style={[
+                  styles.sectionSubtitle,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Yeast Velocity & Capacity
+              </Text>
+            </View>
 
-        <ReadingHint body={LIFT_HINT} onAbout={goToAbout} colors={colors} />
-        <LiftingIndexChart data={liftSeries} />
+            <ReadingHint body={LIFT_HINT} onAbout={goToAbout} colors={colors} />
+            <LiftingIndexChart data={liftSeries} />
+          </CopilotView>
+        </CopilotStep>
+
+        {/* ── 3rd graph ── */}
+        <CopilotStep
+          text="More data analysis and visualization coming soon."
+          order={11}
+          name="3rd-graph"
+        >
+          <CopilotView style={{ height: 1 }} />
+        </CopilotStep>
       </ScrollView>
     </View>
   );

@@ -30,6 +30,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
 import { computeSessionAcidVelocity } from "@/lib/analytics";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+const CopilotView = walkthroughable(View);
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
@@ -1086,83 +1089,96 @@ export default function HistoryScreen() {
             </Text>
             {lastSynced !== null && <SyncLabel ts={lastSynced} />}
           </View>
-          <Pressable
-            onPress={() => setShowAuthModal(true)}
-            style={({ pressed }) => [styles.accountBtn, { borderColor: colors.border, backgroundColor: currentUser ? colors.primary + "15" : colors.card, opacity: pressed ? 0.7 : 1 }]}
+          <CopilotStep
+            text="Sync and name your data across devices."
+            order={17}
+            name="name-name-button"
           >
-            <View style={{ position: "relative" }}>
-              {currentUser ? (
-                <View style={[styles.avatarMini, { backgroundColor: colors.primary }]}>
-                  <Text style={[styles.avatarMiniText, { color: colors.primaryForeground }]}>
-                    {currentUser.firstName?.[0]?.toUpperCase() ?? "?"}
-                  </Text>
+            <CopilotView>
+              <Pressable
+                onPress={() => setShowAuthModal(true)}
+                style={({ pressed }) => [styles.accountBtn, { borderColor: colors.border, backgroundColor: currentUser ? colors.primary + "15" : colors.card, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <View style={{ position: "relative" }}>
+                  {currentUser ? (
+                    <View style={[styles.avatarMini, { backgroundColor: colors.primary }]}>
+                      <Text style={[styles.avatarMiniText, { color: colors.primaryForeground }]}>
+                        {currentUser.firstName?.[0]?.toUpperCase() ?? "?"}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Feather name="user" size={16} color={colors.mutedForeground} />
+                  )}
+                  {(pendingCount > 0 || isMigrationActive) && (
+                    <View
+                      style={[
+                        styles.syncBadge,
+                        { backgroundColor: colors.accent, borderColor: currentUser ? colors.primary + "15" : colors.card },
+                      ]}
+                    />
+                  )}
                 </View>
-              ) : (
-                <Feather name="user" size={16} color={colors.mutedForeground} />
-              )}
-              {(pendingCount > 0 || isMigrationActive) && (
-                <View
-                  style={[
-                    styles.syncBadge,
-                    { backgroundColor: colors.accent, borderColor: currentUser ? colors.primary + "15" : colors.card },
-                  ]}
-                />
-              )}
-            </View>
-            <Text
-              style={[styles.accountBtnText, { color: currentUser ? colors.primary : colors.mutedForeground, maxWidth: 130 }]}
-              numberOfLines={1}
-            >
-              {currentUser ? `${currentUser.firstName}'s ${currentUser.starterName}` : "Name my data"}
-            </Text>
-          </Pressable>
+                <Text
+                  style={[styles.accountBtnText, { color: currentUser ? colors.primary : colors.mutedForeground, maxWidth: 130 }]}
+                  numberOfLines={1}
+                >
+                  {currentUser ? `${currentUser.firstName}'s ${currentUser.starterName}` : "Name my data"}
+                </Text>
+              </Pressable>
+            </CopilotView>
+          </CopilotStep>
         </Animated.View>
 
         {/* Stat strip */}
-        <Animated.View
-          entering={FadeInDown.delay(60).duration(400)}
-          style={styles.statsRow}
+        <CopilotStep
+          text="Track the number of refreshes, and see your longest daily activity streak."
+          order={18}
+          name="feed-leaderboard"
         >
-          <View
-            style={[
-              styles.statCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
+          <CopilotView
+            style={styles.statsRow}
           >
-            <Text style={[styles.statValue, { color: colors.foreground }]}>
-              {totalThisMonth}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              this month
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.statCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.statValue, { color: streak > 0 ? colors.accent : colors.foreground }]}>
-              {streak}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              day streak
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.statCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.statValue, { color: colors.foreground }]}>
-              {history.length}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              total feeds
-            </Text>
-          </View>
-        </Animated.View>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.statValue, { color: colors.foreground }]}>
+                {totalThisMonth}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                this month
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.statValue, { color: streak > 0 ? colors.accent : colors.foreground }]}>
+                {streak}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                day streak
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.statCard,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.statValue, { color: colors.foreground }]}>
+                {history.length}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                total feeds
+              </Text>
+            </View>
+          </CopilotView>
+        </CopilotStep>
 
         {/* Feed filter chips */}
         <Animated.View
@@ -1202,357 +1218,279 @@ export default function HistoryScreen() {
         </Animated.View>
 
         {/* Calendar card */}
-        <Animated.View
-          entering={FadeInDown.delay(120).duration(400)}
-          style={[
-            styles.calendarCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
+        <CopilotStep
+          text="View your activity history on the calendar."
+          order={19}
+          name="calendar"
         >
-          {/* Month navigation */}
-          <View style={styles.monthNav}>
-            <Pressable
-              onPress={goToPrevMonth}
-              style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1 })}
-              hitSlop={12}
-            >
-              <Feather name="chevron-left" size={22} color={colors.foreground} />
-            </Pressable>
-            <Text style={[styles.monthLabel, { color: colors.foreground }]}>
-              {MONTH_NAMES[displayMonth]} {displayYear}
-            </Text>
-            <Pressable
-              onPress={goToNextMonth}
-              style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1 })}
-              hitSlop={12}
-            >
-              <Feather name="chevron-right" size={22} color={colors.foreground} />
-            </Pressable>
-          </View>
+          <CopilotView
+            style={[
+              styles.calendarCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            {/* Month navigation */}
+            <View style={styles.monthNav}>
+              <Pressable
+                onPress={goToPrevMonth}
+                style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1 })}
+                hitSlop={12}
+              >
+                <Feather name="chevron-left" size={22} color={colors.foreground} />
+              </Pressable>
+              <Text style={[styles.monthLabel, { color: colors.foreground }]}>
+                {MONTH_NAMES[displayMonth]} {displayYear}
+              </Text>
+              <Pressable
+                onPress={goToNextMonth}
+                style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1 })}
+                hitSlop={12}
+              >
+                <Feather name="chevron-right" size={22} color={colors.foreground} />
+              </Pressable>
+            </View>
 
-          {/* Weekday headers */}
-          <View style={styles.weekRow}>
-            {WEEKDAYS.map((d, i) => (
-              <View key={i} style={styles.dayCell}>
-                <Text
-                  style={[styles.weekdayLabel, { color: colors.mutedForeground }]}
-                >
-                  {d}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Calendar grid */}
-          {calendarRows.map((row, ri) => (
-            <View key={ri} style={styles.weekRow}>
-              {row.map((day, di) => {
-                if (day === null) {
-                  return <View key={di} style={styles.dayCell} />;
-                }
-                const hasFeed = !!displayFeedDayMap[day.toString()];
-                const feedCount = displayFeedDayMap[day.toString()]?.length ?? 0;
-                const hasBake = (bakeDayMap[day.toString()]?.length ?? 0) > 0;
-                const isToday = isCurrentMonth && day === today;
-                const isSelected = day === selectedDay;
-
-                return (
-                  <Pressable
-                    key={di}
-                    style={styles.dayCell}
-                    onPress={() =>
-                      setSelectedDay(isSelected ? null : day)
-                    }
-                    hitSlop={2}
+            {/* Weekday headers */}
+            <View style={styles.weekRow}>
+              {WEEKDAYS.map((d, i) => (
+                <View key={i} style={styles.dayCell}>
+                  <Text
+                    style={[styles.weekdayLabel, { color: colors.mutedForeground }]}
                   >
-                    <View
-                      style={[
-                        styles.dayInner,
-                        isSelected && {
-                          backgroundColor: colors.primary,
-                          borderRadius: 20,
-                        },
-                        isToday &&
-                          !isSelected && {
-                            borderWidth: 1.5,
-                            borderColor: colors.primary,
+                    {d}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Calendar grid */}
+            {calendarRows.map((row, ri) => (
+              <View key={ri} style={styles.weekRow}>
+                {row.map((day, di) => {
+                  if (day === null) {
+                    return <View key={di} style={styles.dayCell} />;
+                  }
+                  const hasFeed = !!displayFeedDayMap[day.toString()];
+                  const feedCount = displayFeedDayMap[day.toString()]?.length ?? 0;
+                  const hasBake = (bakeDayMap[day.toString()]?.length ?? 0) > 0;
+                  const isToday = isCurrentMonth && day === today;
+                  const isSelected = day === selectedDay;
+
+                  return (
+                    <Pressable
+                      key={di}
+                      style={styles.dayCell}
+                      onPress={() =>
+                        setSelectedDay(isSelected ? null : day)
+                      }
+                      hitSlop={2}
+                    >
+                      <View
+                        style={[
+                          styles.dayInner,
+                          isSelected && {
+                            backgroundColor: colors.primary,
                             borderRadius: 20,
                           },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.dayNumber,
-                          {
-                            color: isSelected
-                              ? colors.primaryForeground
-                              : isToday
-                              ? colors.primary
-                              : colors.foreground,
-                            fontFamily: isToday
-                              ? "Inter_600SemiBold"
-                              : "Inter_400Regular",
-                          },
+                          isToday &&
+                            !isSelected && {
+                              borderWidth: 1.5,
+                              borderColor: colors.primary,
+                              borderRadius: 20,
+                            },
                         ]}
                       >
-                        {day}
-                      </Text>
-                    </View>
-                    {(hasFeed || hasBake) && (
-                      <View style={styles.dotRow}>
-                        {Array.from({ length: Math.min(feedCount, 2) }).map(
-                          (_, i) => (
+                        <Text
+                          style={[
+                            styles.dayNumber,
+                            {
+                              color: isSelected
+                                ? colors.primaryForeground
+                                : isToday
+                                ? colors.primary
+                                : colors.foreground,
+                              fontFamily: isToday
+                                ? "Inter_600SemiBold"
+                                : "Inter_400Regular",
+                            },
+                          ]}
+                        >
+                          {day}
+                        </Text>
+                      </View>
+                      {(hasFeed || hasBake) && (
+                        <View style={styles.dotRow}>
+                          {Array.from({ length: Math.min(feedCount, 2) }).map(
+                            (_, i) => (
+                              <View
+                                key={`f${i}`}
+                                style={[
+                                  styles.dot,
+                                  {
+                                    backgroundColor: isSelected
+                                      ? colors.primaryForeground
+                                      : colors.accent,
+                                  },
+                                ]}
+                              />
+                            )
+                          )}
+                          {hasBake && (
                             <View
-                              key={`f${i}`}
                               style={[
                                 styles.dot,
                                 {
                                   backgroundColor: isSelected
                                     ? colors.primaryForeground
-                                    : colors.accent,
+                                    : colors.primary,
                                 },
                               ]}
                             />
-                          )
-                        )}
-                        {hasBake && (
-                          <View
-                            style={[
-                              styles.dot,
-                              {
-                                backgroundColor: isSelected
-                                  ? colors.primaryForeground
-                                  : colors.primary,
-                              },
-                            ]}
-                          />
-                        )}
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-          ))}
-        </Animated.View>
+                          )}
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </CopilotView>
+        </CopilotStep>
 
         {/* Selected day detail */}
         {selectedDay !== null && (
-          <Animated.View entering={FadeInDown.duration(300)} style={{ marginTop: 20 }}>
-            {selectedEntries.length === 0 && selectedBakeEntries.length === 0 ? (
-              <View
-                style={[
-                  styles.emptyDay,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                ]}
-              >
-                <Text
-                  style={[styles.emptyDayText, { color: colors.mutedForeground }]}
-                >
-                  {feedFilter !== "all" && (feedDayMap[selectedDay!.toString()]?.length ?? 0) > 0
-                    ? `No ${feedFilter === "sugar" ? "sugar" : "WW blend"} refreshes on ${MONTH_NAMES[displayMonth]} ${selectedDay}`
-                    : `No activity on ${MONTH_NAMES[displayMonth]} ${selectedDay}`}
-                </Text>
-              </View>
-            ) : (
-              selectedEntries.map((entry, idx) => (
-                <Pressable
-                  key={entry.id}
-                  onPress={() => setSelectedFeedDetail(entry)}
-                  style={({ pressed }) => [
-                    styles.entryCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                      marginBottom: idx < selectedEntries.length - 1 ? 12 : 0,
-                      opacity: pressed ? 0.92 : 1,
-                    },
+          <CopilotStep
+            text="Review, print, and share your refreshes and your bakes (including added notes)."
+            order={20}
+            name="activity-history"
+          >
+            <CopilotView style={{ marginTop: 20 }}>
+              {selectedEntries.length === 0 && selectedBakeEntries.length === 0 ? (
+                <View
+                  style={[
+                    styles.emptyDay,
+                    { backgroundColor: colors.card, borderColor: colors.border },
                   ]}
                 >
-                  <View style={styles.entryHeader}>
-                    <Text
-                      style={[styles.entryTime, { color: colors.foreground }]}
-                    >
-                      {formatTime(entry.savedAt)}
-                    </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      {entry.peak && (
-                        <View
-                          style={[
-                            styles.peakedBadge,
-                            {
-                              backgroundColor: colors.accent + "18",
-                              borderColor: colors.accent + "40",
-                            },
-                          ]}
-                        >
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={12}
-                            color={colors.accent}
-                          />
-                          <Text
+                  <Text
+                    style={[styles.emptyDayText, { color: colors.mutedForeground }]}
+                  >
+                    {feedFilter !== "all" && (feedDayMap[selectedDay!.toString()]?.length ?? 0) > 0
+                      ? `No ${feedFilter === "sugar" ? "sugar" : "WW blend"} refreshes on ${MONTH_NAMES[displayMonth]} ${selectedDay}`
+                      : `No activity on ${MONTH_NAMES[displayMonth]} ${selectedDay}`}
+                  </Text>
+                </View>
+              ) : (
+                selectedEntries.map((entry, idx) => (
+                  <Pressable
+                    key={entry.id}
+                    onPress={() => setSelectedFeedDetail(entry)}
+                    style={({ pressed }) => [
+                      styles.entryCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        marginBottom: idx < selectedEntries.length - 1 ? 12 : 0,
+                        opacity: pressed ? 0.92 : 1,
+                      },
+                    ]}
+                  >
+                    <View style={styles.entryHeader}>
+                      <Text
+                        style={[styles.entryTime, { color: colors.foreground }]}
+                      >
+                        {formatTime(entry.savedAt)}
+                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        {entry.peak && (
+                          <View
                             style={[
-                              styles.peakedText,
-                              { color: colors.accent },
+                              styles.peakedBadge,
+                              {
+                                backgroundColor: colors.accent + "18",
+                                borderColor: colors.accent + "40",
+                              },
                             ]}
                           >
-                            Peaked
-                          </Text>
-                        </View>
-                      )}
-                      <Pressable
-                        onPress={() => deleteEntry(entry.id)}
-                        style={({ pressed }) => ({
-                          opacity: pressed ? 0.5 : 1,
-                          padding: 4,
-                        })}
-                        hitSlop={8}
-                      >
-                        <Feather
-                          name="trash-2"
-                          size={14}
-                          color={colors.mutedForeground}
-                        />
-                      </Pressable>
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={12}
+                              color={colors.accent}
+                            />
+                            <Text
+                              style={[
+                                styles.peakedText,
+                                { color: colors.accent },
+                              ]}
+                            >
+                              Peaked
+                            </Text>
+                          </View>
+                        )}
+                        <Pressable
+                          onPress={() => deleteEntry(entry.id)}
+                          style={({ pressed }) => ({
+                            opacity: pressed ? 0.5 : 1,
+                            padding: 4,
+                          })}
+                          hitSlop={8}
+                        >
+                          <Feather
+                            name="trash-2"
+                            size={14}
+                            color={colors.mutedForeground}
+                          />
+                        </Pressable>
+                      </View>
                     </View>
-                  </View>
 
-                  <View style={styles.entryGrid}>
-                    <View style={styles.entryGridItem}>
-                      <Text
-                        style={[styles.entryVal, { color: colors.foreground }]}
-                      >
-                        {entry.starterWeight}g
-                      </Text>
-                      <Text
-                        style={[
-                          styles.entryLbl,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        Starter
-                      </Text>
-                    </View>
-                    <View style={styles.entryGridItem}>
-                      <Text
-                        style={[styles.entryVal, { color: colors.foreground }]}
-                      >
-                        {entry.flourWeight}g
-                      </Text>
-                      <Text
-                        style={[
-                          styles.entryLbl,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        Flour
-                      </Text>
-                    </View>
-                    <View style={styles.entryGridItem}>
-                      <Text
-                        style={[styles.entryVal, { color: colors.foreground }]}
-                      >
-                        {entry.waterWeight}g
-                      </Text>
-                      <Text
-                        style={[
-                          styles.entryLbl,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        Water
-                      </Text>
-                    </View>
-                    {entry.initialPH ? (
+                    <View style={styles.entryGrid}>
                       <View style={styles.entryGridItem}>
                         <Text
-                          style={[
-                            styles.entryVal,
-                            { color: colors.foreground },
-                          ]}
+                          style={[styles.entryVal, { color: colors.foreground }]}
                         >
-                          {entry.initialPH}
+                          {entry.starterWeight}g
                         </Text>
                         <Text
                           style={[
                             styles.entryLbl,
-                            { color: colors.mutedForeground, textTransform: "none" },
+                            { color: colors.mutedForeground },
                           ]}
                         >
-                          pH
+                          Starter
                         </Text>
                       </View>
-                    ) : null}
-                  </View>
-
-                  {entry.wwPercent > 0 && (
-                    <Text
-                      style={[
-                        styles.flourNote,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {100 - entry.wwPercent}% AP · {entry.wwPercent}% WW
-                    </Text>
-                  )}
-
-                  {entry.peak && (
-                    <View
-                      style={[
-                        styles.peakBlock,
-                        { borderTopColor: colors.border },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.peakTitle,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        Peak
-                      </Text>
-                      <View style={styles.entryGrid}>
-                        {entry.peak.pH ? (
-                          <View style={styles.entryGridItem}>
-                            <Text
-                              style={[
-                                styles.entryVal,
-                                { color: colors.foreground },
-                              ]}
-                            >
-                              {entry.peak.pH}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.entryLbl,
-                                { color: colors.mutedForeground, textTransform: "none" },
-                              ]}
-                            >
-                              pH
-                            </Text>
-                          </View>
-                        ) : null}
-                        {entry.peak.volumeIncreasePct > 0 && (
-                          <View style={styles.entryGridItem}>
-                            <Text
-                              style={[
-                                styles.entryVal,
-                                { color: colors.accent },
-                              ]}
-                            >
-                              +{entry.peak.volumeIncreasePct}%
-                            </Text>
-                            <Text
-                              style={[
-                                styles.entryLbl,
-                                { color: colors.mutedForeground },
-                              ]}
-                            >
-                              Rise
-                            </Text>
-                          </View>
-                        )}
+                      <View style={styles.entryGridItem}>
+                        <Text
+                          style={[styles.entryVal, { color: colors.foreground }]}
+                        >
+                          {entry.flourWeight}g
+                        </Text>
+                        <Text
+                          style={[
+                            styles.entryLbl,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          Flour
+                        </Text>
+                      </View>
+                      <View style={styles.entryGridItem}>
+                        <Text
+                          style={[styles.entryVal, { color: colors.foreground }]}
+                        >
+                          {entry.waterWeight}g
+                        </Text>
+                        <Text
+                          style={[
+                            styles.entryLbl,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          Water
+                        </Text>
+                      </View>
+                      {entry.initialPH ? (
                         <View style={styles.entryGridItem}>
                           <Text
                             style={[
@@ -1560,24 +1498,113 @@ export default function HistoryScreen() {
                               { color: colors.foreground },
                             ]}
                           >
-                            {formatTimeToPeak(entry.peak.timeToPeakMs)}
+                            {entry.initialPH}
                           </Text>
                           <Text
                             style={[
                               styles.entryLbl,
-                              { color: colors.mutedForeground },
+                              { color: colors.mutedForeground, textTransform: "none" },
                             ]}
                           >
-                            Time
+                            pH
                           </Text>
                         </View>
-                      </View>
+                      ) : null}
                     </View>
-                  )}
-                </Pressable>
-              ))
-            )}
-          </Animated.View>
+
+                    {entry.wwPercent > 0 && (
+                      <Text
+                        style={[
+                          styles.flourNote,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        {100 - entry.wwPercent}% AP · {entry.wwPercent}% WW
+                      </Text>
+                    )}
+
+                    {entry.peak && (
+                      <View
+                        style={[
+                          styles.peakBlock,
+                          { borderTopColor: colors.border },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.peakTitle,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          Peak
+                        </Text>
+                        <View style={styles.entryGrid}>
+                          {entry.peak.pH ? (
+                            <View style={styles.entryGridItem}>
+                              <Text
+                                style={[
+                                  styles.entryVal,
+                                  { color: colors.foreground },
+                                ]}
+                              >
+                                {entry.peak.pH}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.entryLbl,
+                                  { color: colors.mutedForeground, textTransform: "none" },
+                                ]}
+                              >
+                                pH
+                              </Text>
+                            </View>
+                          ) : null}
+                          {entry.peak.volumeIncreasePct > 0 && (
+                            <View style={styles.entryGridItem}>
+                              <Text
+                                style={[
+                                  styles.entryVal,
+                                  { color: colors.accent },
+                                ]}
+                              >
+                                +{entry.peak.volumeIncreasePct}%
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.entryLbl,
+                                  { color: colors.mutedForeground },
+                                ]}
+                              >
+                                Rise
+                              </Text>
+                            </View>
+                          )}
+                          <View style={styles.entryGridItem}>
+                            <Text
+                              style={[
+                                styles.entryVal,
+                                { color: colors.foreground },
+                              ]}
+                            >
+                              {formatTimeToPeak(entry.peak.timeToPeakMs)}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.entryLbl,
+                                { color: colors.mutedForeground },
+                              ]}
+                            >
+                              Time
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    )}
+                  </Pressable>
+                ))
+              )}
+            </CopilotView>
+          </CopilotStep>
         )}
 
         {/* Bake entries for selected day */}

@@ -34,6 +34,9 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+const CopilotView = walkthroughable(View);
 
 interface PeakData {
   pH: string;
@@ -720,12 +723,8 @@ export default function FeedScreen() {
             >
               Feed Ratios
             </Text>
-            <View
-              style={[
-                styles.card,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
+            <CopilotStep text="Enter your starter, flour, and water weights here." order={3} name="feed-ratios-input">
+              <CopilotView style={[ styles.card, { backgroundColor: colors.card, borderColor: colors.border }, ]}>
               <View style={styles.ratioRow}>
                 <View style={styles.ratioItem}>
                   <Text
@@ -864,7 +863,8 @@ export default function FeedScreen() {
                   </Text>
                 </View>
               )}
-            </View>
+              </CopilotView>
+            </CopilotStep>
           </Animated.View>
 
           {(session.initialPH || session.initialVolume) && (
@@ -933,17 +933,15 @@ export default function FeedScreen() {
           )}
 
           {/* pH Readings */}
-          <Animated.View
-            entering={FadeInDown.delay(175).duration(400)}
-            style={{ marginTop: 20 }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 10,
-              }}
+          <Animated.View entering={FadeInDown.delay(175).duration(400)} style={{ marginTop: 20 }}>
+ <CopilotStep text="Log your pH and temperature readings over time to track starter vitality." order={4} name="live-data-log">
+                <CopilotView
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                  }}
             >
               <Text
                 style={[
@@ -976,7 +974,8 @@ export default function FeedScreen() {
                   </Text>
                 </Pressable>
               )}
-            </View>
+              </CopilotView>
+            </CopilotStep>
 
             {session.readings && session.readings.length > 0 ? (
               <View
@@ -1081,16 +1080,14 @@ export default function FeedScreen() {
                 </Text>
               </View>
             )}
-
-
-          </Animated.View>
+        </Animated.View>
 
           {/* Live pH chart — shown once at least one reading has been logged */}
           {(session.readings?.length ?? 0) > 0 && (
-            <Animated.View
-              entering={FadeInDown.delay(150).duration(400)}
-              style={{ marginTop: 20 }}
-            >
+            <Animated.View entering={FadeInDown.delay(150).duration(400)} style={{ marginTop: 20 }}>
+             <CopilotStep text="Elapsed time along the bottom, pH on the left axis, and temperature on the right. A graph of your real-time log." order={5}
+                  name="live-vitality-card">
+                  <CopilotView>
               <PHChart
                 session={session as SessionForChart}
                 history={historyData as SessionForChart[]}
@@ -1105,6 +1102,8 @@ export default function FeedScreen() {
                     tempUnit: r.tempUnit,
                   }))}
               />
+          </CopilotView>
+        </CopilotStep>
             </Animated.View>
           )}
 
@@ -1733,32 +1732,42 @@ export default function FeedScreen() {
           },
         ]}
       >
-        <View
-          style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}
+<View
+  style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}
+>
+  {(["track", "plan"] as const).map((sec) => (
+    <CopilotStep
+      key={sec}
+      text={sec === "track" ? "Start here to monitor a live refresh." : "Click here to estimate when a refresh will peak..."}
+      order={sec === "track" ? 1 : 2}
+      name={sec === "track" ? "track-feed-btn" : "plan-feed-btn"}
+    >
+      <CopilotView
+        style={[
+          styles.sectionBtn,
+          section === sec && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+        ]}
+      >
+        <Pressable
+          onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
+          style={{ width: '100%', alignItems: 'center' }}
         >
-          {(["track", "plan"] as const).map((sec) => (
-            <Pressable
-              key={sec}
-              onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
-              style={[
-                styles.sectionBtn,
-                section === sec && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.sectionBtnText,
-                  {
-                    color: section === sec ? colors.foreground : colors.mutedForeground,
-                    fontFamily: section === sec ? "Inter_600SemiBold" : "Inter_400Regular",
-                  },
-                ]}
-              >
-                {sec === "track" ? "Track a Feed" : "Plan a Feed"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+          <Text
+            style={[
+              styles.sectionBtnText,
+              {
+                color: section === sec ? colors.foreground : colors.mutedForeground,
+                fontFamily: section === sec ? "Inter_600SemiBold" : "Inter_400Regular",
+              },
+            ]}
+          >
+            {sec === "track" ? "Track a Feed" : "Plan a Feed"}
+          </Text>
+        </Pressable>
+      </CopilotView>
+    </CopilotStep>
+  ))}
+</View>
       </View>
 
       {/* Track a Feed Section */}
@@ -1969,33 +1978,18 @@ export default function FeedScreen() {
               </View>
             </Animated.View>
 
-            {/* Initial Readings */}
-            <Animated.View
-              entering={FadeInDown.delay(160).duration(400)}
-              style={{ marginTop: 20 }}
-            >
+            {/* Tour Step 5. Initial Readings */}
+            <Animated.View entering={FadeInDown.delay(160).duration(400)} style={{ marginTop: 20 }}>
+            <CopilotStep text="A log of your temperature, pH, and rise data during the refresh." order={4} name="live-data-log">
+              <CopilotView>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
                 Initial Readings
               </Text>
-              <View
-                style={[
-                  styles.card,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                ]}
-              >
+              <View style={[ styles.card, { backgroundColor: colors.card, borderColor: colors.border }, ]}>
                 <View style={styles.inputRow}>
                   <View style={{ flex: 1, marginRight: 12 }}>
-                    <Text
-                      style={[
-                        styles.fieldLabel,
-                        { color: colors.mutedForeground, textTransform: "none" },
-                      ]}
-                    >
-                      pH
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.input,
+                    <Text style={[ styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }, ]}>pH</Text>
+                    <TextInput style={[ styles.input,
                         {
                           backgroundColor: colors.background,
                           borderColor: colors.border,
@@ -2015,12 +2009,7 @@ export default function FeedScreen() {
                   <View style={{ flex: 1 }}>
                     <Text
                       style={[
-                        styles.fieldLabel,
-                        { color: colors.mutedForeground, textTransform: "none" },
-                      ]}
-                    >
-                      Volume (mL)
-                    </Text>
+                        styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" },]}>Volume (mL)</Text>
                     <TextInput
                       style={[
                         styles.input,
@@ -2042,13 +2031,14 @@ export default function FeedScreen() {
                   </View>
                 </View>
               </View>
-            </Animated.View>
+             </CopilotView>
+            </CopilotStep>
+           </Animated.View>
 
             {/* Feed Photo */}
-            <Animated.View
-              entering={FadeInDown.delay(220).duration(400)}
-              style={{ marginTop: 20 }}
-            >
+            <Animated.View entering={FadeInDown.delay(220).duration(400)} style={{ marginTop: 20 }}>
+            <CopilotStep text="Capture or upload an image of your starter right after feeding it (helpful to see starting volume)." order={6} name="new-refresh-image">
+              <CopilotView style={{ marginTop: 20 }}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
                 Just Fed Photo
               </Text>
@@ -2056,7 +2046,7 @@ export default function FeedScreen() {
                 onPress={() =>
                   pickPhoto((uri) => {
                     setFedPhoto(uri);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light
                   })
                 }
                 style={({ pressed }) => [
@@ -2107,6 +2097,8 @@ export default function FeedScreen() {
                   </View>
                 )}
               </Pressable>
+              </CopilotView>
+            </CopilotStep>
             </Animated.View>
 
             {/* Save Button */}
@@ -2114,32 +2106,36 @@ export default function FeedScreen() {
               entering={FadeInDown.delay(280).duration(400)}
               style={{ marginTop: 28 }}
             >
-              <Pressable
-                onPress={saveSession}
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  {
-                    backgroundColor: colors.primary,
-                    borderRadius: colors.radius,
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
-                testID="save-session-btn"
-              >
-                <Ionicons
-                  name="timer-outline"
-                  size={20}
-                  color={colors.primaryForeground}
-                />
-                <Text
-                  style={[
-                    styles.primaryButtonText,
-                    { color: colors.primaryForeground },
-                  ]}
-                >
-                  Start Feed Timer
-                </Text>
-              </Pressable>
+<CopilotStep text="Tap this to begin the refresh timer." order={7} name="start-refresh-btn">
+  <CopilotView style={{ marginTop: 28 }}>
+    <Pressable
+      onPress={saveSession}
+      style={({ pressed }) => [
+        styles.primaryButton,
+        {
+          backgroundColor: colors.primary,
+          borderRadius: colors.radius,
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}
+      testID="save-session-btn"
+    >
+      <Ionicons
+        name="timer-outline"
+        size={20}
+        color={colors.primaryForeground}
+      />
+      <Text
+        style={[
+          styles.primaryButtonText,
+          { color: colors.primaryForeground },
+        ]}
+      >
+        Start Feed Timer
+      </Text>
+    </Pressable>
+  </CopilotView>
+</CopilotStep>
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
