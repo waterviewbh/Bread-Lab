@@ -1,3 +1,4 @@
+{/* last version before carving up into active and setup */ }
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
