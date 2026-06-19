@@ -687,27 +687,43 @@ export default function FeedScreen() {
           }}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View entering={FadeInDown.duration(500)}>
-            <Text
-              style={[
-                styles.sectionLabel,
-                { color: colors.mutedForeground, marginBottom: 4 },
-              ]}
-            >
-              {session.peak ? "Peaked at" : "Time Since Feed"}
-            </Text>
-            <Text style={[styles.timerText, { color: colors.foreground }]}>
-              {session.peak
-                ? formatTimeToPeak(session.peak.timeToPeakMs)
-                : formatDuration(elapsed)}
-            </Text>
-            {!session.peak && (
-              <Text
-                style={[styles.timerSub, { color: colors.mutedForeground }]}
-              >
-                watching it rise
+        <CopilotStep
+            name="app-name"
+            order={1}
+            text="Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by logging your starter's feeds."
+          >
+            <CopilotView style={styles.appHeader}>
+              <Text style={[styles.appTitle, { color: colors.foreground }]}>
+                Bread Lab
               </Text>
-            )}
+              <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>
+                {session.peak ? "log a feed" : "watching it rise"}
+              </Text>
+            </CopilotView>
+          </CopilotStep>
+          <Animated.View entering={FadeInDown.duration(500)}>
+            <CopilotStep
+              name="active-timer"
+              order={4}
+              text="This timer tracks exactly how long your starter has been fermenting."
+            >
+              <CopilotView>
+                <Text
+                  style={[
+                    styles.sectionLabel,
+                    { color: colors.mutedForeground, marginBottom: 4 },
+                  ]}
+                >
+                  {session.peak ? "Peaked at" : "Time Since Feed"}
+                </Text>
+                <Text style={[styles.timerText, { color: colors.foreground }]}>
+                  {session.peak
+                    ? formatTimeToPeak(session.peak.timeToPeakMs)
+                    : formatDuration(elapsed)}
+                </Text>
+                {/* Removed the 'watching it rise' text from here to avoid redundancy */}
+              </CopilotView>
+            </CopilotStep>
           </Animated.View>
 
           <View
@@ -723,7 +739,7 @@ export default function FeedScreen() {
             >
               Feed Ratios
             </Text>
-            <CopilotStep text="Enter your starter, flour, and water weights here." order={3} name="feed-ratios-input">
+            <CopilotStep text="Enter your starter, flour, and water weights here." order={5} name="feed-ratios-input">
               <CopilotView style={[ styles.card, { backgroundColor: colors.card, borderColor: colors.border }, ]}>
               <View style={styles.ratioRow}>
                 <View style={styles.ratioItem}>
@@ -934,7 +950,7 @@ export default function FeedScreen() {
 
           {/* pH Readings */}
           <Animated.View entering={FadeInDown.delay(175).duration(400)} style={{ marginTop: 20 }}>
- <CopilotStep text="Log your pH and temperature readings over time to track starter vitality." order={4} name="live-data-log">
+ <CopilotStep text="Log your pH and temperature readings over time to track starter vitality." order={6} name="live-data-log">
                 <CopilotView
                   style={{
                     flexDirection: "row",
@@ -1082,11 +1098,11 @@ export default function FeedScreen() {
             )}
         </Animated.View>
 
-          {/* Live pH chart — shown once at least one reading has been logged */}
+          {/* Live pH chart — shown once at least one reading has been logged. This will be changed to pull in the initial reading in a future update */}
           {(session.readings?.length ?? 0) > 0 && (
             <Animated.View entering={FadeInDown.delay(150).duration(400)} style={{ marginTop: 20 }}>
-             <CopilotStep text="Elapsed time along the bottom, pH on the left axis, and temperature on the right. A graph of your real-time log." order={5}
-                  name="live-vitality-card">
+             <CopilotStep text="Elapsed time along the bottom, pH on the left axis, and temperature on the right. A graph of your real-time log." order={9}
+                  name="feed-trends">
                   <CopilotView>
               <PHChart
                 session={session as SessionForChart}
@@ -1246,9 +1262,11 @@ export default function FeedScreen() {
 
           <View style={{ height: 32 }} />
 
-          {!session.peak && (
+{!session.peak && (
             <Animated.View entering={FadeInUp.delay(300).duration(400)}>
-              <Pressable
+              <CopilotStep text="Once your starter reaches its peak, mark the refresh complete to save the data. See your feed results in the next tab and in the Calendar." order={10} name="mark-as-peak">
+			  <CopilotView>
+			  <Pressable
                 onPress={() => setShowPeakModal(true)}
                 style={({ pressed }) => [
                   styles.primaryButton,
@@ -1274,6 +1292,8 @@ export default function FeedScreen() {
                   Mark as Peak
                 </Text>
               </Pressable>
+			  </CopilotView>
+			  </CopilotStep>
             </Animated.View>
           )}
 
@@ -1739,7 +1759,7 @@ export default function FeedScreen() {
     <CopilotStep
       key={sec}
       text={sec === "track" ? "Start here to monitor a live refresh." : "Click here to estimate when a refresh will peak..."}
-      order={sec === "track" ? 1 : 2}
+      order={sec === "track" ? 2 : 3}
       name={sec === "track" ? "track-feed-btn" : "plan-feed-btn"}
     >
       <CopilotView
@@ -1752,15 +1772,10 @@ export default function FeedScreen() {
           onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
           style={{ width: '100%', alignItems: 'center' }}
         >
-          <Text
-            style={[
-              styles.sectionBtnText,
-              {
-                color: section === sec ? colors.foreground : colors.mutedForeground,
-                fontFamily: section === sec ? "Inter_600SemiBold" : "Inter_400Regular",
-              },
-            ]}
-          >
+          <Text style={[ styles.sectionBtnText,
+              { color: section === sec ? colors.foreground : colors.mutedForeground,
+                fontFamily: section === sec ? "Inter_600SemiBold" : "Inter_400Regular", },
+            ]}>
             {sec === "track" ? "Track a Feed" : "Plan a Feed"}
           </Text>
         </Pressable>
@@ -1785,18 +1800,21 @@ export default function FeedScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Animated.View
-              entering={FadeIn.duration(400)}
-              style={styles.appHeader}
-            >
+            <Animated.View entering={FadeIn.duration(400)} style={styles.appHeader}>
+            <CopilotStep name="app-name" order={1}
+                text="Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by logging your starter's feeds."
+              >
+              <CopilotView>
               <Text style={[styles.appTitle, { color: colors.foreground }]}>
                 Bread Lab
               </Text>
               <Text
                 style={[styles.appSubtitle, { color: colors.mutedForeground }]}
               >
-                log your starter
+                log a feed
               </Text>
+              </CopilotView>
+              </CopilotStep>
             </Animated.View>
 
             {/* Feed Amounts */}
@@ -1804,7 +1822,8 @@ export default function FeedScreen() {
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
                 Feed Amounts
               </Text>
-              <View
+               <CopilotStep text="Enter your starter, flour, and water weights here." order={5} name="feed-ratios-input">
+                <CopilotView
                 style={[
                   styles.card,
                   { backgroundColor: colors.card, borderColor: colors.border },
@@ -1953,7 +1972,8 @@ export default function FeedScreen() {
                     Enter all three weights to see ratio
                   </Text>
                 )}
-              </View>
+              </CopilotView>
+              </CopilotStep>
             </Animated.View>
 
             {/* Flour Type Slider */}
@@ -1978,9 +1998,8 @@ export default function FeedScreen() {
               </View>
             </Animated.View>
 
-            {/* Tour Step 5. Initial Readings */}
             <Animated.View entering={FadeInDown.delay(160).duration(400)} style={{ marginTop: 20 }}>
-            <CopilotStep text="A log of your temperature, pH, and rise data during the refresh." order={4} name="live-data-log">
+            <CopilotStep text="A log of your temperature, pH, and rise data during the refresh." order={6} name="live-data-log">
               <CopilotView>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
                 Initial Readings
@@ -2037,7 +2056,7 @@ export default function FeedScreen() {
 
             {/* Feed Photo */}
             <Animated.View entering={FadeInDown.delay(220).duration(400)} style={{ marginTop: 20 }}>
-            <CopilotStep text="Capture or upload an image of your starter right after feeding it (helpful to see starting volume)." order={6} name="new-refresh-image">
+            <CopilotStep text="Capture or upload an image of your starter right after feeding it (helpful to see starting volume)." order={7} name="just-fed-photo">
               <CopilotView style={{ marginTop: 20 }}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
                 Just Fed Photo
@@ -2106,7 +2125,7 @@ export default function FeedScreen() {
               entering={FadeInDown.delay(280).duration(400)}
               style={{ marginTop: 28 }}
             >
-<CopilotStep text="Tap this to begin the refresh timer." order={7} name="start-refresh-btn">
+<CopilotStep text="Tap this to begin the refresh timer." order={8} name="start-feed-btn">
   <CopilotView style={{ marginTop: 28 }}>
     <Pressable
       onPress={saveSession}
@@ -2159,7 +2178,7 @@ export default function FeedScreen() {
               Plan a Feed
             </Text>
             <Text style={[styles.appSubtitle, { color: colors.mutedForeground, textAlign: "center", marginBottom: 32 }]}>
-              Coming soon
+              Whether you want to know how long a prescribed feed will take to peak, or you want a levain to peak at a certain time, this calculator can help.{"\n"}Coming soon
             </Text>
           </Animated.View>
         </ScrollView>
@@ -2437,4 +2456,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   unitBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+
 });
