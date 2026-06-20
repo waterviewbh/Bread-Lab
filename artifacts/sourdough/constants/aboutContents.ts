@@ -142,15 +142,29 @@ export const HELP: HelpTab[] = [
 ];
 
 export const CHANGELOG: ChangelogVersion[] = [
-{
-      version: "v1.0.11",
+/*{
+      version: "v1.0.XX",
       changes: [
         { type: "Added", content: "A tour of the app is now available from the About tab. Click the Take a tour button to see a complete tour, or revisit just an updated section of the app." },
       ],
     },
-{
+*/{
+      version: "v1.0.11",
+      changes: [
+        { type: "Added", content: "Global preferences (e.g., °F or °C) section in the About tab." },
+        { type: "Changed", content: "Some significant code 'refactoring' to make future development easier." },
+        { type: "Added", content: "The Initial Readings section of the Feed tab now asks for a starting temperature and this initial data is immediately shown in the Live Vitality Curve." },
+        { type: "Changed", content: "Sections in the About tab are now collapsible to keep the page manageable to read." },
+        { type: "Added", content: "A floating Save button in the Recipe Builder. No more need to scroll back up to the top of a new recipe to save (though that still exists for now)." },
+        { type: "Added", content: "Fold markers are now available in the Stretching and Folding phase of a bake. No need to use the timer to know how many folds you have completed, just tap the circle." },
+        { type: "Changed", content: "Cleaned up the Recipe print feature to look a bit nicer (e.g., nicer font)." },
+        { type: "Changed", content: "Cleaned up the Live Feed data to make analysis easier." },
+      ],
+    },
+    {
       version: "v1.0.10",
       changes: [
+        { type: "Added", content: "Plan a Feed placeholder toggle at the top of the Feed tab." },
         { type: "Added", content: "Enabled React Native 'New Architecture' (Fabric) — significantly boosting UI responsiveness and gesture performance across the app." },
         { type: "Changed", content: "Switched to Row-Level Security (RLS) with passwordless anonymous sign-ins, cryptographically locking your data to your identity." },
         { type: "Added", content: "Yield Pill persistence — batch sizes now sync from the Recipe Builder and are preserved in the cloud and Bake History." },

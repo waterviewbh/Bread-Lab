@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { useFontSize } from "@/contexts/FontSizeContext";
+import { usePreferences } from "@/contexts/PreferencesContext";
 import { useTour } from "@/contexts/TourContext";
 import { CopilotStep, walkthroughable } from "react-native-copilot";
 
@@ -119,76 +120,146 @@ function HelpAccordion({ tab, colors }: { tab: HelpTab; colors: ReturnType<typeo
 
 // ── Interpretation Card Component ─────────────────────────────────────────────
 
+// Inside artifacts/sourdough/app/(tabs)/about.tsx
+
 function InterpretationCard({ data, colors }: { data: any; colors: ReturnType<typeof useColors> }) {
+  const [open, setOpen] = useState(false); // Add toggle state
+
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 16 }]}>
-      {/* Title Header */}
-      <View style={[styles.interpretEntry, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.interpretHeading, { color: colors.foreground }]}>
+      {/* Clickable Header for Interpretation Cards */}
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        style={({ pressed }) => [
+          styles.accordionHeader,
+          { borderBottomWidth: open ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border },
+          pressed && { opacity: 0.7 }
+        ]}
+      >
+        <Text style={[styles.accordionTitle, { color: colors.foreground }]}>
           {data.title}
         </Text>
-      </View>
+        <Feather
+          name={open ? "chevron-up" : "chevron-down"}
+          size={16}
+          color={colors.mutedForeground}
+        />
+      </Pressable>
 
-      {/* Intro Text */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
-        <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-          {data.body}
+      {/* Collapsible Content */}
+      {open && (
+        <>
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
+            <Text style={[styles.interpretBody, { color: colors.foreground }]}>
+              {data.body}
+            </Text>
+          </View>
+
+          {data.sections.map((sec: any, i: number) => (
+            <View key={i} style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+              <Text style={[styles.interpretBody, { color: colors.foreground }, styles.interpretSectionHeader]}>
+                {sec.heading}
+              </Text>
+
+              <Text style={[styles.interpretBody, { color: colors.foreground }]}>
+                <Text style={styles.interpretLabel}>{"Visual: "}</Text>
+                {sec.visual}
+              </Text>
+
+              {sec.diagnosticStandard && (
+                <Text style={[styles.interpretBody, { color: colors.foreground }]}>
+                  <Text style={styles.interpretLabel}>{"Diagnostic [Standard]: "}</Text>
+                  {sec.diagnosticStandard}
+                </Text>
+              )}
+
+              {sec.diagnosticSweet && (
+                <Text style={[styles.interpretBody, { color: colors.foreground }]}>
+                  <Text style={styles.interpretLabel}>{"[Sweet]: "}</Text>
+                  {sec.italicLabel ? (
+                    <>
+                      {"With a low hydration, this is perfect for a "}
+                      <Text style={{ fontStyle: "italic" }}>{sec.italicLabel}</Text>
+                      {" style dough."}
+                    </>
+                  ) : sec.diagnosticSweet}
+                </Text>
+              )}
+
+              {sec.diagnostic && (
+                <Text style={[styles.interpretBody, { color: colors.foreground }]}>
+                  <Text style={styles.interpretLabel}>{"Diagnostic: "}</Text>
+                  {sec.diagnostic}
+                </Text>
+              )}
+
+              <Text style={[styles.interpretBody, { color: colors.foreground }]}>
+                <Text style={styles.interpretLabel}>{"Baker's Insight: "}</Text>
+                {sec.insight}
+              </Text>
+
+              {sec.status && (
+                <Text style={[styles.interpretBody, { color: colors.foreground }]}>
+                  <Text style={styles.interpretLabel}>{"Status: "}</Text>
+                  {sec.status}
+                </Text>
+              )}
+            </View>
+          ))}
+        </>
+      )}
+    </View>
+  );
+}
+
+// ── Changelog Accordion Component ─────────────────────────────────────────────
+
+function ChangelogAccordion({ entries, colors }: { entries: ChangelogVersion[]; colors: ReturnType<typeof useColors> }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        style={({ pressed }) => [
+          styles.accordionHeader,
+          { borderBottomWidth: open ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border },
+          pressed && { opacity: 0.7 }
+        ]}
+      >
+        <Text style={[styles.accordionTitle, { color: colors.foreground }]}>
+          {open ? "Recent Updates" : "View Version History"}
         </Text>
-      </View>
+        <Feather
+          name={open ? "chevron-up" : "chevron-down"}
+          size={16}
+          color={colors.mutedForeground}
+        />
+      </Pressable>
 
-      {/* Diagnostic Sections */}
-      {data.sections.map((sec: any, i: number) => (
-        <View key={i} style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-          <Text style={[styles.interpretBody, { color: colors.foreground }, styles.interpretSectionHeader]}>
-            {sec.heading}
+      {open && entries.map((entry, index) => (
+        <View
+          key={entry.version}
+          style={[
+            styles.changelogEntry,
+            index === entries.length - 1 ? { borderBottomWidth: 0 } : { borderBottomColor: colors.border }
+          ]}
+        >
+          <Text style={[styles.changelogVersion, { color: colors.foreground }]}>
+            {entry.version}
           </Text>
-
-          <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-            <Text style={styles.interpretLabel}>{"Visual: "}</Text>
-            {sec.visual}
-          </Text>
-
-          {/* Standard Diagnostic */}
-          {sec.diagnosticStandard && (
-            <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-              <Text style={styles.interpretLabel}>{"Diagnostic [Standard]: "}</Text>
-              {sec.diagnosticStandard}
+          {entry.changes.map((change, ci) => (
+            <Text
+              key={ci}
+              style={[
+                styles.changelogBullet,
+                { color: colors.foreground, marginTop: ci > 0 ? 6 : 4 }
+              ]}
+            >
+              <Text style={styles.changelogLabel}>{change.type}: </Text>
+              {change.content}
             </Text>
-          )}
-
-          {/* Sweet Diagnostic (Handles the italic 'pasta madre' case) */}
-          {sec.diagnosticSweet && (
-            <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-              <Text style={styles.interpretLabel}>{"[Sweet]: "}</Text>
-              {sec.italicLabel ? (
-                <>
-                  {"With a low hydration, this is perfect for a "}
-                  <Text style={{ fontStyle: "italic" }}>{sec.italicLabel}</Text>
-                  {" style dough."}
-                </>
-              ) : sec.diagnosticSweet}
-            </Text>
-          )}
-
-          {/* Simple Diagnostic (for Lifting Index) */}
-          {sec.diagnostic && (
-            <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-              <Text style={styles.interpretLabel}>{"Diagnostic: "}</Text>
-              {sec.diagnostic}
-            </Text>
-          )}
-
-          <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-            <Text style={styles.interpretLabel}>{"Baker's Insight: "}</Text>
-            {sec.insight}
-          </Text>
-
-          {sec.status && (
-            <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-              <Text style={styles.interpretLabel}>{"Status: "}</Text>
-              {sec.status}
-            </Text>
-          )}
+          ))}
         </View>
       ))}
     </View>
@@ -199,6 +270,7 @@ export default function AboutScreen() {
   const colors = useColors();
   const { fullFontSize, setFullFontSize } = useFontSize();
   const { startChapter } = useTour();
+  const { tempUnit, setTempUnit, weightUnit, setWeightUnit, timeFormat, setTimeFormat } = usePreferences();
 
   const handleEmail = () => {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}`);
@@ -254,6 +326,23 @@ export default function AboutScreen() {
             />
           </CopilotView>
         </CopilotStep>
+        <View style={[styles.settingRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+          <View style={styles.settingText}>
+            <Text style={[styles.settingTitle, { color: colors.foreground }]}>Temperature Unit</Text>
+            <Text style={[styles.settingDescription, { color: colors.mutedForeground }]}>Default unit for lab readings.</Text>
+          </View>
+          <View style={[styles.unitToggle, { backgroundColor: colors.muted, borderRadius: 8 }]}>
+            {(["F", "C"] as const).map((u) => (
+              <Pressable
+                key={u}
+                onPress={() => setTempUnit(u)}
+                style={[styles.unitBtn, tempUnit === u && { backgroundColor: colors.card, borderRadius: 6, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 }]}
+              >
+                <Text style={[styles.unitBtnText, { color: tempUnit === u ? colors.foreground : colors.mutedForeground }]}>°{u}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       </View>
 
       {/* ── Contact ── */}
@@ -292,15 +381,16 @@ export default function AboutScreen() {
           </Text>
           <Pressable
             onPress={() => startChapter('feed')}
+            disabled={true}  // disables the new user tour
             style={({ pressed }) => ({
-              backgroundColor: colors.primary + "15",
+              backgroundColor: colors.background,  // when disabled=false colors.primary here and the Text style for Take the Tour
               paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 12,
               opacity: pressed ? 0.7 : 1
             })}
           >
-            <Text style={{ color: colors.primary, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>
+            <Text style={{ color: colors.background, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>
               Take the Tour
             </Text>
           </Pressable>
@@ -347,35 +437,7 @@ export default function AboutScreen() {
         {"Changelog"}
       </Text>
 
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {/* Render the changelog from the data array above */}
-        {CHANGELOG.map((entry, index) => (
-          <View
-            key={entry.version}
-            style={[
-              styles.changelogEntry,
-              // Hide the border on the very last item in the list
-              index === CHANGELOG.length - 1 ? { borderBottomWidth: 0 } : { borderBottomColor: colors.border }
-            ]}
-          >
-            <Text style={[styles.changelogVersion, { color: colors.foreground }]}>
-              {entry.version}
-            </Text>
-            {entry.changes.map((change, ci) => (
-              <Text
-                key={ci}
-                style={[
-                  styles.changelogBullet,
-                  { color: colors.foreground, marginTop: ci > 0 ? 6 : 4 }
-                ]}
-              >
-                <Text style={styles.changelogLabel}>{change.type}: </Text>
-                {change.content}
-              </Text>
-            ))}
-          </View>
-        ))}
-      </View>
+      <ChangelogAccordion entries={CHANGELOG} colors={colors} />
 
       {/* ── Version ── */}
       <Text style={[styles.versionLabel, { color: colors.mutedForeground }]}>
@@ -577,5 +639,21 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     fontStyle: "italic",
     marginTop: 4,
+  },
+
+  unitToggle: {
+    flexDirection: "row",
+    padding: 3,
+    width: 90,
+    height: 34,
+  },
+  unitBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unitBtnText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
   },
 });

@@ -100,7 +100,7 @@ function ClassicTabLayout() {
                 tabBarIcon: ({ color }) => (
                   <CopilotStep
                     text="When finished, check your growth trends in the Analytics tab."
-                    order={8}
+                    order={10}
                     name="next-chapter-is-graph"
                   >
                     <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>

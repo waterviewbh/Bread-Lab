@@ -16,6 +16,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FontSizeProvider } from "@/contexts/FontSizeContext";
+import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { MigrationToastProvider } from "@/contexts/MigrationToastContext";
 
@@ -39,25 +40,27 @@ export default function RootLayout() {
 
   if (!fontsLoaded && !fontError) return null;
 
-  return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        <FontSizeProvider>
-          <QueryClientProvider client={queryClient}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <SyncProvider>
-                  <MigrationToastProvider>
-                    <Stack screenOptions={{ headerShown: false }}>
-                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    </Stack>
-                  </MigrationToastProvider>
-                </SyncProvider>
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </QueryClientProvider>
-        </FontSizeProvider>
-      </ErrorBoundary>
-    </SafeAreaProvider>
-  );
+return (
+     <SafeAreaProvider>
+       <PreferencesProvider>
+         <ErrorBoundary>
+           <FontSizeProvider>
+             <QueryClientProvider client={queryClient}>
+               <GestureHandlerRootView style={{ flex: 1 }}>
+                 <KeyboardProvider>
+                   <SyncProvider>
+                     <MigrationToastProvider>
+                       <Stack screenOptions={{ headerShown: false }}>
+                         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                       </Stack>
+                     </MigrationToastProvider>
+                   </SyncProvider>
+                 </KeyboardProvider>
+               </GestureHandlerRootView>
+             </QueryClientProvider>
+           </FontSizeProvider>
+         </ErrorBoundary>
+       </PreferencesProvider>
+     </SafeAreaProvider>
+   );
 }

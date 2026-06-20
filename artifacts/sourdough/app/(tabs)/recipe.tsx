@@ -109,6 +109,7 @@ interface BakePhase extends RecipePhaseConfig {
   completedAt: number | null;
   readings: Reading[];
   startVolume?: string;
+  foldCount?: number;
 }
 
 interface ActiveBake {
@@ -476,6 +477,21 @@ export default function RecipeScreen() {
   const [showNudge, setShowNudge] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  const toggleFold = async (phaseKey: string, index: number) => {
+    if (!bake) return;
+    const phases = bake.phases.map(p => {
+      if (p.key === phaseKey) {
+        // If tapping the current count, decrement; if tapping higher, set to that
+        const current = p.foldCount || 0;
+        const newCount = index + 1 === current ? index : index + 1;
+        return { ...p, foldCount: newCount };
+      }
+      return p;
+    });
+    Haptics.selectionAsync();
+    await persistBake({ ...bake, phases });
+  }
+
   useEffect(() => {
     loadAll();
     getStoredUser().then(setCurrentUser).catch(() => {});
@@ -594,53 +610,186 @@ export default function RecipeScreen() {
   const refresh = async () => { setRefreshing(true); await loadAll(); setRefreshing(false); };
 
   // ── Builder Handlers ──
-  const openNewRecipe = () => { setEditingRecipe({ id: Date.now().toString(), name: "", createdAt: Date.now(), phases: [] }); setIsNewRecipe(true); };
+  const openNewRecipe = () => {
+    setEditingRecipe({
+      id: Date.now().toString(),
+      name: "",
+      createdAt: Date.now(),
+      phases: [],
+    });
+    setIsNewRecipe(true);
+  };
+
   const openEditRecipe = (r: SavedRecipe) => {
     const defOrder = new Map(PHASE_DEFINITIONS.map((d, i) => [d.key, i]));
-    const sorted = [...r.phases].sort((a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999));
-    setEditingRecipe({ ...r, phases: sorted }); setIsNewRecipe(false);
+    const sorted = [...r.phases].sort(
+      (a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999)
+    );
+    setEditingRecipe({ ...r, phases: sorted });
+    setIsNewRecipe(false);
   };
-  const cancelEdit = () => { setEditingRecipe(null); setIsNewRecipe(false); };
-  const updateEditName = (name: string) => setEditingRecipe(prev => prev ? { ...prev, name } : null);
-  const togglePickerPhase = (key: string) => { setPickerSelections(prev => ({ ...prev, [key]: !prev[key] })); Haptics.selectionAsync(); };
+
+  const cancelEdit = () => {
+    setEditingRecipe(null);
+    setIsNewRecipe(false);
+  };
+
+  const updateEditName = (name: string) =>
+    setEditingRecipe(prev => (prev ? { ...prev, name } : null));
+
+  const togglePickerPhase = (key: string) => {
+    setPickerSelections(prev => ({ ...prev, [key]: !prev[key] }));
+    Haptics.selectionAsync();
+  };
+
   const confirmPhaseSelections = () => {
-    const keysToAdd = PHASE_DEFINITIONS.filter(def => pickerSelections[def.key]).map(def => def.key);
-    if (!keysToAdd.length) { setShowPhasePicker(false); return; }
+    const keysToAdd = PHASE_DEFINITIONS
+      .filter(def => pickerSelections[def.key])
+      .map(def => def.key);
+
+    if (!keysToAdd.length) {
+      setShowPhasePicker(false);
+      return;
+    }
+
     const defOrder = new Map(PHASE_DEFINITIONS.map((d, i) => [d.key, i]));
+
     setEditingRecipe(prev => {
       if (!prev) return null;
+
       const existingKeys = new Set(prev.phases.map(p => p.key));
-      const newPhases = keysToAdd.filter(k => !existingKeys.has(k)).map(k => ({ key: k, name: PHASE_DEFINITIONS.find(x => x.key === k)!.name, ingredients: "", instructions: "" }));
-      const sorted = [...prev.phases, ...newPhases].sort((a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999));
+      const newPhases = keysToAdd
+        .filter(k => !existingKeys.has(k))
+        .map(k => ({
+          key: k,
+          name: PHASE_DEFINITIONS.find(x => x.key === k)!.name,
+          ingredients: "",
+          instructions: "",
+        }));
+
+      const sorted = [...prev.phases, ...newPhases].sort(
+        (a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999)
+      );
+
       return { ...prev, phases: sorted };
     });
-    setPickerSelections({}); setShowPhasePicker(false);
+
+    setPickerSelections({});
+    setShowPhasePicker(false);
   };
-  const removePhaseFromEdit = (key: string) => setEditingRecipe(prev => prev ? { ...prev, phases: prev.phases.filter(p => p.key !== key) } : null);
-  const updatePhaseField = (key: string, field: "ingredients" | "instructions", val: string) => setEditingRecipe(prev => prev ? { ...prev, phases: prev.phases.map(p => p.key === key ? { ...p, [field]: val } : p) } : null);
+
+  const removePhaseFromEdit = (key: string) =>
+    setEditingRecipe(prev =>
+      prev ? { ...prev, phases: prev.phases.filter(p => p.key !== key) } : null
+    );
+
+  const updatePhaseField = (
+    key: string,
+    field: "ingredients" | "instructions",
+    val: string
+  ) =>
+    setEditingRecipe(prev =>
+      prev
+        ? {
+            ...prev,
+            phases: prev.phases.map(p => (p.key === key ? { ...p, [field]: val } : p)),
+          }
+        : null
+    );
+
   const saveRecipe = async () => {
     if (!editingRecipe) return;
-    if (!editingRecipe.name.trim()) { Alert.alert("Name required"); return; }
-    const saved = { ...editingRecipe, name: editingRecipe.name.trim(), updatedAt: isNewRecipe ? undefined : Date.now() };
-    const updated = isNewRecipe ? [saved, ...recipes] : recipes.map(r => r.id === saved.id ? saved : r);
-    await persistRecipes(updated); setEditingRecipe(null);
+
+    if (!editingRecipe.name.trim()) {
+      Alert.alert("Name required");
+      return;
+    }
+
+    const saved = {
+      ...editingRecipe,
+      name: editingRecipe.name.trim(),
+      updatedAt: isNewRecipe ? undefined : Date.now(),
+    };
+
+    const updated = isNewRecipe
+      ? [saved, ...recipes]
+      : recipes.map(r => (r.id === saved.id ? saved : r));
+
+    await persistRecipes(updated);
+    setEditingRecipe(null);
     reportSyncStart();
+
     Promise.all([getDeviceId(), getStoredToken().catch(() => null)])
-      .then(([deviceId, userId]) => api.recipes.upsert({ id: saved.id, deviceId, userId: userId ?? undefined, name: saved.name, yield_value: parseInt(saved.yieldValue || "0", 10), phases: saved.phases }))
-      .then(() => reportSyncSuccess()).catch(() => reportSyncFailure());
+      .then(([deviceId, userId]) =>
+        api.recipes.upsert({
+          id: saved.id,
+          deviceId,
+          userId: userId ?? undefined,
+          name: saved.name,
+          yield_value: parseInt(saved.yieldValue || "0", 10),
+          phases: saved.phases,
+        })
+      )
+      .then(() => reportSyncSuccess())
+      .catch(() => reportSyncFailure());
   };
+
   const deleteRecipe = (id: string) => {
     const doDelete = async () => {
-      const updated = recipes.filter(r => r.id !== id); await persistRecipes(updated); await addToRecipeTombstone(id); setEditingRecipe(null);
-      const [did, t] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
-      api.recipes.delete(id, did, t ?? undefined).then(d => { if (d) removeFromRecipeTombstone(id); });
+      const updated = recipes.filter(r => r.id !== id);
+      await persistRecipes(updated);
+      await addToRecipeTombstone(id);
+      setEditingRecipe(null);
+
+      const [did, t] = await Promise.all([
+        getDeviceId(),
+        getStoredToken().catch(() => null),
+      ]);
+
+      api.recipes
+        .delete(id, did, t ?? undefined)
+        .then(d => {
+          if (d) removeFromRecipeTombstone(id);
+        });
     };
-    if (Platform.OS === "web") doDelete();
-    else Alert.alert("Delete Recipe?", "Cannot be undone.", [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: doDelete }]);
+
+    if (Platform.OS === "web") {
+      doDelete();
+    } else {
+      Alert.alert("Delete Recipe?", "Cannot be undone.", [
+        { text: "Cancel" },
+        { text: "Delete", style: "destructive", onPress: doDelete },
+      ]);
+    }
   };
 
   const printRecipe = async (r: SavedRecipe) => {
-    const html = `<html><body><h1>${r.name}</h1></body></html>`; // Simplified for restoration
+    const html = `
+      <html>
+        <head>
+          <style>
+            body { font-family: 'Helvetica', sans-serif; padding: 40px; color: #333; }
+            h1 { color: #C4704F; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+            .yield { font-style: italic; color: #666; margin-bottom: 20px; }
+            .phase { margin-bottom: 30px; }
+            .phase-name { font-weight: bold; font-size: 1.2em; text-transform: uppercase; color: #444; }
+            .ingredients { background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 10px 0; }
+            .instructions { line-height: 1.6; }
+          </style>
+        </head>
+        <body>
+          <h1>${r.name}</h1>
+          ${r.yieldValue ? `<p class="yield">Yields: ${r.yieldValue}</p>` : ''}
+          ${r.phases.map(p => `
+            <div class="phase">
+              <div class="phase-name">${p.name}</div>
+              ${p.ingredients ? `<div class="ingredients"><strong>Ingredients:</strong><br/>${p.ingredients.replace(/\n/g, '<br/>')}</div>` : ''}
+              <div class="instructions">${p.instructions.replace(/\n/g, '<br/>')}</div>
+            </div>
+          `).join('')}
+        </body>
+      </html>
+    `;
     await Print.printAsync({ html });
   };
   const shareAsPdf = async (r: SavedRecipe) => {
@@ -712,35 +861,173 @@ export default function RecipeScreen() {
       </View>
 
       {section === "builder" && !editingRecipe && (
-        <ScrollView contentContainerStyle={{ paddingTop: 24, paddingBottom: insets.bottom + tabBarPad + 40, paddingHorizontal: 20 }}>
-          <View style={s.listHeader}><Text style={[s.sectionTitle, { color: colors.foreground }]}>Recipes</Text><CopilotStep text="New" order={2} name="recipe-builder-button"><CopilotView><Pressable onPress={openNewRecipe} style={s.addBtn}><Text style={{ color: colors.primaryForeground }}>New Recipe</Text></Pressable></CopilotView></CopilotStep></View>
-          {recipes.length === 0 ? <View style={s.emptyCard}><Text>No recipes yet</Text></View> : displayedRecipes.map(r => (
-            <Pressable key={r.id} onPress={() => openEditRecipe(r)} style={[s.recipeCard, { borderColor: colors.border, backgroundColor: colors.card, marginBottom: 8 }]}><Text style={{ color: colors.foreground, fontWeight: "600" }}>{r.name}</Text></Pressable>
-          ))}
+        <ScrollView
+          contentContainerStyle={{
+            paddingTop: 24,
+            paddingBottom: insets.bottom + tabBarPad + 40,
+            paddingHorizontal: 20
+          }}
+        >
+          {/* Header Section */}
+          <View style={s.listHeader}>
+            <Text style={[s.sectionTitle, { color: colors.foreground }]}>Recipes</Text>
+
+            <CopilotStep text="New" order={2} name="recipe-builder-button">
+              <CopilotView>
+                <Pressable onPress={openNewRecipe} style={[s.addBtn, { backgroundColor: colors.primary }]}>
+                  <Text style={{ color: colors.primaryForeground }}>New Recipe</Text>
+                </Pressable>
+              </CopilotView>
+            </CopilotStep>
+          </View>
+
+          {/* Recipes List / Empty State */}
+          {recipes.length === 0 ? (
+            <View style={s.emptyCard}>
+              <Text>No recipes yet</Text>
+            </View>
+          ) : (
+            recipes.map(r => (
+              <Pressable
+                key={r.id}
+                onPress={() => openEditRecipe(r)}
+                style={[
+                  s.recipeCard,
+                  { borderColor: colors.border, backgroundColor: colors.card, marginBottom: 8 }
+                ]}
+              >
+                <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+                  {r.name}
+                </Text>
+              </Pressable>
+            ))
+          )}
         </ScrollView>
       )}
 
       {section === "builder" && editingRecipe && (
-        <ScrollView contentContainerStyle={{ paddingTop: 24, paddingBottom: insets.bottom + tabBarPad + 60, paddingHorizontal: 20 }}>
-          <View style={s.editHeader}><Pressable onPress={cancelEdit}><Feather name="x" size={20} color={colors.mutedForeground} /></Pressable><Text style={[s.editTitle, { color: colors.foreground }]}>{isNewRecipe ? "New Recipe" : "Edit"}</Text><Pressable onPress={saveRecipe}><Text style={{ color: colors.accent }}>Save</Text></Pressable></View>
-          <TextInput style={[s.nameInput, { borderColor: colors.border, color: colors.foreground }]} value={editingRecipe.name} onChangeText={t => setEditingRecipe({ ...editingRecipe, name: t })} placeholder="Recipe Name" />
-          <YieldPill isBuilder={true} value={editingRecipe.yieldValue || ""} onChangeValue={t => setEditingRecipe({ ...editingRecipe, yieldValue: t })} />
+        <>
+        <ScrollView
+          contentContainerStyle={{
+            paddingTop: 24,
+            paddingBottom: insets.bottom + tabBarPad + 60,
+            paddingHorizontal: 20
+          }}
+          keyboardShouldPersistTaps="handled" // Allows saving while keyboard is up
+          automaticallyAdjustKeyboardInsets={true} // Modern way to handle keyboard pushing
+        >
+          {/* Header */}
+          <View style={s.editHeader}>
+            <Pressable onPress={cancelEdit}>
+              <Feather name="x" size={20} color={colors.mutedForeground} />
+            </Pressable>
+
+            <Text style={[s.editTitle, { color: colors.foreground }]}>
+              {isNewRecipe ? "New Recipe" : "Edit"}
+            </Text>
+
+            <Pressable onPress={saveRecipe}>
+              <Text style={{ color: colors.accent }}>Save</Text>
+            </Pressable>
+          </View>
+
+          {/* Inputs & Custom Components */}
+          <TextInput
+            style={[s.nameInput, { borderColor: colors.border, color: colors.foreground }]}
+            value={editingRecipe.name}
+            onChangeText={t => setEditingRecipe({ ...editingRecipe, name: t })}
+            placeholder="Recipe Name"
+          />
+
+          <YieldPill
+            isBuilder={true}
+            value={editingRecipe.yieldValue || ""}
+            onChangeValue={t => setEditingRecipe({ ...editingRecipe, yieldValue: t })}
+          />
+
+          {/* Phase List Mapping */}
           {editingRecipe.phases.map(p => (
-            <View key={p.key} style={[s.editPhaseCard, { borderColor: colors.border, backgroundColor: colors.card, marginTop: 12 }]}>
-              <View style={s.editPhaseHeader}><Text style={{ color: colors.foreground }}>{p.name}</Text><Pressable onPress={() => removePhaseFromEdit(p.key)}><Feather name="x" size={16} /></Pressable></View>
-              <TextInput multiline style={s.phaseTextarea} value={p.ingredients} onChangeText={t => updatePhaseField(p.key, "ingredients", t)} placeholder="Ingredients" />
-              <TextInput multiline style={s.phaseTextarea} value={p.instructions} onChangeText={t => updatePhaseField(p.key, "instructions", t)} placeholder="Instructions" />
+            <View
+              key={p.key}
+              style={[
+                s.editPhaseCard,
+                { borderColor: colors.border, backgroundColor: colors.card, marginTop: 12 }
+              ]}
+            >
+              <View style={s.editPhaseHeader}>
+                <Text style={{ color: colors.foreground }}>{p.name}</Text>
+                <Pressable onPress={() => removePhaseFromEdit(p.key)}>
+                  <Feather name="x" size={16} />
+                </Pressable>
+              </View>
+
+              <TextInput
+                multiline
+                style={[
+                  s.phaseTextarea,
+                  {
+                    borderColor: colors.border,
+                    color: colors.foreground,
+                    backgroundColor: colors.background // Slight contrast from colors.card
+                  }
+                ]}
+                value={p.ingredients}
+                onChangeText={t => updatePhaseField(p.key, "ingredients", t)}
+                placeholder="Ingredients"
+                placeholderTextColor={colors.mutedForeground}
+                scrollEnabled={true} // Ensures scrolling works once maxHeight is hit
+              />
+
+              <TextInput
+                multiline
+                style={[
+                  s.phaseTextarea,
+                  {
+                    borderColor: colors.border,
+                    color: colors.foreground,
+                    backgroundColor: colors.background
+                  }
+                ]}
+                value={p.instructions}
+                onChangeText={t => updatePhaseField(p.key, "instructions", t)}
+                placeholder="Instructions"
+                placeholderTextColor={colors.mutedForeground}
+                scrollEnabled={true}
+              />
             </View>
           ))}
-          <Pressable onPress={() => setShowPhasePicker(true)} style={s.addPhaseBtn}><Text style={{ color: colors.accent }}>Add Phase</Text></Pressable>
-          {!isNewRecipe && <Pressable onPress={() => deleteRecipe(editingRecipe.id)} style={{ marginTop: 20 }}><Text style={{ color: "red", textAlign: "center" }}>Delete Recipe</Text></Pressable>}
+
+          {/* Actions */}
+          <Pressable onPress={() => setShowPhasePicker(true)} style={s.addPhaseBtn}>
+            <Text style={{ color: colors.accent }}>Add Phase</Text>
+          </Pressable>
+
+          {!isNewRecipe && (
+            <Pressable onPress={() => deleteRecipe(editingRecipe.id)} style={{ marginTop: 20 }}>
+              <Text style={{ color: "red", textAlign: "center" }}>Delete Recipe</Text>
+            </Pressable>
+          )}
         </ScrollView>
+
+        <Pressable
+          onPress={saveRecipe}
+          style={[
+            s.fab,
+            {
+              bottom: insets.bottom + tabBarPad + 16,
+              backgroundColor: colors.primary
+            }
+          ]}
+        >
+          <Feather name="save" size={24} color={colors.primaryForeground} />
+        </Pressable>
+        </>
       )}
 
       {section === "runner" && !bake && !selectedRecipe && (
         <ScrollView contentContainerStyle={{ padding: 20 }}>
           <Text style={[s.sectionTitle, { color: colors.foreground }]}>Recipe Runner</Text>
-          <Pressable onPress={() => setShowRecipePicker(true)} style={s.primaryBtn}><Text style={{ color: colors.primaryForeground }}>Select Recipe</Text></Pressable>
+          <Pressable onPress={() => setShowRecipePicker(true)} style={[s.addBtn, { backgroundColor: colors.primary }]}><Text style={{ color: colors.primaryForeground }}>Select Recipe</Text></Pressable>
         </ScrollView>
       )}
 
@@ -748,28 +1035,126 @@ export default function RecipeScreen() {
         <ScrollView contentContainerStyle={{ padding: 20 }}>
           <Text style={[s.sectionTitle, { color: colors.foreground }]}>Confirm Bake</Text>
           <Text style={{ color: colors.foreground, fontSize: 18, marginBottom: 12 }}>{selectedRecipe.name}</Text>
-          <Pressable onPress={startBake} style={s.primaryBtn}><Text style={{ color: colors.primaryForeground }}>Start Bake</Text></Pressable>
+          <Pressable onPress={startBake} style={[s.addBtn, { backgroundColor: colors.primary }]}><Text style={{ color: colors.primaryForeground }}>Start Bake</Text></Pressable>
         </ScrollView>
       )}
 
       {section === "runner" && bake && (
-        <ScrollView ref={runnerScrollRef} contentContainerStyle={{ paddingTop: 20, paddingBottom: insets.bottom + tabBarPad + 128, paddingHorizontal: 20 }}>
-          <View style={s.trackerHeader}><Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "700" }}>{bake.recipeName}</Text><Pressable onPress={resetBake} style={s.newBakeBtn}><Text>New Bake</Text></Pressable></View>
+        <ScrollView
+          ref={runnerScrollRef}
+          contentContainerStyle={{
+            paddingTop: 20,
+            paddingBottom: insets.bottom + tabBarPad + 128,
+            paddingHorizontal: 20
+          }}
+        >
+          {/* Tracker Header */}
+          <View style={s.trackerHeader}>
+            <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "700" }}>
+              {bake.recipeName}
+            </Text>
+            <Pressable onPress={resetBake} style={s.newBakeBtn}>
+              <Text>New Bake</Text>
+            </Pressable>
+          </View>
+
           <SegmentBar phases={bake.phases} />
+
+          {/* Phase Iteration Container */}
           <View style={{ gap: 8, marginTop: 16 }}>
             {bake.phases.map(phase => {
-              const isDone = !!phase.completedAt; const isActive = !!phase.startedAt && !phase.completedAt;
-              if (!phase.startedAt) return <View key={phase.key} style={[s.compactCard, { borderColor: colors.border }]}><View style={s.compactRow}><Text style={{ flex: 1, color: colors.mutedForeground }}>{phase.name}</Text><Pressable onPress={() => startPhase(phase.key)} style={s.startBtn}><Text>Start</Text></Pressable></View></View>;
-              if (isDone) return <Pressable key={phase.key} onPress={() => setExpandedDone(prev => { const n = new Set(prev); n.has(phase.key) ? n.delete(phase.key) : n.add(phase.key); return n; })} style={[s.compactCard, { borderColor: colors.border }]}><View style={s.compactRow}><Ionicons name="checkmark-circle" size={18} color={colors.primary} /><Text style={{ flex: 1 }}>{phase.name}</Text></View></Pressable>;
-              return (
-                <CopilotStep key={phase.key} text="Active Phase" order={15} name={`active-bake-${phase.key}`}>
-                  <CopilotView style={[s.activeCard, { borderColor: colors.accent, backgroundColor: colors.card }]}>
-                    <View style={s.activeHeader}><Text style={{ fontWeight: "700" }}>{phase.name}</Text><Text style={{ color: colors.accent }}>{formatTimer(elapsed[phase.key] ?? 0)}</Text></View>
-                    <View style={s.activeActions}>
-                      {phase.key !== "the_bake" && <Pressable onPress={() => openReadingModal(phase.key)} style={s.actionBtn}><Text>Log Reading</Text></Pressable>}
-                      <Pressable onPress={() => completePhase(phase.key)} style={s.actionBtn}><Text>Complete</Text></Pressable>
+              const isDone = !!phase.completedAt;
+              const isActive = !!phase.startedAt && !phase.completedAt;
+
+              // State 1: Unstarted Phase Card
+              if (!phase.startedAt) {
+                return (
+                  <View key={phase.key} style={[s.compactCard, { borderColor: colors.border }]}>
+                    <View style={s.compactRow}>
+                      <Text style={{ flex: 1, color: colors.mutedForeground }}>{phase.name}</Text>
+                      <Pressable onPress={() => startPhase(phase.key)} style={s.startBtn}>
+                        <Text>Start</Text>
+                      </Pressable>
                     </View>
-                    {phase.readings.map(r => <ReadingRow key={r.id} reading={r} colors={colors} onDelete={() => deleteReading(phase.key, r.id)} />)}
+                  </View>
+                );
+              }
+
+              // State 2: Completed Phase Card
+              if (isDone) {
+                return (
+                  <Pressable
+                    key={phase.key}
+                    onPress={() => setExpandedDone(prev => {
+                      const n = new Set(prev);
+                      n.has(phase.key) ? n.delete(phase.key) : n.add(phase.key);
+                      return n;
+                    })}
+                    style={[s.compactCard, { borderColor: colors.border }]}
+                  >
+                    <View style={s.compactRow}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                      <Text style={{ flex: 1 }}>{phase.name}</Text>
+                    </View>
+                  </Pressable>
+                );
+              }
+
+              // State 3: Active Phase Card
+              return (
+                <CopilotStep key={phase.key} text="Active Phase" order={15} name="active-bake">
+                  <CopilotView style={[s.activeCard, { borderColor: colors.accent, backgroundColor: colors.card }]}>
+                    <View style={s.activeHeader}>
+                      <Text style={{ fontWeight: "700" }}>{phase.name}</Text>
+                      <Text style={{ color: colors.accent }}>
+                        {formatTimer(elapsed[phase.key] ?? 0)}
+                      </Text>
+                    </View>
+
+                    {phase.key === "stretching_folding" && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16, marginTop: -4 }}>
+                        <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" }}>Folds:</Text>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                         {[0, 1, 2, 3].map((idx) => {
+                           const isFilled = (phase.foldCount || 0) > idx;
+                             return (
+                               <Pressable
+                                 key={idx}
+                                 onPress={() => toggleFold(phase.key, idx)}
+                                 style={{
+                                   width: 24, height: 24, borderRadius: 12, borderWidth: 2,
+                                   borderColor: isFilled ? "#6E7558" : colors.border,
+                                   backgroundColor: isFilled ? "#6E7558" : "transparent",
+                                   alignItems: 'center', justifyContent: 'center'
+                                 }}
+                               >
+                               {/* isFilled && <Feather name="check" size={14} color="white" /> */}
+                               </Pressable>
+                             );
+                         })}
+                       </View>
+                      </View>
+                    )}
+
+                    <View style={s.activeActions}>
+                      {phase.key !== "the_bake" && (
+                        <Pressable onPress={() => openReadingModal(phase.key)} style={s.actionBtn}>
+                          <Text>Log Reading</Text>
+                        </Pressable>
+                      )}
+                      <Pressable onPress={() => completePhase(phase.key)} style={s.actionBtn}>
+                        <Text>Complete</Text>
+                      </Pressable>
+                    </View>
+
+                    {phase.readings.map(r => (
+                      <ReadingRow
+                        key={r.id}
+                        reading={r}
+                        colors={colors}
+                        onDelete={() => deleteReading(phase.key, r.id)}
+                      />
+                    ))}
                   </CopilotView>
                 </CopilotStep>
               );
@@ -801,40 +1186,207 @@ export default function RecipeScreen() {
 }
 
 const s = StyleSheet.create({
-  sectionToggleWrap: { paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth },
-  sectionToggle: { flexDirection: "row", borderRadius: 10, borderWidth: 1, padding: 3, gap: 3 },
-  sectionBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  sectionBtnText: { fontSize: 14 },
-  listHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
-  sectionTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  addBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: "#C4704F" },
-  recipeCard: { borderRadius: 12, borderWidth: 1, padding: 14 },
-  editHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 24 },
-  editTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
-  nameInput: { height: 50, paddingHorizontal: 14, fontSize: 16, borderWidth: 1, borderRadius: 10, marginBottom: 12 },
-  editPhaseCard: { borderRadius: 12, borderWidth: 1, padding: 14 },
-  editPhaseHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  phaseTextarea: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14, minHeight: 60, marginTop: 8 },
-  addPhaseBtn: { padding: 14, borderRadius: 10, borderWidth: 1, borderStyle: "dashed", marginTop: 14, alignItems: "center" },
-  primaryBtn: { height: 52, borderRadius: 12, backgroundColor: "#C4704F", alignItems: "center", justifyContent: "center" },
-  trackerHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  newBakeBtn: { padding: 8, borderRadius: 8, borderWidth: 1 },
-  compactCard: { borderRadius: 10, borderWidth: 1, overflow: "hidden", marginBottom: 8 },
-  compactRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12 },
-  startBtn: { padding: 6, borderRadius: 8, borderWidth: 1 },
-  activeCard: { borderRadius: 10, borderWidth: 1.5, padding: 12, marginBottom: 8 },
-  activeHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
-  activeActions: { flexDirection: "row", gap: 8 },
-  actionBtn: { flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, alignItems: "center" },
-  readingRow: { flexDirection: "row", gap: 8, paddingVertical: 4 },
-  readingTime: { fontSize: 12 },
-  readingPills: { flexDirection: "row", gap: 4 },
-  pill: { padding: 4, borderRadius: 10, borderWidth: 1 },
-  pillText: { fontSize: 10 },
-  fab: { position: "absolute", right: 20, width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", elevation: 6 },
-  sheetHeader: { flexDirection: "row", justifyContent: "space-between", padding: 20 },
-  sheetTitle: { fontSize: 18, fontWeight: "bold" },
-  startVolRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 },
-  startVolLabel: { fontSize: 12 },
-  startVolInput: { flex: 1, borderWidth: 1, borderRadius: 6, padding: 4, height: 30 }
+  sectionToggleWrap: {
+    paddingBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sectionToggle: {
+    flexDirection: "row",
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 3,
+    gap: 3,
+  },
+  sectionBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionBtnText: {
+    fontSize: 14,
+  },
+  listHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.5,
+  },
+  addBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  recipeCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+  },
+  editHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 24,
+  },
+  editTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_600SemiBold",
+  },
+  nameInput: {
+    height: 50,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  editPhaseCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+  },
+  editPhaseHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  phaseTextarea: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
+    marginTop: 8,
+    textAlignVertical: 'top', // Critical for multiline alignment on Android
+    minHeight: 44,            // Approximately 1 row with padding
+    maxHeight: 220,           // Approximately 10 rows
+  },
+  addPhaseBtn: {
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    marginTop: 14,
+    alignItems: "center",
+  },
+  primaryBtn: {
+    height: 52,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trackerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  newBakeBtn: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  compactCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  compactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+  },
+  startBtn: {
+    padding: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  activeCard: {
+    borderRadius: 10,
+    borderWidth: 1.5,
+    padding: 12,
+    marginBottom: 8,
+  },
+  activeHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  activeActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  readingRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  readingTime: {
+    fontSize: 12,
+  },
+  readingPills: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  pill: {
+    padding: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  pillText: {
+    fontSize: 10,
+  },
+  fab: {
+    position: "absolute",
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 20,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  startVolRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8
+  },
+  startVolLabel: {
+    fontSize: 12
+  },
+  startVolInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 4,
+    height: 30
+  }
 });

@@ -24,21 +24,39 @@ export interface TourChapter {
 }
 
 export const TOUR_CHAPTERS: TourChapter[] = [
-  {
-    id: 'feed',
-    title: 'Feed Tab',
-    tab: '/',
-    steps: [
-      { name: 'track-feed-btn', text: 'Start here to monitor a live refresh.', order: 1 },
-      { name: 'plan-feed-btn', text: 'Click here to estimate when a refresh will peak, or how much flour and water you need to peak when you want.', order: 2 },
-      { name: 'feed-ratios-input', text: 'Enter your starter, flour, and water weights here.', order: 3 },
-      { name: 'live-data-log', text: 'A log of your temperature, pH, and rise data during the refresh.', order: 4 },
-      { name: 'live-vitality-card', text: 'Elapsed time along the bottom, pH on the left axis, and temperature on the right. A graph of your real-time log.', order: 5 },
-      { name: 'new-refresh-image', text: 'Capture or upload an image of your starter right after feeding it (helpful to see starting volume).', order: 6 },
-      { name: 'start-refresh-btn', text: 'Tap this to begin the refresh timer.', order: 7 },
-      { name: 'next-chapter-is-graph', text: 'When finished, check your growth trends in the Analytics tab.', order: 8 },
-    ],
-  },
+// TourConfig.ts
+{
+  id: 'feed',
+  title: 'Feed Tab',
+  tab: '/',
+  steps: [
+
+	// BEGINNING STEP (Shown in both states)
+	{ name: 'app-name', text: `Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by logging your starter's feeds.`, order: 1 },
+
+	// SETUP STEPS (Shown only if no active session. Note: the highlight holes will go up to the top of the screen then back down on this tour. Can't be helped.)
+    { name: 'track-feed-btn', text: `Start here to monitor a live refresh.`, order: 2 },
+    { name: 'plan-feed-btn', text: `Click here to estimate when a refresh will peak, or plan your feed weights to peak at just the right time.`, order: 3 },
+
+    // ACTIVE SESSION STEP (Shown only if active session)
+    { name: 'active-timer', text: `This timer tracks exactly how long your starter has been fermenting.`, order: 4 },
+
+    // SHARED STEPS (Shown in both states)
+    { name: 'feed-ratios-input', text: `Review or enter your starter, flour, and water weights here, and any sugar used in a sweet starter.`, order: 5 },
+    { name: 'live-data-log', text: `A log of your temperature, pH, and rise data during the refresh.`, order: 6 },
+
+    // SETUP STEPS (Shown only if no active session)
+	{ name: 'just-fed-photo', text: `Take a picture of your refresh right after feeding to confirm starting height.`, order: 7 },
+    { name: 'start-feed-btn', text: `Tap this to begin the refresh timer.`, order: 8 },
+
+	// ACTIVE SESSION STEP (Shown only if active session)
+	{ name: 'feed-trends', text: `Elapsed time along the bottom, pH on the left axis, and temperature on the right. A graph of your real-time log.`, order: 9 },
+	{ name: 'mark-as-peak', text: `Once your starter reaches its peak, mark the refresh complete to save the data. See your feed results in the next tab and in the Calendar.`, order: 10 },
+
+	// TRANSITION STEP (Shown in both states)
+    { name: 'next-chapter-is-graph', text: `Let's see all that data visualized in the Analytics tab.`, order: 11 },
+  ],
+},
   {
     id: 'graph',
     title: 'Analytics',

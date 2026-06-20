@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { CopilotProvider, useCopilot } from 'react-native-copilot';
+import { CopilotProvider, useCopilot, TooltipProps } from 'react-native-copilot';
 import { useRouter, usePathname } from 'expo-router';
 import { IS_TOUR_ENABLED, TOUR_CHAPTERS, TourChapter } from '../constants/TourConfig';
-import { Platform } from 'react-native';
+import { Platform, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 interface TourContextType {
   startChapter: (chapterId: string) => void;
@@ -12,6 +12,43 @@ interface TourContextType {
 
 const TourContext = createContext<TourContextType | undefined>(undefined);
 
+const CustomTooltip = ({
+   isFirstStep,
+   isLastStep,
+   handleNext,
+   handlePrev,
+   handleStop,
+   currentStep,
+ }: TooltipProps) => {
+   // 1. Add safety check
+   if (!currentStep) return null;
+
+   return (
+     <View style={styles.tooltipContainer}>
+       <Text style={styles.tooltipText}>{currentStep.text}</Text>
+       <View style={styles.tooltipButtons}>
+         <TouchableOpacity onPress={handleStop} style={styles.button}>
+           <Text style={[styles.buttonText, { color: '#ef4444' }]}>Skip</Text>
+         </TouchableOpacity>
+         {!isFirstStep && (
+           <TouchableOpacity onPress={handlePrev} style={styles.button}>
+             <Text style={styles.buttonText}>Previous</Text>
+           </TouchableOpacity>
+         )}
+         {!isLastStep ? (
+           <TouchableOpacity onPress={handleNext} style={styles.button}>
+             <Text style={[styles.buttonText, { color: '#10b981', fontWeight: 'bold' }]}>Next</Text>
+           </TouchableOpacity>
+         ) : (
+           <TouchableOpacity onPress={handleStop} style={styles.button}>
+             <Text style={[styles.buttonText, { color: '#10b981', fontWeight: 'bold' }]}>Finish</Text>
+           </TouchableOpacity>
+         )}
+       </View>
+     </View>
+   );
+};
+
 const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { start, stop, visible, copilotEvents } = useCopilot();
   const router = useRouter();
@@ -19,33 +56,44 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
   const [currentChapterId, setCurrentChapterId] = useState<string | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  useEffect(() => {
-    const handleStepChange = (step: any) => {
-      if (!step || !currentChapterId || isTransitioning) return;
+useEffect(() => {
+  const handleStepChange = (step: any) => {
+    if (!step || isTransitioning) return;
 
-      const chapter = TOUR_CHAPTERS.find(c => c.id === currentChapterId);
-      if (!chapter) return;
+    // 1. Navigation trigger check
+    if (step.name.startsWith('next-chapter-is-')) {
+      const targetId = step.name.replace('next-chapter-is-', '');
+      stop();
+      setTimeout(() => startChapter(targetId), 100);
+      return;
+    }
 
-      const stepIndex = chapter.steps.findIndex(s => s.name === step.name);
-      const isLastStepOfChapter = stepIndex === chapter.steps.length - 1;
+    // 2. Cross-chapter safety check
+    const targetChapter = TOUR_CHAPTERS.find(c =>
+      c.steps.some(s => s.name === step.name)
+    );
 
-      // Logic for future auto-transition hooks can go here
-    };
+    if (targetChapter && currentChapterId && targetChapter.id !== currentChapterId) {
+      stop();
+      startChapter(targetChapter.id);
+    }
+  }; // This closes handleStepChange
 
-    const handleStop = () => {
-      if (!isTransitioning) {
-        setCurrentChapterId(null);
-      }
-    };
+  const handleStop = () => {
+    if (!isTransitioning) {
+      setCurrentChapterId(null);
+    }
+  }; // This closes handleStop
 
-    copilotEvents.on('stepChange', handleStepChange);
-    copilotEvents.on('stop', handleStop);
+  copilotEvents.on('stepChange', handleStepChange);
+  copilotEvents.on('stop', handleStop);
 
-    return () => {
-      copilotEvents.off('stepChange', handleStepChange);
-      copilotEvents.off('stop', handleStop);
-    };
-  }, [currentChapterId, isTransitioning, copilotEvents]);
+  return () => {
+    copilotEvents.off('stepChange', handleStepChange);
+    copilotEvents.off('stop', handleStop);
+  };
+/* --seems like a lot to get rid of to replace with a little line below. Red tagged until 1.0.13+
+}, [currentChapterId, isTransitioning, copilotEvents]);
 
   useEffect(() => {
     if (!visible && currentChapterId && !isTransitioning) {
@@ -58,7 +106,8 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
         setCurrentChapterId(null);
       }
     }
-  }, [visible, currentChapterId, isTransitioning]);
+  }, [visible, currentChapterId, isTransitioning]); */
+  }, [currentChapterId, isTransitioning, copilotEvents, stop, startChapter]);
 
   const startChapter = async (chapterId: string) => {
     if (!IS_TOUR_ENABLED) return;
@@ -77,9 +126,9 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
         setTimeout(() => {
           setIsTransitioning(false);
           start(firstStepName);
-        }, 1000);
+        }, 2000);  // was 1500
       } else {
-        setTimeout(() => start(firstStepName), 150);
+        setTimeout(() => start(firstStepName), 500);
       }
     }
   };
@@ -99,12 +148,12 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
 export const TourProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <CopilotProvider
-      verticalOffset={0}
+      verticalOffset={0} // Changed from 30 when the highlight holes didn't line up over the tab buttons
       backdropColor="rgba(0, 0, 0, 0.85)"
-      tooltipStyle={{ borderRadius: 12, padding: 8 }}
+      tooltipComponent={CustomTooltip}
       stepNumberComponent={() => null}
       animated={true}
-      // Removed broken svgMaskPath="rect" - Native environment handles masks automatically
+      stopOnOutsideClick={true} // Added safety valve to exit tour
     >
       <TourController>{children}</TourController>
     </CopilotProvider>
@@ -116,3 +165,38 @@ export const useTour = () => {
   if (!context) throw new Error('useTour must be used within TourProvider');
   return context;
 };
+
+const styles = StyleSheet.create({
+  tooltipContainer: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: 280,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  tooltipText: {
+    fontSize: 15,
+    color: '#000', // was #333
+    lineHeight: 22,
+    fontFamily: 'sans-serif',
+    marginBottom: 16,
+  },
+  tooltipButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  button: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  buttonText: {
+    fontSize: 14,
+    color: '#666',
+    fontFamily: 'sans-serif',
+  },
+});
