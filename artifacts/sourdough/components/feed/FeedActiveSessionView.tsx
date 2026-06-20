@@ -54,6 +54,7 @@ export default function FeedActiveSessionView({
   const [elapsed, setElapsed] = useState(Date.now() - session.savedAt);
   const [showPeakModal, setShowPeakModal] = useState(false);
   const [peakPH, setPeakPH] = useState("");
+  const [peakTemp, setPeakTemp] = useState("");
   const [peakVolume, setPeakVolume] = useState("");
   const [peakPhoto, setPeakPhoto] = useState<string | null>(null);
 
@@ -115,6 +116,11 @@ export default function FeedActiveSessionView({
   };
 
   const handleSavePeak = () => {
+    // Require volume for peak
+    if (!peakVolume.trim() || isNaN(parseFloat(peakVolume)) || parseFloat(peakVolume) <= 0) {
+      Alert.alert("Missing Peak Volume", "Please enter the peak volume (mL) before saving.");
+      return;
+    }
     const peakVol = parseFloat(peakVolume);
     const initVol = parseFloat(session.initialVolume);
     const volumeIncreasePct =
@@ -125,6 +131,8 @@ export default function FeedActiveSessionView({
 
     onSavePeak({
       pH: peakPH,
+      temp: peakTemp,            // Include temp
+      tempUnit: tempUnit as "F" | "C", // Include global unit
       volume: peakVolume,
       photo: peakPhoto,
       loggedAt: Date.now(),
@@ -134,13 +142,20 @@ export default function FeedActiveSessionView({
 
     setShowPeakModal(false);
     setPeakPH("");
+    setPeakTemp("");
     setPeakVolume("");
     setPeakPhoto(null);
   };
 
   const handleLogReading = () => {
-    if (!readingPH.trim()) {
-      Alert.alert("Enter pH", "Please enter a pH value before saving.");
+    const ph = readingPH.trim();
+    const temp = readingTemp.trim();
+    const vol = readingVolume.trim();
+    const note = readingNote.trim();
+
+    // pH is now optional, but we want at least one field to be logged
+    if (!ph && !temp && !vol && !note) {
+      Alert.alert("Empty Reading", "Please enter at least one value (pH, Temp, Volume, or Note).");
       return;
     }
     onLogReading({
@@ -312,18 +327,18 @@ export default function FeedActiveSessionView({
             {/* Table Header */}
             <View style={{ flexDirection: "row", backgroundColor: colors.secondary + "20", paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
               <Text style={[styles.headerCol, { color: colors.mutedForeground, width: 75 }]}>Time</Text>
-              <Text style={[styles.headerCol, { color: colors.mutedForeground, flex: 1 }]}>pH</Text>
+              <Text style={[styles.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'center' }]}>pH</Text>
               <Text style={[styles.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'center' }]}>Temp (°{tempUnit})</Text>
-              <Text style={[styles.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'right' }]}>Volume</Text>
+              <Text style={[styles.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'center' }]}>Volume (mL)</Text>
             </View>
 
             {/* Initial Reading Row (t=0) */}
             {(session.initialPH || session.initialTemp || session.initialVolume) && (
               <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: (session.readings?.length ?? 0) > 0 ? 1 : 0, borderBottomColor: colors.border }}>
                 <Text style={[styles.readCol, { color: colors.mutedForeground, width: 75 }]}>0m</Text>
-                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: "Inter_600SemiBold" }]}>{session.initialPH || "—"}</Text>
+                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: "Inter_600SemiBold", textAlign: 'center' }]}>{session.initialPH || "—"}</Text>
                 <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{session.initialTemp ? `${session.initialTemp}°` : "—"}</Text>
-                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'right' }]}>{session.initialVolume ? `${session.initialVolume}mL` : "—"}</Text>
+                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{session.initialVolume ? `${session.initialVolume}` : "—"}</Text>
               </View>
             )}
 
@@ -346,9 +361,9 @@ export default function FeedActiveSessionView({
                     >
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
                         <Text style={[styles.readCol, { color: hasNote ? colors.primary : colors.mutedForeground, width: 75 }]}>{timeStr}</Text>
-                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: "Inter_600SemiBold" }]}>{r.pH}</Text>
+                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: "Inter_600SemiBold", textAlign: 'center' }]}>{r.pH}</Text>
                         <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{r.temp ? `${r.temp}°` : "—"}</Text>
-                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'right' }]}>{r.volume ? `${r.volume}mL` : "—"}</Text>
+                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{r.volume ? `${r.volume}` : "—"}</Text>
                       </View>
                       {hasNote && (
                         <Text numberOfLines={isExpanded ? undefined : 1} style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 4, fontStyle: "italic", paddingLeft: 75 }}>
@@ -476,43 +491,84 @@ export default function FeedActiveSessionView({
         </Pressable>
       </ScrollView>
 
-      {/* Log Peak Modal */}
-      <Modal visible={showPeakModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPeakModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: colors.background }}>
-          <ScrollView contentContainerStyle={[styles.modalContent, { paddingTop: insets.top + webTop + 24, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 32 }]} keyboardShouldPersistTaps="handled">
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Log Peak</Text>
-              <Pressable onPress={() => setShowPeakModal(false)}><Ionicons name="close" size={24} color={colors.foreground} /></Pressable>
-            </View>
-            <View style={[styles.autoCalcCard, { backgroundColor: colors.secondary, borderRadius: colors.radius }]}>
-              <Text style={[styles.autoCalcLabel, { color: colors.mutedForeground }]}>Time to Peak (auto-calculated on save)</Text>
-              <Text style={[styles.autoCalcValue, { color: colors.foreground }]}>{formatTimeToPeak(elapsed)}</Text>
-            </View>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Peak pH</Text>
-            <TextInput style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]} placeholder="e.g. 4.2" value={peakPH} onChangeText={setPeakPH} keyboardType="decimal-pad" />
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Peak Volume (mL)</Text>
-            <TextInput style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]} placeholder="e.g. 320" value={peakVolume} onChangeText={setPeakVolume} keyboardType="decimal-pad" />
-            {session.initialVolume && peakVolume ? (
-              <View style={[styles.autoCalcCard, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "30", borderWidth: 1, borderRadius: colors.radius }]}>
-                <Text style={[styles.autoCalcLabel, { color: colors.accent }]}>Volume Increase</Text>
-                <Text style={[styles.autoCalcValue, { color: colors.accent }]}>
-                  {(() => {
-                    const pv = parseFloat(peakVolume); const iv = parseFloat(session.initialVolume);
-                    return iv > 0 && pv > 0 ? `+${Math.round(((pv - iv) / iv) * 100 * 10) / 10}%` : "—";
-                  })()}
-                </Text>
-              </View>
-            ) : null}
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Peak Photo</Text>
-            <Pressable onPress={() => pickPhoto((uri) => { setPeakPhoto(uri); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); })} style={[styles.photoPicker, { backgroundColor: peakPhoto ? "transparent" : colors.card, borderColor: colors.border, borderRadius: colors.radius, borderStyle: peakPhoto ? "solid" : "dashed" }]}>
-              {peakPhoto ? <Image source={{ uri: peakPhoto }} style={[styles.photoPreview, { borderRadius: colors.radius }]} /> : <View style={styles.photoPlaceholder}><Feather name="camera" size={24} color={colors.mutedForeground} /><Text style={[styles.photoPlaceholderText, { color: colors.mutedForeground }]}>Add peak photo</Text></View>}
-            </Pressable>
-            <Pressable onPress={handleSavePeak} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1, marginTop: 8 }]}>
-              <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>Save Peak</Text>
-            </Pressable>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+            {/* Log Peak Modal */}
+            <Modal visible={showPeakModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPeakModal(false)}>
+              <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: colors.background }}>
+                <ScrollView contentContainerStyle={[styles.modalContent, { paddingTop: insets.top + webTop + 24, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 32 }]} keyboardShouldPersistTaps="handled">
+                  <View style={styles.modalHeader}>
+                    <Text style={[styles.modalTitle, { color: colors.foreground }]}>Log Peak</Text>
+                    <Pressable onPress={() => setShowPeakModal(false)}><Ionicons name="close" size={24} color={colors.foreground} /></Pressable>
+                  </View>
+
+                  {/* Top Card: Time and Rise */}
+                  <View style={[styles.autoCalcCard, { backgroundColor: colors.secondary, borderRadius: colors.radius, marginBottom: 16, flexDirection: 'row' }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.autoCalcLabel, { color: colors.mutedForeground }]}>Time to Peak</Text>
+                      <Text style={[styles.autoCalcValue, { color: colors.foreground }]}>{formatTimeToPeak(elapsed)}</Text>
+                    </View>
+                    <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 16, opacity: 0.5 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.autoCalcLabel, { color: colors.mutedForeground }]}>Total Rise</Text>
+                      <Text style={[styles.autoCalcValue, { color: colors.accent }]}>
+                        {(() => {
+                          const pv = parseFloat(peakVolume);
+                          const iv = parseFloat(session.initialVolume);
+                          return iv > 0 && pv > 0 ? `+${Math.round(((pv - iv) / iv) * 100)}%` : "—";
+                        })()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* 3-Column Inputs: pH, Temp, Volume */}
+                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 16, marginBottom: 20 }]}>
+                    <View style={styles.readingsRow}>
+                      <View style={styles.readingItem}>
+                        <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Peak pH</Text>
+                        <TextInput
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          placeholder="3.9"
+                          value={peakPH}
+                          onChangeText={setPeakPH}
+                          keyboardType="decimal-pad"
+                          autoFocus
+                        />
+                      </View>
+
+                      <View style={styles.readingItem}>
+                        <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Temp (°{tempUnit})</Text>
+                        <TextInput
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          placeholder="76"
+                          value={peakTemp}
+                          onChangeText={setPeakTemp}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+
+                      <View style={styles.readingItem}>
+                        <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Vol (mL)</Text>
+                        <TextInput
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          placeholder="200"
+                          value={peakVolume}
+                          onChangeText={setPeakVolume}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Peak Photo</Text>
+                  <Pressable onPress={() => pickPhoto((uri) => { setPeakPhoto(uri); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); })} style={[styles.photoPicker, { backgroundColor: peakPhoto ? "transparent" : colors.card, borderColor: colors.border, borderRadius: colors.radius, borderStyle: peakPhoto ? "solid" : "dashed" }]}>
+                    {peakPhoto ? <Image source={{ uri: peakPhoto }} style={[styles.photoPreview, { borderRadius: colors.radius }]} /> : <View style={styles.photoPlaceholder}><Feather name="camera" size={24} color={colors.mutedForeground} /><Text style={[styles.photoPlaceholderText, { color: colors.mutedForeground }]}>Add peak photo</Text></View>}
+                  </Pressable>
+
+                  <Pressable onPress={handleSavePeak} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1, marginTop: 24 }]}>
+                    <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>Save Peak</Text>
+                  </Pressable>
+                </ScrollView>
+              </KeyboardAvoidingView>
+            </Modal>
 
             {/* Log Reading Modal */}
             <Modal
@@ -654,7 +710,7 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 13, fontFamily: "Inter_500Medium", letterSpacing: 0.4, textTransform: "uppercase" },
   card: { borderRadius: 12, borderWidth: 1, padding: 16 },
   fieldLabel: { fontSize: 12, fontFamily: "Inter_500Medium", letterSpacing: 0.3, marginBottom: 6, textTransform: "uppercase" },
-  input: { height: 46, paddingHorizontal: 14, fontSize: 16, borderWidth: 1 },
+  input: { height: 46, paddingHorizontal: 0, fontSize: 16, borderWidth: 1 },
   calcChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
   calcChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   photoPicker: { aspectRatio: 4 / 3, borderWidth: 1.5, overflow: "hidden", justifyContent: "center", alignItems: "center" },

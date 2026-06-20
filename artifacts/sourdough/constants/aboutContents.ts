@@ -19,7 +19,7 @@ export const HELP: HelpTab[] = [
           "Feed Amount Inputs: Captures exact input weights in grams for starter inoculation, flour, and water, and provides a feeding ratio.",
           "Enriched Dough Toggle: A specialized sugar switch to log data variations when feeding sweet doughs or specialized cultures.",
           "Flour Blend Sliders: A slider to precisely record custom percentage ratios of All-Purpose (AP) versus Whole Wheat (WW) flours.",
-          "Initial Metric Logs: Records baseline numbers, including initial acidity (pH) and starter volume (in mL), right after a fresh mix. Note: the starter volume is compared against the peak volume to give a rise percentage.",
+          "Initial Metric Logs: Records baseline numbers, including initial acidity (pH), temperature (preferred units), and starter volume (in mL), right after a fresh mix. Note: the starter volume is compared against the peak volume to give a rise percentage.",
           "Visual Baseline: Includes an integrated camera icon to instantly attach a 'Just Fed' photo, giving you a visual height benchmark to measure against the peak rise.",
           "Start Feed Timer: Starts a timer on the screen showing elapsed time since the most recent refresh.",
         ],
@@ -41,7 +41,7 @@ export const HELP: HelpTab[] = [
         heading: "Graph",
         bullets: [
           "Purpose: A plot showing your starter's historical acidity curve over time to verify fermentation speeds, allowing you to test variables (e.g, feed ratios, temperatures, flour types, etc.). Note: correlated data is available by reviewing past refreshes in the Calendar tab.",
-          "pH Over Time Graph: Traces real-time data points against elapsed hours, visualizing how quickly your culture drops its pH levels.",
+          "pH Over Time Graph (requires a pH meter): Traces real-time data points against elapsed hours, visualizing how quickly your culture drops its pH levels.",
           "Data Resolution Axis: Tracks timelines across a horizontal window that scales as time exceeds it, matched against vertical acidity metrics spanning from 5.8 down to 3.2.",
           "Visual Indicators: Maps your current feed points with bright dots, contrasting them against a dashed line that represents your historical Vitality Average (last 5 refreshes).",
           "Timeframe Filtering: Includes an 'All-Time' button toggle to show the all-time average (off by default).",
@@ -148,8 +148,18 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Added", content: "A tour of the app is now available from the About tab. Click the Take a tour button to see a complete tour, or revisit just an updated section of the app." },
       ],
     },
-*/{
+*/
+    {
+      version: "v1.0.12",
+      changes: [
+        { type: "Fixed", content: "Unified the view for data entry during an active feed. The initial reading, active log entries, and peak all allow you to gather the same data in the same format." },
+        { type: "Added", content: "Increased the amount of refresh data shown on the 'report card' in the Calendar tab." },
+        { type: "Changed", content: "Loosened the data collection requirements for the Refresh tab. Some users may simply want to track their refreshes by volume and time." },
+      ],
+    },
+    {
       version: "v1.0.11",
+
       changes: [
         { type: "Added", content: "Global preferences (e.g., °F or °C) section in the About tab." },
         { type: "Changed", content: "Some significant code 'refactoring' to make future development easier." },

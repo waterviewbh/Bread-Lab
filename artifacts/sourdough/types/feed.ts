@@ -1,6 +1,8 @@
 export interface PeakData {
     pH: string;
     volume: string;
+    temp?: string;
+    tempUnit?: "F" | "C";
     photo: string | null;
     loggedAt: number;
     volumeIncreasePct: number;

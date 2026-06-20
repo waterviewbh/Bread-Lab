@@ -115,6 +115,13 @@ export default function FeedSetupView({ onStartFeed }: Props) {
       Alert.alert("Missing info", "Enter valid starter, flour and water weights.");
       return;
     }
+
+    // Require volume for an initial read
+    if (!initialVolume.trim() || isNaN(parseFloat(initialVolume)) || parseFloat(initialVolume) <= 0) {
+      Alert.alert("Missing Volume", "Please enter an initial volume (mL) to start tracking.");
+      return;
+    }
+
     onStartFeed({
       starterWeight,
       flourWeight: fw,

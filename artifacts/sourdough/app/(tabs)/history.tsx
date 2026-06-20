@@ -101,6 +101,8 @@ interface BakeHistoryEntry {
 
 interface PeakData {
   pH: string;
+  temp?: string;
+  tempUnit?: "F" | "C";
   volume: string;
   photo: string | null;
   loggedAt: number;
@@ -127,6 +129,8 @@ interface HistoryEntry {
   waterWeight: number;
   wwPercent: number;
   initialPH: string;
+  initialTemp?: string;
+  initialTempUnit?: "F" | "C";
   initialVolume: string;
   peak?: PeakData;
   /** pH readings logged during this feed session. */
@@ -1396,206 +1400,88 @@ export default function HistoryScreen() {
                     ]}
                   >
                     <View style={styles.entryHeader}>
-                      <Text
-                        style={[styles.entryTime, { color: colors.foreground }]}
-                      >
+                      <Text style={[styles.entryTime, { color: colors.foreground }]}>
                         {formatTime(entry.savedAt)}
                       </Text>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                         {entry.peak && (
-                          <View
-                            style={[
-                              styles.peakedBadge,
-                              {
-                                backgroundColor: colors.accent + "18",
-                                borderColor: colors.accent + "40",
-                              },
-                            ]}
-                          >
-                            <Ionicons
-                              name="checkmark-circle"
-                              size={12}
-                              color={colors.accent}
-                            />
-                            <Text
-                              style={[
-                                styles.peakedText,
-                                { color: colors.accent },
-                              ]}
-                            >
-                              Peaked
-                            </Text>
+                          <View style={[styles.peakedBadge, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "40" }]}>
+                            <Ionicons name="checkmark-circle" size={12} color={colors.accent} />
+                            <Text style={[styles.peakedText, { color: colors.accent }]}>Peaked</Text>
                           </View>
                         )}
-                        <Pressable
-                          onPress={() => deleteEntry(entry.id)}
-                          style={({ pressed }) => ({
-                            opacity: pressed ? 0.5 : 1,
-                            padding: 4,
-                          })}
-                          hitSlop={8}
-                        >
-                          <Feather
-                            name="trash-2"
-                            size={14}
-                            color={colors.mutedForeground}
-                          />
+                        <Pressable onPress={() => deleteEntry(entry.id)} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 4 })} hitSlop={8}>
+                          <Feather name="trash-2" size={14} color={colors.mutedForeground} />
                         </Pressable>
                       </View>
                     </View>
 
-                    <View style={styles.entryGrid}>
-                      <View style={styles.entryGridItem}>
-                        <Text
-                          style={[styles.entryVal, { color: colors.foreground }]}
-                        >
-                          {entry.starterWeight}g
-                        </Text>
-                        <Text
-                          style={[
-                            styles.entryLbl,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          Starter
-                        </Text>
+                    {/* Unified Initial Feed Row: 5 Columns */}
+                    <View style={[styles.entryGrid, { justifyContent: 'space-between', gap: 4 }]}>
+                      <View style={[styles.entryGridItem, { minWidth: 50 }]}>
+                        <Text style={[styles.entryVal, { color: colors.foreground }]}>{entry.starterWeight}g</Text>
+                        <Text style={[styles.entryLbl, { color: colors.mutedForeground }]}>Starter</Text>
                       </View>
-                      <View style={styles.entryGridItem}>
-                        <Text
-                          style={[styles.entryVal, { color: colors.foreground }]}
-                        >
-                          {entry.flourWeight}g
-                        </Text>
-                        <Text
-                          style={[
-                            styles.entryLbl,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          Flour
-                        </Text>
+
+                      <View style={[styles.entryGridItem, { minWidth: 60 }]}>
+                        <Text style={[styles.entryVal, { color: colors.primary }]}>{entry.ratioStr}</Text>
+                        <Text style={[styles.entryLbl, { color: colors.mutedForeground }]}>Ratio</Text>
                       </View>
-                      <View style={styles.entryGridItem}>
-                        <Text
-                          style={[styles.entryVal, { color: colors.foreground }]}
-                        >
-                          {entry.waterWeight}g
-                        </Text>
-                        <Text
-                          style={[
-                            styles.entryLbl,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          Water
-                        </Text>
-                      </View>
+
                       {entry.initialPH ? (
-                        <View style={styles.entryGridItem}>
-                          <Text
-                            style={[
-                              styles.entryVal,
-                              { color: colors.foreground },
-                            ]}
-                          >
-                            {entry.initialPH}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.entryLbl,
-                              { color: colors.mutedForeground, textTransform: "none" },
-                            ]}
-                          >
-                            pH
-                          </Text>
+                        <View style={[styles.entryGridItem, { minWidth: 40 }]}>
+                          <Text style={[styles.entryVal, { color: colors.foreground }]}>{entry.initialPH}</Text>
+                          <Text style={[styles.entryLbl, { color: colors.mutedForeground, textTransform: "none" }]}>pH</Text>
+                        </View>
+                      ) : null}
+
+                      {entry.initialTemp ? (
+                        <View style={[styles.entryGridItem, { minWidth: 40 }]}>
+                          <Text style={[styles.entryVal, { color: colors.foreground }]}>{entry.initialTemp}°</Text>
+                          <Text style={[styles.entryLbl, { color: colors.mutedForeground, textTransform: "none" }]}>Temp</Text>
+                        </View>
+                      ) : null}
+
+                      {entry.initialVolume ? (
+                        <View style={[styles.entryGridItem, { minWidth: 40 }]}>
+                          <Text style={[styles.entryVal, { color: colors.foreground }]}>{entry.initialVolume}</Text>
+                          <Text style={[styles.entryLbl, { color: colors.mutedForeground, textTransform: "none" }]}>Vol</Text>
                         </View>
                       ) : null}
                     </View>
 
                     {entry.wwPercent > 0 && (
-                      <Text
-                        style={[
-                          styles.flourNote,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
+                      <Text style={[styles.flourNote, { color: colors.mutedForeground, marginTop: 12 }]}>
                         {100 - entry.wwPercent}% AP · {entry.wwPercent}% WW
                       </Text>
                     )}
 
+                    {/* Peak Stats Block */}
                     {entry.peak && (
-                      <View
-                        style={[
-                          styles.peakBlock,
-                          { borderTopColor: colors.border },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.peakTitle,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          Peak
-                        </Text>
-                        <View style={styles.entryGrid}>
+                      <View style={[styles.peakBlock, { borderTopColor: colors.border }]}>
+                        <Text style={[styles.peakTitle, { color: colors.mutedForeground }]}>Peak Results</Text>
+                        <View style={[styles.entryGrid, { justifyContent: 'space-between', gap: 4 }]}>
                           {entry.peak.pH ? (
-                            <View style={styles.entryGridItem}>
-                              <Text
-                                style={[
-                                  styles.entryVal,
-                                  { color: colors.foreground },
-                                ]}
-                              >
-                                {entry.peak.pH}
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.entryLbl,
-                                  { color: colors.mutedForeground, textTransform: "none" },
-                                ]}
-                              >
-                                pH
-                              </Text>
+                            <View style={[styles.entryGridItem, { minWidth: 40 }]}>
+                              <Text style={[styles.entryVal, { color: colors.foreground }]}>{entry.peak.pH}</Text>
+                              <Text style={[styles.entryLbl, { color: colors.mutedForeground, textTransform: "none" }]}>pH</Text>
                             </View>
                           ) : null}
-                          {entry.peak.volumeIncreasePct > 0 && (
-                            <View style={styles.entryGridItem}>
-                              <Text
-                                style={[
-                                  styles.entryVal,
-                                  { color: colors.accent },
-                                ]}
-                              >
-                                +{entry.peak.volumeIncreasePct}%
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.entryLbl,
-                                  { color: colors.mutedForeground },
-                                ]}
-                              >
-                                Rise
-                              </Text>
+                          {entry.peak.temp ? (
+                            <View style={[styles.entryGridItem, { minWidth: 40 }]}>
+                              <Text style={[styles.entryVal, { color: colors.foreground }]}>{entry.peak.temp}°</Text>
+                              <Text style={[styles.entryLbl, { color: colors.mutedForeground, textTransform: "none" }]}>Temp</Text>
+                            </View>
+                          ) : null}
+                          {typeof entry.peak.volumeIncreasePct === 'number' && (
+                            <View style={[styles.entryGridItem, { minWidth: 50 }]}>
+                              <Text style={[styles.entryVal, { color: colors.accent }]}>+{entry.peak.volumeIncreasePct}%</Text>
+                              <Text style={[styles.entryLbl, { color: colors.mutedForeground }]}>Rise</Text>
                             </View>
                           )}
-                          <View style={styles.entryGridItem}>
-                            <Text
-                              style={[
-                                styles.entryVal,
-                                { color: colors.foreground },
-                              ]}
-                            >
-                              {formatTimeToPeak(entry.peak.timeToPeakMs)}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.entryLbl,
-                                { color: colors.mutedForeground },
-                              ]}
-                            >
-                              Time
-                            </Text>
+                          <View style={[styles.entryGridItem, { minWidth: 60 }]}>
+                            <Text style={[styles.entryVal, { color: colors.foreground }]}>{formatTimeToPeak(entry.peak.timeToPeakMs)}</Text>
+                            <Text style={[styles.entryLbl, { color: colors.mutedForeground }]}>Time</Text>
                           </View>
                         </View>
                       </View>
