@@ -471,19 +471,50 @@ export default function PHChart({
                 - Both pH + temp: connector line + open pH circle + filled temp circle
                 - pH only: open circle at pH position (terracotta)
                 - Temp only: filled circle at temp position (blue-grey)            */}
-            {!isolateMode && session && (
-              <G>
-                {/* initialPH at t=0 — no temp pairing; open circle if any temp data exists */}
-                {session.initialPH && !isNaN(parseFloat(session.initialPH)) && (
-                  <Circle
-                    cx={sx(0)}
-                    cy={sy(parseFloat(session.initialPH))}
-                    r={3.5}
-                    fill={hasTempData ? "none" : colors.accent}
-                    stroke={hasTempData ? colors.accent : "none"}
-                    strokeWidth={hasTempData ? 1.5 : 0}
-                  />
-                )}
+{!isolateMode && session && (
+  <G>
+    {/* 1. REPLACE THIS BLOCK: Initial readings at t=0 — handles pairing pH + temp if both exist */}
+    {(() => {
+      const phVal = parseFloat(session.initialPH ?? "");
+      const tempVal = tempByElapsed.get(0) ?? NaN;
+      const hasPH = !isNaN(phVal);
+      const hasTemp = !isNaN(tempVal) && hasTempData;
+      if (!hasPH && !hasTemp) return null;
+
+      const phY = hasPH ? sy(phVal) : null;
+      const ty = hasTemp ? syTemp(tempVal) : null;
+      const xPos = sx(0);
+
+      return (
+        <G>
+          {/* Vertical connector when both values present */}
+          {hasPH && hasTemp && phY !== null && ty !== null && (
+            <Line
+              x1={xPos} y1={phY}
+              x2={xPos} y2={ty}
+              stroke={colors.tempLine} strokeWidth={1} opacity={0.5}
+            />
+          )}
+          {/* pH marker: open when temp present, filled terracotta when pH-only */}
+          {hasPH && phY !== null && (
+            <Circle
+              cx={xPos} cy={phY} r={3.5}
+              fill={hasTemp ? "none" : colors.accent}
+              stroke={hasTemp ? colors.tempLine : "none"}
+              strokeWidth={hasTemp ? 1.5 : 0}
+            />
+          )}
+          {/* Temp marker: filled blue-grey circle */}
+          {hasTemp && ty !== null && (
+            <Circle
+              cx={xPos} cy={ty} r={3}
+              fill={colors.tempLine}
+            />
+          )}
+        </G>
+      );
+    })()}
+
 
                 {/* Per-reading markers */}
                 {(session.readings ?? []).map((r, i) => {
@@ -597,7 +628,7 @@ export default function PHChart({
                 ) : (
                   <View style={[s.dot, { backgroundColor: colors.accent }]} />
                 )}
-                <Text style={[s.lt, { color: colors.mutedForeground }]}>This refresh</Text>
+                <Text style={[s.lt, { color: colors.mutedForeground }]}>pH</Text>
               </View>
               {hasTempData && (
                 <View style={s.li}>
