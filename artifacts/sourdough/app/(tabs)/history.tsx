@@ -30,9 +30,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
 import { computeSessionAcidVelocity } from "@/lib/analytics";
-import { CopilotStep, walkthroughable } from "react-native-copilot";
+import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
 
-const CopilotView = walkthroughable(View);
+// const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
@@ -1093,7 +1093,7 @@ export default function HistoryScreen() {
             </Text>
             {lastSynced !== null && <SyncLabel ts={lastSynced} />}
           </View>
-          <CopilotStep
+          <TourStep
             text="Sync and name your data across devices."
             order={17}
             name="name-name-button"
@@ -1130,11 +1130,11 @@ export default function HistoryScreen() {
                 </Text>
               </Pressable>
             </CopilotView>
-          </CopilotStep>
+          </TourStep>
         </Animated.View>
 
         {/* Stat strip */}
-        <CopilotStep
+        <TourStep
           text="Track the number of refreshes, and see your longest daily activity streak."
           order={18}
           name="feed-leaderboard"
@@ -1182,7 +1182,7 @@ export default function HistoryScreen() {
               </Text>
             </View>
           </CopilotView>
-        </CopilotStep>
+        </TourStep>
 
         {/* Feed filter chips */}
         <Animated.View
@@ -1222,7 +1222,7 @@ export default function HistoryScreen() {
         </Animated.View>
 
         {/* Calendar card */}
-        <CopilotStep
+        <TourStep
           text="View your activity history on the calendar."
           order={19}
           name="calendar"
@@ -1359,11 +1359,11 @@ export default function HistoryScreen() {
               </View>
             ))}
           </CopilotView>
-        </CopilotStep>
+        </TourStep>
 
         {/* Selected day detail */}
         {selectedDay !== null && (
-          <CopilotStep
+          <TourStep
             text="Review, print, and share your refreshes and your bakes (including added notes)."
             order={20}
             name="activity-history"
@@ -1490,7 +1490,7 @@ export default function HistoryScreen() {
                 ))
               )}
             </CopilotView>
-          </CopilotStep>
+          </TourStep>
         )}
 
         {/* Bake entries for selected day */}

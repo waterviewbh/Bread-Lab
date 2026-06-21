@@ -23,9 +23,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { CopilotStep, walkthroughable } from "react-native-copilot";
+import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
 
-const CopilotView = walkthroughable(View);
+// const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const STORAGE_KEY = "sourdough_feed_session_v1";
@@ -250,7 +250,7 @@ export default function GraphScreen() {
         </Text>
 
         {/* ── Acidification Index ── */}
-        <CopilotStep
+        <TourStep
           text="Monitor your bacterial vitality with the Acidification Index."
           order={9}
           name="acidification-index"
@@ -273,10 +273,10 @@ export default function GraphScreen() {
             <ReadingHint body={ACID_HINT} onAbout={goToAbout} colors={colors} />
             <AcidificationChart data={acidSeries} hasLivePoint={hasLiveAcidPoint} />
           </CopilotView>
-        </CopilotStep>
+        </TourStep>
 
         {/* ── Lifting Index ── */}
-        <CopilotStep
+        <TourStep
           text="Track your yeast velocity and rise capacity here."
           order={10}
           name="lifting-index"
@@ -299,16 +299,16 @@ export default function GraphScreen() {
             <ReadingHint body={LIFT_HINT} onAbout={goToAbout} colors={colors} />
             <LiftingIndexChart data={liftSeries} />
           </CopilotView>
-        </CopilotStep>
+        </TourStep>
 
         {/* ── 3rd graph ── */}
-        <CopilotStep
+        <TourStep
           text="More data analysis and visualization coming soon."
           order={11}
           name="3rd-graph"
         >
           <CopilotView style={{ height: 1 }} />
-        </CopilotStep>
+        </TourStep>
       </ScrollView>
     </View>
   );

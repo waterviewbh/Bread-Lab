@@ -99,7 +99,7 @@ function ClassicTabLayout() {
               options={{
                 title: "Graph",
                 tabBarIcon: ({ color }) => (
-                  <CopilotStep
+                  <TourStep
                     text="When finished, check your growth trends in the Analytics tab."
                     order={10}
                     name="next-chapter-is-graph"
@@ -111,7 +111,7 @@ function ClassicTabLayout() {
                         <Feather name="activity" size={22} color={color} />
                       )}
                     </CopilotView>
-                  </CopilotStep>
+                  </TourStep>
                 ),
               }}
             />
@@ -120,7 +120,7 @@ function ClassicTabLayout() {
               options={{
                 title: "Recipe",
                 tabBarIcon: ({ color }) => (
-                  <CopilotStep
+                  <TourStep
                     text="Plan your next bake in the Recipes tab."
                     order={12}
                     name="next-chapter-is-recipe"
@@ -132,7 +132,7 @@ function ClassicTabLayout() {
                         <Feather name="book-open" size={22} color={color} />
                       )}
                     </CopilotView>
-                  </CopilotStep>
+                  </TourStep>
                 ),
               }}
             />
@@ -141,7 +141,7 @@ function ClassicTabLayout() {
               options={{
                 title: "Calendar",
                 tabBarIcon: ({ color }) => (
-                  <CopilotStep
+                  <TourStep
                     text="View your completed bakes in the Calendar."
                     order={16}
                     name="next-chapter-is-history"
@@ -153,7 +153,7 @@ function ClassicTabLayout() {
                         <Feather name="calendar" size={22} color={color} />
                       )}
                     </CopilotView>
-                  </CopilotStep>
+                  </TourStep>
                 ),
               }}
             />
@@ -162,7 +162,7 @@ function ClassicTabLayout() {
               options={{
                 title: "About",
                 tabBarIcon: ({ color }) => (
-                  <CopilotStep
+                  <TourStep
                     text="Finally, learn more about the app in About."
                     order={21}
                     name="next-chapter-is-about"
@@ -174,7 +174,7 @@ function ClassicTabLayout() {
                         <Feather name="info" size={22} color={color} />
                       )}
                     </CopilotView>
-                  </CopilotStep>
+                  </TourStep>
                 ),
               }}
             />

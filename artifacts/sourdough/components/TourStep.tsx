@@ -39,8 +39,8 @@ export function TourStep({ text, order, name, children }: TourStepProps) {
     return <>{children}</>;
   }
   return (
-    <CopilotStep text={text} order={order} name={name}>
+    <TourStep text={text} order={order} name={name}>
       {children}
-    </CopilotStep>
+    </TourStep>
   );
 }

@@ -41,9 +41,9 @@ import Svg, { Polygon } from "react-native-svg";
 import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
 import SegmentedNotepad from "@/components/SegmentedNotepad";
-import { CopilotStep, walkthroughable } from "react-native-copilot";
+import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
 
-const CopilotView = walkthroughable(View);
+// const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
@@ -847,16 +847,16 @@ export default function RecipeScreen() {
       {/* Section Toggle */}
       <View style={[s.sectionToggleWrap, { paddingTop: insets.top + webTop + 16, paddingHorizontal: 20, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View style={[s.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <CopilotStep text="The Recipe Builder is your digital cookbook." order={13} name="recipe-builder-toggle">
+          <TourStep text="The Recipe Builder is your digital cookbook." order={13} name="recipe-builder-toggle">
             <CopilotView style={[s.sectionBtn, section === "builder" && { backgroundColor: colors.card }]}>
               <Pressable onPress={() => setSection("builder")} style={{ width: '100%', alignItems: 'center' }}><Text style={[s.sectionBtnText, { color: section === "builder" ? colors.foreground : colors.mutedForeground }]}>Recipe Builder</Text></Pressable>
             </CopilotView>
-          </CopilotStep>
-          <CopilotStep text="The Recipe Runner guides you through every phase of your bake." order={14} name="recipe-runner-toggle">
+          </TourStep>
+          <TourStep text="The Recipe Runner guides you through every phase of your bake." order={14} name="recipe-runner-toggle">
             <CopilotView style={[s.sectionBtn, section === "runner" && { backgroundColor: colors.card }]}>
               <Pressable onPress={() => setSection("runner")} style={{ width: '100%', alignItems: 'center' }}><Text style={[s.sectionBtnText, { color: section === "runner" ? colors.foreground : colors.mutedForeground }]}>Recipe Runner</Text></Pressable>
             </CopilotView>
-          </CopilotStep>
+          </TourStep>
         </View>
       </View>
 
@@ -872,13 +872,13 @@ export default function RecipeScreen() {
           <View style={s.listHeader}>
             <Text style={[s.sectionTitle, { color: colors.foreground }]}>Recipes</Text>
 
-            <CopilotStep text="New" order={2} name="recipe-builder-button">
+            <TourStep text="New" order={2} name="recipe-builder-button">
               <CopilotView>
                 <Pressable onPress={openNewRecipe} style={[s.addBtn, { backgroundColor: colors.primary }]}>
                   <Text style={{ color: colors.primaryForeground }}>New Recipe</Text>
                 </Pressable>
               </CopilotView>
-            </CopilotStep>
+            </TourStep>
           </View>
 
           {/* Recipes List / Empty State */}
@@ -1102,7 +1102,7 @@ export default function RecipeScreen() {
 
               // State 3: Active Phase Card
               return (
-                <CopilotStep key={phase.key} text="Active Phase" order={15} name="active-bake">
+                <TourStep key={phase.key} text="Active Phase" order={15} name="active-bake">
                   <CopilotView style={[s.activeCard, { borderColor: colors.accent, backgroundColor: colors.card }]}>
                     <View style={s.activeHeader}>
                       <Text style={{ fontWeight: "700" }}>{phase.name}</Text>
@@ -1156,7 +1156,7 @@ export default function RecipeScreen() {
                       />
                     ))}
                   </CopilotView>
-                </CopilotStep>
+                </TourStep>
               );
             })}
           </View>

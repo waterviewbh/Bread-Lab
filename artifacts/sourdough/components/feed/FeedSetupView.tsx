@@ -19,14 +19,14 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CopilotStep, walkthroughable } from "react-native-copilot";
+import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
 
 import { useColors } from "@/hooks/useColors";
 import FlourSlider from "@/components/FlourSlider";
 import { calcRatioStr } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
-const CopilotView = walkthroughable(View);
+// const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
 interface Props {
   onStartFeed: (data: {
@@ -154,7 +154,7 @@ export default function FeedSetupView({ onStartFeed }: Props) {
         ]}
       ><View style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           {(["track", "plan"] as const).map((sec) => (
-            <CopilotStep
+            <TourStep
               key={sec}
               text={sec === "track" ? "Start here to monitor a live refresh." : "Click here to estimate when a refresh will peak..."}
               order={sec === "track" ? 2 : 3}
@@ -175,7 +175,7 @@ export default function FeedSetupView({ onStartFeed }: Props) {
                   </Text>
                 </Pressable>
               </CopilotView>
-            </CopilotStep>
+            </TourStep>
           ))}
         </View>
       </View>
@@ -196,7 +196,7 @@ export default function FeedSetupView({ onStartFeed }: Props) {
             showsVerticalScrollIndicator={false}
           >
             <Animated.View entering={FadeIn.duration(400)} style={styles.appHeader}>
-              <CopilotStep
+              <TourStep
                 name="app-name"
                 order={1}
                 text="Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by logging your starter's feeds."
@@ -204,13 +204,13 @@ export default function FeedSetupView({ onStartFeed }: Props) {
                  <Text style={[styles.appTitle, { color: colors.foreground }]}>Bread Lab</Text>
                  <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>log a feed</Text>
                </CopilotView>
-              </CopilotStep>
+              </TourStep>
             </Animated.View>
 
             {/* Feed Amounts */}
             <Animated.View entering={FadeInDown.delay(60).duration(400)}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Feed Amounts</Text>
-              <CopilotStep text="Enter your starter, flour, and water weights here." order={5} name="feed-ratios-input">
+              <TourStep text="Enter your starter, flour, and water weights here." order={5} name="feed-ratios-input">
                 <CopilotView style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.inputRow}>
                     <View style={{ flex: 1, marginRight: 8 }}>
@@ -283,7 +283,7 @@ export default function FeedSetupView({ onStartFeed }: Props) {
                     <Text style={[styles.calcHint, { color: colors.mutedForeground }]}>Enter all three weights to see ratio</Text>
                   )}
                 </CopilotView>
-              </CopilotStep>
+              </TourStep>
             </Animated.View>
 
             {/* Flour Type Slider */}
@@ -296,7 +296,7 @@ export default function FeedSetupView({ onStartFeed }: Props) {
 
             {/* Initial Readings */}
             <Animated.View entering={FadeInDown.delay(160).duration(400)} style={{ marginTop: 20 }}>
-              <CopilotStep text="A log of your temperature, pH, and rise data during the refresh." order={6} name="live-data-log">
+              <TourStep text="A log of your temperature, pH, and rise data during the refresh." order={6} name="live-data-log">
                 <CopilotView>
                   <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Initial Readings</Text>
                   <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -337,12 +337,12 @@ export default function FeedSetupView({ onStartFeed }: Props) {
                     </View>
                   </View>
                 </CopilotView>
-              </CopilotStep>
+              </TourStep>
             </Animated.View>
 
             {/* Just Fed Photo */}
             <Animated.View entering={FadeInDown.delay(220).duration(400)} style={{ marginTop: 20 }}>
-              <CopilotStep text="Capture or upload an image of your starter right after feeding it." order={7} name="just-fed-photo">
+              <TourStep text="Capture or upload an image of your starter right after feeding it." order={7} name="just-fed-photo">
                 <CopilotView>
                   <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Just Fed Photo</Text>
                   <Pressable
@@ -362,19 +362,19 @@ export default function FeedSetupView({ onStartFeed }: Props) {
                     )}
                   </Pressable>
                 </CopilotView>
-              </CopilotStep>
+              </TourStep>
             </Animated.View>
 
             {/* Start Button */}
             <Animated.View entering={FadeInDown.delay(280).duration(400)} style={{ marginTop: 28 }}>
-              <CopilotStep text="Tap this to begin the refresh timer." order={8} name="start-feed-btn">
+              <TourStep text="Tap this to begin the refresh timer." order={8} name="start-feed-btn">
                 <CopilotView>
                   <Pressable onPress={handleStart} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1 }]}>
                     <Ionicons name="timer-outline" size={20} color={colors.primaryForeground} />
                     <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>Start Feed Timer</Text>
                   </Pressable>
                 </CopilotView>
-              </CopilotStep>
+              </TourStep>
             </Animated.View>
           </ScrollView>
         </KeyboardAvoidingView>
