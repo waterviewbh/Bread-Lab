@@ -1,9 +1,13 @@
 import { Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { View } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { View } from "react-native";
 
-export default function WebTabLayout() {
+// 1. Import your original TourContext infrastructure
+import { TourProvider } from "@/contexts/TourContext";
+import { TOUR_CHAPTERS } from "@/constants/TourConfig";
+
+function WebTabs() {
   const colors = useColors();
 
   return (
@@ -57,5 +61,14 @@ export default function WebTabLayout() {
         }}
       />
     </Tabs>
+  );
+}
+
+// 2. Wrap the tabs layout with TourProvider so child elements don't panic
+export default function WebTabLayout() {
+  return (
+    <TourProvider chapters={TOUR_CHAPTERS}>
+      <WebTabs />
+    </TourProvider>
   );
 }
