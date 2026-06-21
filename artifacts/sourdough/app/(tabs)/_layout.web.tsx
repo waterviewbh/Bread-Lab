@@ -3,7 +3,7 @@ import { Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 
-// 1. Create a lightweight, empty context mock so child screens don't throw provider errors
+// 1. We create an explicit empty dummy context object to satisfy child hooks
 export const DummyTourContext = createContext({
   currentChapter: null,
   startTour: () => {},
@@ -68,7 +68,7 @@ function WebTabs() {
   );
 }
 
-// 2. Wrap your layout in the dummy provider instead of loading your mobile TourContext file
+// 2. Wrap your web screens inside the fake provider instead of importing your mobile tour files
 export default function WebTabLayout() {
   return (
     <DummyTourContext.Provider value={{ currentChapter: null, startTour: () => {}, stopTour: () => {}, isTourActive: false }}>
