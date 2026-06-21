@@ -156,6 +156,7 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Added", content: "Increased the amount of refresh data shown on the 'report card' in the Calendar tab." },
         { type: "Changed", content: "Loosened the data collection requirements for the Refresh tab. Some users may simply want to track their refreshes by volume and time." },
         { type: "Changed", content: "Not directly tied to the app, but backend code has been modified to accommodate a web version." },
+        { type: "Changed", content: "Made the printed PDFs 'prettier'. They now look like the cards in the app or webapp rather than a 1990s data table." },
       ],
     },
     {

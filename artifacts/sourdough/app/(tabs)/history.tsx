@@ -508,10 +508,8 @@ export default function HistoryScreen() {
       });
   };
 
-  /** Build the HTML document for a bake session (shared by print and share). */
+  /** Build the HTML document for a bake session with app-like styling. */
   const buildBakeDetailHtml = async (bake: BakeHistoryEntry): Promise<string> => {
-    // Try to load the source recipe so we can fill in ingredients/instructions
-    // that were not preserved when this bake was originally saved.
     let recipePhaseMap: Record<string, { ingredients?: string; instructions?: string }> = {};
     if (bake.recipeId) {
       try {
@@ -531,39 +529,49 @@ export default function HistoryScreen() {
     }
 
     const date = new Date(bake.startedAt).toLocaleDateString();
-    const phaseRows = bake.phases
-      .map((p) => {
-        const dur =
-          p.startedAt && p.completedAt
-            ? formatPhaseDuration(p.completedAt - p.startedAt)
-            : p.startedAt ? "In progress" : "—";
-        const rRows = (p.readings ?? [])
-          .map((r) => `<tr><td>${formatTime(r.loggedAt)}</td><td>${r.pH}</td><td>${r.temp}°${r.tempUnit}</td><td>${r.volume ?? ""}</td><td>${r.note ?? ""}</td></tr>`)
-          .join("");
+
+      const phasesHtml = bake.phases.map((p) => {
+        const dur = p.startedAt && p.completedAt
+          ? formatPhaseDuration(p.completedAt - p.startedAt)
+          : p.startedAt ? "In progress" : "—";
+
         const fallback = recipePhaseMap[p.key] ?? {};
         const ingredients = p.ingredients || fallback.ingredients;
         const instructions = p.instructions || fallback.instructions;
-        const ingRow = ingredients
-          ? `<tr><td colspan="2" style="padding:6px;color:#555"><strong>Ingredients:</strong><br>${ingredients.replace(/\n/g, "<br>")}</td></tr>`
-          : "";
-        const insRow = instructions
-          ? `<tr><td colspan="2" style="padding:6px;color:#555"><strong>Instructions:</strong><br>${instructions.replace(/\n/g, "<br>")}</td></tr>`
-          : "";
-        return `<tr><td><strong>${p.name}</strong></td><td>${dur}</td></tr>${ingRow}${insRow}${
-          rRows
-            ? `<tr><td colspan="2"><table border="1" cellpadding="4"><tr><th>Time</th><th>pH</th><th>Temp</th><th>Volume</th><th>Note</th></tr>${rRows}</table></td></tr>`
-            : ""
-        }`;
-      })
-      .join("");
-    return `<html><body style="font-family:sans-serif;padding:24px">
-      <h2>Bread Lab — ${bake.recipeName}</h2>
-      <p><strong>Date:</strong> ${date}</p>
-      ${bake.notes ? `<p><strong>Notes:</strong> ${bake.notes}</p>` : ""}
-      <h3>Phases</h3>
-      <table border="1" cellpadding="6"><tr><th>Phase</th><th>Duration</th></tr>${phaseRows}</table>
-    </body></html>`;
-  };
+
+        return `
+          <div class="card">
+            <div class="card-header">
+              <span class="phase-name">${p.name}</span>
+              <span class="duration">${dur}</span>
+            </div>
+            ${ingredients ? `<div class="section"><div class="label">Ingredients</div><div class="content">${ingredients.replace(/\n/g, "<br>")}</div></div>` : ""}
+            ${instructions ? `<div class="section"><div class="label">Instructions</div><div class="content">${instructions.replace(/\n/g, "<br>")}</div></div>` : ""}
+          </div>
+        `;
+      }).join("");
+    const date = new Date(bake.startedAt).toLocaleDateString();
+
+      const phasesHtml = bake.phases.map((p) => {
+        const dur = p.startedAt && p.completedAt
+          ? formatPhaseDuration(p.completedAt - p.startedAt)
+          : p.startedAt ? "In progress" : "—";
+
+        const fallback = recipePhaseMap[p.key] ?? {};
+        const ingredients = p.ingredients || fallback.ingredients;
+        const instructions = p.instructions || fallback.instructions;
+
+        return `
+          <div class="card">
+            <div class="card-header">
+              <span class="phase-name">${p.name}</span>
+              <span class="duration">${dur}</span>
+            </div>
+            ${ingredients ? `<div class="section"><div class="label">Ingredients</div><div class="content">${ingredients.replace(/\n/g, "<br>")}</div></div>` : ""}
+            ${instructions ? `<div class="section"><div class="label">Instructions</div><div class="content">${instructions.replace(/\n/g, "<br>")}</div></div>` : ""}
+          </div>
+        `;
+      }).join("");
 
   /** Build HTML and invoke the system print dialog for a bake session. */
   const printBakeDetail = async (bake: BakeHistoryEntry) => {
