@@ -1,11 +1,15 @@
+import React, { createContext } from "react";
 import { Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
-import { View } from "react-native";
 
-// 1. Import your original TourContext infrastructure
-import { TourProvider } from "@/contexts/TourContext";
-import { TOUR_CHAPTERS } from "@/constants/TourConfig";
+// 1. Create a lightweight, empty context mock so child screens don't throw provider errors
+export const DummyTourContext = createContext({
+  currentChapter: null,
+  startTour: () => {},
+  stopTour: () => {},
+  isTourActive: false,
+});
 
 function WebTabs() {
   const colors = useColors();
@@ -64,11 +68,11 @@ function WebTabs() {
   );
 }
 
-// 2. Wrap the tabs layout with TourProvider so child elements don't panic
+// 2. Wrap your layout in the dummy provider instead of loading your mobile TourContext file
 export default function WebTabLayout() {
   return (
-    <TourProvider chapters={TOUR_CHAPTERS}>
+    <DummyTourContext.Provider value={{ currentChapter: null, startTour: () => {}, stopTour: () => {}, isTourActive: false }}>
       <WebTabs />
-    </TourProvider>
+    </DummyTourContext.Provider>
   );
 }
