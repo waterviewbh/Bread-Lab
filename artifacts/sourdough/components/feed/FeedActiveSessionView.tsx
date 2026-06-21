@@ -20,7 +20,8 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CopilotStep, walkthroughable } from "react-native-copilot";
+// import { CopilotStep, walkthroughable } from "react-native-copilot"; red-tagged for web-0.1 rmv in 3 revs
+import { TourStep, CopilotView } from "@/components/TourStep";
 
 import { useColors } from "@/hooks/useColors";
 import PHChart from "@/components/PHChart";
@@ -29,7 +30,7 @@ import { FeedSession, Reading, PeakData } from "@/types/feed";
 import { formatDuration, formatTimeToPeak } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
-const CopilotView = walkthroughable(View);
+// const CopilotView = walkthroughable(View);  red-tagged for web-0.1 rmv in 3 revs
 
 interface Props {
   session: FeedSession;
@@ -194,7 +195,7 @@ export default function FeedActiveSessionView({
         }}
         showsVerticalScrollIndicator={false}
       >
-        <CopilotStep
+        <TourStep
           name="app-name"
           order={1}
           text="Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by logging your starter's feeds."
@@ -207,10 +208,10 @@ export default function FeedActiveSessionView({
               {session.peak ? "log a feed" : "watching it rise"}
             </Text>
           </CopilotView>
-        </CopilotStep>
+        </TourStep>
 
         <Animated.View entering={FadeInDown.duration(500)}>
-          <CopilotStep
+          <TourStep
             name="active-timer"
             order={4}
             text="This timer tracks exactly how long your starter has been fermenting."
@@ -230,7 +231,7 @@ export default function FeedActiveSessionView({
                   : formatDuration(elapsed)}
               </Text>
             </CopilotView>
-          </CopilotStep>
+          </TourStep>
         </Animated.View>
 
         <View
@@ -244,7 +245,7 @@ export default function FeedActiveSessionView({
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
             Feed Ratios
           </Text>
-          <CopilotStep text="Enter your starter, flour, and water weights here." order={5} name="feed-ratios-input">
+          <TourStep text="Enter your starter, flour, and water weights here." order={5} name="feed-ratios-input">
             <CopilotView style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.ratioRow}>
                 <View style={styles.ratioItem}>
@@ -306,12 +307,12 @@ export default function FeedActiveSessionView({
                 </View>
               )}
             </CopilotView>
-          </CopilotStep>
+          </TourStep>
         </Animated.View>
 
         {/* Unified Feed Readings Section */}
         <Animated.View entering={FadeInDown.delay(175).duration(400)} style={{ marginTop: 24 }}>
-          <CopilotStep text="A timeline of your starter's vitality: pH, Temp, and Volume readings." order={6} name="live-data-log">
+          <TourStep text="A timeline of your starter's vitality: pH, Temp, and Volume readings." order={6} name="live-data-log">
             <CopilotView style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0, textTransform: "none" }]}>Feed Readings</Text>
               {!session.peak && (
@@ -321,7 +322,7 @@ export default function FeedActiveSessionView({
                 </Pressable>
               )}
             </CopilotView>
-          </CopilotStep>
+          </TourStep>
 
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 0, overflow: "hidden" }]}>
             {/* Table Header */}
@@ -392,7 +393,7 @@ export default function FeedActiveSessionView({
             entering={FadeInDown.delay(150).duration(400)}
             style={{ marginTop: 20 }}
           >
-            <CopilotStep
+            <TourStep
               text="Elapsed time along the bottom, pH on the left axis, and temperature on the right. A graph of your real-time log."
               order={9}
               name="feed-trends"
@@ -428,7 +429,7 @@ export default function FeedActiveSessionView({
                   ]}
                 />
               </CopilotView>
-            </CopilotStep>
+            </TourStep>
           </Animated.View>
         )}
 
@@ -475,14 +476,14 @@ export default function FeedActiveSessionView({
 
         {!session.peak && (
           <Animated.View entering={FadeInUp.delay(300).duration(400)}>
-            <CopilotStep text="Once your starter reaches its peak, mark the refresh complete..." order={10} name="mark-as-peak">
+            <TourStep text="Once your starter reaches its peak, mark the refresh complete..." order={10} name="mark-as-peak">
               <CopilotView>
                 <Pressable onPress={() => setShowPeakModal(true)} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.accent, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1 }]}>
                   <Ionicons name="trending-up" size={20} color={colors.accentForeground} />
                   <Text style={[styles.primaryButtonText, { color: colors.accentForeground }]}>Mark as Peak</Text>
                 </Pressable>
               </CopilotView>
-            </CopilotStep>
+            </TourStep>
           </Animated.View>
         )}
 

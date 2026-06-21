@@ -15,9 +15,10 @@ import { useColors } from "@/hooks/useColors";
 import { useFontSize } from "@/contexts/FontSizeContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useTour } from "@/contexts/TourContext";
-import { CopilotStep, walkthroughable } from "react-native-copilot";
+//import { CopilotStep, walkthroughable } from "react-native-copilot"; red-tagged at web-0.1 to avoid crashes. removed after 3 revs
+// const CopilotView = walkthroughable(View); red-tagged at web-0.1 to avoid crashes. removed after 3 revs
+import { TourStep, CopilotView } from "@/components/TourStep";
 
-const CopilotView = walkthroughable(View);
 // import appConfig from "../../app.json";  red tagged 1.0.10-candidate remove after 3 revs
 import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA } from "../../constants/aboutContents";
 
@@ -301,7 +302,7 @@ export default function AboutScreen() {
       </Text>
 
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <CopilotStep
+        <TourStep
           text="Toggle advanced accessibility settings here."
           order={22}
           name="font-setting-toggle"
@@ -325,7 +326,7 @@ export default function AboutScreen() {
               accessibilityState={{ checked: fullFontSize }}
             />
           </CopilotView>
-        </CopilotStep>
+        </TourStep>
         <View style={[styles.settingRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
           <View style={styles.settingText}>
             <Text style={[styles.settingTitle, { color: colors.foreground }]}>Temperature Unit</Text>
@@ -396,7 +397,7 @@ export default function AboutScreen() {
           </Pressable>
         </View>
 
-        <CopilotStep
+        <TourStep
           text="Detailed help for every tab in the Bread Lab."
           order={23}
           name="help-section"
@@ -406,7 +407,7 @@ export default function AboutScreen() {
               <HelpAccordion key={i} tab={tab} colors={colors} />
             ))}
           </CopilotView>
-        </CopilotStep>
+        </TourStep>
 
       {/* ── Interpreting Your Data ── */}
       <Text
@@ -417,7 +418,7 @@ export default function AboutScreen() {
       >
         {"Interpreting Your Data"}
       </Text>
-      <CopilotStep
+      <TourStep
         text="A deep dive into how to read your dough and the data you collect from it."
         order={24}
         name="interpreting-data-section"
@@ -426,7 +427,7 @@ export default function AboutScreen() {
           <InterpretationCard data={ACIDIFICATION_DATA} colors={colors} />
           <InterpretationCard data={LIFTING_DATA} colors={colors} />
         </CopilotView>
-      </CopilotStep>
+      </TourStep>
 
       <Text
         style={[

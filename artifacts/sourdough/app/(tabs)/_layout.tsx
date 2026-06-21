@@ -8,9 +8,10 @@ import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { TourProvider } from "@/contexts/TourContext";
 import { TOUR_CHAPTERS } from "@/constants/TourConfig";
-import { CopilotStep, walkthroughable } from "react-native-copilot";
+//import { CopilotStep, walkthroughable } from "react-native-copilot"; red-tagged for web-0.1 rmv after 3 revs
+import { TourStep as CopilotStep, CopilotView } from "@/components/TourStep";
 
-const CopilotView = walkthroughable(View);
+// const CopilotView = walkthroughable(View); red-tagged for web-0.1 rmv after 3 revs
 
 function NativeTabLayout() {
   return (

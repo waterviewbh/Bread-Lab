@@ -155,6 +155,7 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Fixed", content: "Unified the view for data entry during an active feed. The initial reading, active log entries, and peak all allow you to gather the same data in the same format." },
         { type: "Added", content: "Increased the amount of refresh data shown on the 'report card' in the Calendar tab." },
         { type: "Changed", content: "Loosened the data collection requirements for the Refresh tab. Some users may simply want to track their refreshes by volume and time." },
+        { type: "Changed", content: "Not directly tied to the app, but backend code has been modified to accommodate a web version." },
       ],
     },
     {
