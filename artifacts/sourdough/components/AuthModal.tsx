@@ -92,8 +92,14 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           // simultaneously causes conflicting messages.
         })
         .catch(() => {});
-    } catch {
-      Alert.alert("Something went wrong", "Check your connection and try again.");
+    } catch (error) {
+      console.error("Auth Identification Error:", error);
+      if (Platform.OS === 'web') {
+        // window.alert is reliable for debugging on web
+        window.alert("Auth Error: " + (error instanceof Error ? error.message : "Check console"));
+      } else {
+        Alert.alert("Something went wrong", "Check your connection and try again.");
+      }
     } finally {
       setLoading(false);
     }

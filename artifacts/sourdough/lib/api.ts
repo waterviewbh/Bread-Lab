@@ -250,7 +250,12 @@ export const api = {
       starterName: string;
     }): Promise<ApiAuthResponse> => {
       console.log(">>> IDENTIFY BUTTON CLICKED <<<");
-      if (!supabase) throw new Error("Supabase not configured");
+      console.log("Supabase Client Status:", supabase ? "INITIALIZED" : "NULL");
+        if (!supabase) {
+          const errorMsg = "Supabase not configured. URL: " + (process.env.EXPO_PUBLIC_SUPABASE_URL ? "Present" : "MISSING");
+          console.error(errorMsg);
+          throw new Error(errorMsg);
+        }
       const fn = body.firstName.trim();
       const sn = body.starterName.trim();
 
