@@ -53,3 +53,5 @@ Thumbs.db
 
 # Unused GitHub Actions workflows
 .github/workflows/
+.vercel
+.env*
