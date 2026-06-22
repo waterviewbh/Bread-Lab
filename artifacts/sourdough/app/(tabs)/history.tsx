@@ -508,49 +508,27 @@ export default function HistoryScreen() {
       });
   };
 
-  /** Build the HTML document for a bake session with app-like styling. */
-  const buildBakeDetailHtml = async (bake: BakeHistoryEntry): Promise<string> => {
-    let recipePhaseMap: Record<string, { ingredients?: string; instructions?: string }> = {};
-    if (bake.recipeId) {
-      try {
-        const recipesRaw = await AsyncStorage.getItem("bread_lab_recipes_v1");
-        if (recipesRaw) {
-          const recipes = JSON.parse(recipesRaw) as { id: string; phases: { key: string; ingredients?: string; instructions?: string }[] }[];
-          const sourceRecipe = recipes.find((r) => r.id === bake.recipeId);
-          if (sourceRecipe) {
-            for (const rp of sourceRecipe.phases) {
-              recipePhaseMap[rp.key] = { ingredients: rp.ingredients, instructions: rp.instructions };
+    /** Build the HTML document for a bake session with app-like styling. */
+    const buildBakeDetailHtml = async (bake: BakeHistoryEntry): Promise<string> => {
+      let recipePhaseMap: Record<string, { ingredients?: string; instructions?: string }> = {};
+      if (bake.recipeId) {
+        try {
+          const recipesRaw = await AsyncStorage.getItem("bread_lab_recipes_v1");
+          if (recipesRaw) {
+            const recipes = JSON.parse(recipesRaw) as { id: string; phases: { key: string; ingredients?: string; instructions?: string }[] }[];
+            const sourceRecipe = recipes.find((r) => r.id === bake.recipeId);
+            if (sourceRecipe) {
+              for (const rp of sourceRecipe.phases) {
+                recipePhaseMap[rp.key] = { ingredients: rp.ingredients, instructions: rp.instructions };
+              }
             }
           }
+        } catch {
+          // If lookup fails, gracefully fall back to bake-only data
         }
-      } catch {
-        // If lookup fails, gracefully fall back to bake-only data
       }
-    }
 
-    const date = new Date(bake.startedAt).toLocaleDateString();
-
-      const phasesHtml = bake.phases.map((p) => {
-        const dur = p.startedAt && p.completedAt
-          ? formatPhaseDuration(p.completedAt - p.startedAt)
-          : p.startedAt ? "In progress" : "—";
-
-        const fallback = recipePhaseMap[p.key] ?? {};
-        const ingredients = p.ingredients || fallback.ingredients;
-        const instructions = p.instructions || fallback.instructions;
-
-        return `
-          <div class="card">
-            <div class="card-header">
-              <span class="phase-name">${p.name}</span>
-              <span class="duration">${dur}</span>
-            </div>
-            ${ingredients ? `<div class="section"><div class="label">Ingredients</div><div class="content">${ingredients.replace(/\n/g, "<br>")}</div></div>` : ""}
-            ${instructions ? `<div class="section"><div class="label">Instructions</div><div class="content">${instructions.replace(/\n/g, "<br>")}</div></div>` : ""}
-          </div>
-        `;
-      }).join("");
-    const date = new Date(bake.startedAt).toLocaleDateString();
+      const printDate = new Date(bake.startedAt).toLocaleDateString();
 
       const phasesHtml = bake.phases.map((p) => {
         const dur = p.startedAt && p.completedAt
@@ -561,6 +539,16 @@ export default function HistoryScreen() {
         const ingredients = p.ingredients || fallback.ingredients;
         const instructions = p.instructions || fallback.instructions;
 
+        // Build readings table if they exist
+        const readingsHtml = (p.readings ?? []).length > 0
+          ? `<div class="readings">
+               <table>
+                 <tr><th>Time</th><th>pH</th><th>Temp</th><th>Note</th></tr>
+                 ${p.readings!.map(r => `<tr><td>${formatTime(r.loggedAt)}</td><td>${r.pH || '—'}</td><td>${r.temp ? `${r.temp}°${r.tempUnit}` : '—'}</td><td>${r.note || ''}</td></tr>`).join('')}
+               </table>
+             </div>`
+          : "";
+
         return `
           <div class="card">
             <div class="card-header">
@@ -569,15 +557,74 @@ export default function HistoryScreen() {
             </div>
             ${ingredients ? `<div class="section"><div class="label">Ingredients</div><div class="content">${ingredients.replace(/\n/g, "<br>")}</div></div>` : ""}
             ${instructions ? `<div class="section"><div class="label">Instructions</div><div class="content">${instructions.replace(/\n/g, "<br>")}</div></div>` : ""}
+            ${readingsHtml}
           </div>
         `;
       }).join("");
 
-  /** Build HTML and invoke the system print dialog for a bake session. */
-  const printBakeDetail = async (bake: BakeHistoryEntry) => {
-    const html = await buildBakeDetailHtml(bake);
-    await Print.printAsync({ html }).catch(() => {});
-  };
+      return `
+        <html>
+          <head>
+            <style>
+              body { font-family: -apple-system, sans-serif; background: #f9f9f9; color: #2A1508; padding: 40px; }
+              h2 { margin-bottom: 4px; color: #C4704F; font-size: 24px; }
+              .date { margin-bottom: 24px; color: #666; font-size: 14px; }
+              .notes-box { background: #fff; padding: 16px; border-radius: 12px; border: 1px solid #e0e0e0; margin-bottom: 24px; font-size: 14px; }
+              .card { background: #fff; padding: 20px; border-radius: 12px; border: 1px solid #e0e0e0; margin-bottom: 16px; page-break-inside: avoid; }
+              .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #f0f0f0; padding-bottom: 8px; }
+              .phase-name { font-weight: 700; font-size: 16px; }
+              .duration { color: #666; font-size: 13px; }
+              .section { margin-top: 12px; }
+              .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; font-weight: 700; margin-bottom: 4px; }
+              .content { font-size: 14px; line-height: 1.5; color: #333; }
+              .readings { margin-top: 15px; border-top: 1px dashed #eee; padding-top: 10px; }
+              table { width: 100%; border-collapse: collapse; font-size: 12px; }
+              th { text-align: left; color: #888; padding-bottom: 4px; }
+              td { padding: 4px 0; border-bottom: 1px solid #fafafa; }
+              @media print { body { background: #fff; padding: 0; } .card { border: 1px solid #eee; } }
+            </style>
+          </head>
+          <body>
+            <h2>${bake.recipeName}</h2>
+            <div class="date">Bake started on ${printDate}</div>
+            ${bake.notes ? `<div class="notes-box"><strong>Baker's Notes:</strong><br>${bake.notes.replace(/\n/g, "<br>")}</div>` : ""}
+            ${phasesHtml}
+          </body>
+        </html>
+      `;
+    };
+
+    /** Build HTML and invoke the system print dialog for a bake session. */
+    const printBakeDetail = async (bake: BakeHistoryEntry) => {
+      const html = await buildBakeDetailHtml(bake);
+
+      if (Platform.OS === "web") {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(html);
+          doc.close();
+
+          // Brief delay to ensure browser engine renders the HTML string
+          setTimeout(() => {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            document.body.removeChild(iframe);
+          }, 500);
+        }
+      } else {
+        await Print.printAsync({ html }).catch(() => {});
+      }
+    };
 
   /** Export a bake session as a PDF and open the native share sheet. */
   const shareBakeDetail = async (bake: BakeHistoryEntry) => {
