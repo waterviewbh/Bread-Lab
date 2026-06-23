@@ -189,7 +189,10 @@ export default function FeedScreen() {
           onClearSession={handleClearSession}
         />
       ) : (
-        <FeedSetupView onStartFeed={handleStartFeed} />
+        <FeedSetupView
+          onStartFeed={handleStartFeed}
+          historyData={historyData}
+        />
       )}
 
       {showNudge && (

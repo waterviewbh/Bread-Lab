@@ -9,7 +9,7 @@ import { useColors } from "@/hooks/useColors";
 import { TourProvider } from "@/contexts/TourContext";
 import { TOUR_CHAPTERS } from "@/constants/TourConfig";
 //import { CopilotStep, walkthroughable } from "react-native-copilot"; red-tagged for web-0.1 rmv after 3 revs
-import { TourStep as CopilotStep, CopilotView } from "@/components/TourStep";
+import { TourStep, CopilotView } from "@/components/TourStep";
 
 // const CopilotView = walkthroughable(View); red-tagged for web-0.1 rmv after 3 revs
 
@@ -184,11 +184,14 @@ function ClassicTabLayout() {
 
 export default function TabLayout() {
   // 1. Determine which layout to show
-  const content = isLiquidGlassAvailable() ? (
+  /*const content = isLiquidGlassAvailable() ? (
+  () ? (
     <NativeTabLayout />
   ) : (
     <ClassicTabLayout />
   );
+*/
+  const content = <ClassicTabLayout />
 
   // 2. Wrap it in the TourProvider so all tabs can see it
   return (

@@ -26,9 +26,14 @@ import FlourSlider from "@/components/FlourSlider";
 import { calcRatioStr } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
+import PeakWindowAdvisor from "./PeakWindowAdvisor";
+import { PlannedRecipe } from "@/lib/predictions";
+import { FeedSession } from "@/types/feed";
+
 // const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
 interface Props {
+  historyData: FeedSession[];
   onStartFeed: (data: {
     starterWeight: string;
     flourWeight: number;
@@ -42,10 +47,18 @@ interface Props {
   }) => void;
 }
 
-export default function FeedSetupView({ onStartFeed }: Props) {
+export default function FeedSetupView({ onStartFeed, historyData }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { tempUnit } = usePreferences();
+
+  const handleApplyRecipe = (recipe:PlannedRecipe) => {
+      setStarterWeight(recipe.starter.toString());
+      setFlourWeightStr(recipe.flour.toString());
+      setWaterWeightStr(recipe.water.toString());
+      setSection("track"); // Switch tab
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);  // haptic feedback? not a fan.
+  };
 
   // --- Local State ---
   const [section, setSection] = useState<"track" | "plan">("track");
@@ -214,7 +227,7 @@ export default function FeedSetupView({ onStartFeed }: Props) {
                 <CopilotView style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.inputRow}>
                     <View style={{ flex: 1, marginRight: 8 }}>
-                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Starter (g)</Text>
+                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Starter (g)</Text>
                       <TextInput
                         style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]}
                         placeholder="e.g. 50"
@@ -225,7 +238,7 @@ export default function FeedSetupView({ onStartFeed }: Props) {
                       />
                     </View>
                     <View style={{ flex: 1, marginRight: 8 }}>
-                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Flour (g)</Text>
+                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Flour (g)</Text>
                       <TextInput
                         style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]}
                         placeholder="e.g. 100"
@@ -236,7 +249,7 @@ export default function FeedSetupView({ onStartFeed }: Props) {
                       />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Water (g)</Text>
+                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Water (g)</Text>
                       <TextInput
                         style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]}
                         placeholder="e.g. 100"
@@ -380,17 +393,19 @@ export default function FeedSetupView({ onStartFeed }: Props) {
         </KeyboardAvoidingView>
       )}
 
-      {/* Plan Section */}
-      {section === "plan" && (
-        <ScrollView contentContainerStyle={{ paddingTop: 24, paddingBottom: insets.bottom + tabBarPad + 24, paddingHorizontal: 20, flexGrow: 1, justifyContent: "center", alignItems: "center" }} showsVerticalScrollIndicator={false}>
-          <Animated.View entering={FadeIn.duration(400)} style={{ alignItems: "center" }}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground, fontSize: 24, marginBottom: 16 }]}>Plan a Feed</Text>
-            <Text style={[styles.appSubtitle, { color: colors.mutedForeground, textAlign: "center", marginBottom: 32 }]}>
-              Whether you want to know how long a prescribed feed will take to peak, or you want a levain to peak at a certain time, this calculator can help.{"\n"}Coming soon
-            </Text>
-          </Animated.View>
-        </ScrollView>
-      )}
+            {/* Plan Section */}
+            {section === "plan" && (
+              <Animated.View
+                entering={FadeIn.duration(400)}
+                style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16 }}
+              >
+                <PeakWindowAdvisor
+                  history={historyData}
+                  onApplyRecipe={handleApplyRecipe}
+                  defaultTemp={initialTemp}
+                />
+              </Animated.View>
+            )}
     </View>
   );
 }

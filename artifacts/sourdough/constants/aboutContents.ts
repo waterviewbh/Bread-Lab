@@ -25,11 +25,21 @@ export const HELP: HelpTab[] = [
         ],
       },
       {
-        heading: "Feed — Active Feed",
+        heading: "Feed — Track a Feed",
         bullets: [
           "Active Elapsed Timer: Features a prominent digital stopwatch at the top during active refresh sessions.",
-          "Active Metrics: A  '+ Log Reading' button allows you to log pH, temperature, and observations during the refresh. The data points are timestamped to the stopwatch.",
-          "Session Termination Target: A 'Mark as Peak' button allows for one final reading, a picture, and peak volume. This saves session data to the Calendar.",
+          "Active Metrics: A  '+ Log Reading' button allows you to log pH, temperature, current volume, and observations during the refresh. The data points are timestamped to the stopwatch.",
+          "Session Termination Target: A 'Mark as Peak' button allows for one final reading, and a picture. This saves session data to the Calendar.",
+        ],
+      },
+      {
+        heading: "Feed — Plan a Feed",
+        bullets: [
+          "Peak Window Advisor helps you build a levain that peaks on your schedule. It uses either default peak timing estimates, or your refresh data once you have logged 3 feeds in the app.",
+          "Note: you should always set some of your parent starter aside to continue the culture; the levain recipe provided assumes that you will use all of the calculated feed.",
+          "Enter in your bake recipe's total mass for inoculation (e.g., 100 g peak starter), and the expected temperature where it will rise, and you be given a suggested feed ratio and amounts.",
+          "If the levain would peak overnight (between 8PM and 5AM), it offers one or more 'better options' that will peak outside of that Sleep Zone. Click on the option to replace the default offering.",
+          "Once you have a schedule that you like, hit the 'Build this Levain' button and the data will be transferred to the Track a Feed page for you to begin.",
         ],
       },
     ],
@@ -150,18 +160,18 @@ export const CHANGELOG: ChangelogVersion[] = [
     },
 */
     {
-      version: "v1.0.12",
+      version: "v1.0.12", /* -- published 202606XX -- */
       changes: [
         { type: "Fixed", content: "Unified the view for data entry during an active feed. The initial reading, active log entries, and peak all allow you to gather the same data in the same format." },
         { type: "Added", content: "Increased the amount of refresh data shown on the 'report card' in the Calendar tab." },
         { type: "Changed", content: "Loosened the data collection requirements for the Refresh tab. Some users may simply want to track their refreshes by volume and time." },
         { type: "Changed", content: "Not directly tied to the app, but backend code has been modified to accommodate a web version." },
         { type: "Changed", content: "Made the printed PDFs 'prettier'. They now look like the cards in the app or webapp rather than a 1990s data table." },
+        { type: "Added", content: "The Plan a Feed page on the Feed tab is now live. If you have logged at least 3 refreshes in the app, your starter vitality data is used to estimate time-to-peak, and can warn you if it's scheduled to peak overnight." },
       ],
     },
     {
-      version: "v1.0.11",
-
+      version: "v1.0.11", /* -- published 20260620 -- */
       changes: [
         { type: "Added", content: "Global preferences (e.g., °F or °C) section in the About tab." },
         { type: "Changed", content: "Some significant code 'refactoring' to make future development easier." },
