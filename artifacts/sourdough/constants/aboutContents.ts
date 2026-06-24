@@ -35,10 +35,10 @@ export const HELP: HelpTab[] = [
       {
         heading: "Feed — Plan a Feed",
         bullets: [
-          "Peak Window Advisor helps you build a levain that peaks on your schedule. It uses either default peak timing estimates, or your refresh data once you have logged 3 feeds in the app.",
-          "Note: you should always set some of your parent starter aside to continue the culture; the levain recipe provided assumes that you will use all of the calculated feed.",
-          "Enter in your bake recipe's total mass for inoculation (e.g., 100 g peak starter), and the expected temperature where it will rise, and you be given a suggested feed ratio and amounts.",
-          "If the levain would peak overnight (between 8PM and 5AM), it offers one or more 'better options' that will peak outside of that Sleep Zone. Click on the option to replace the default offering.",
+          "Peak Window Advisor helps you build a levain (in general terms, a pre-ferment) that peaks on your schedule. It uses smart default estimates, or your own history once you have logged 3 feeds in the app.",
+          "Note: you should always set some of your parent starter aside to continue the culture; the recipe provided for this levain assumes that you will use all of the calculated feed.",
+          "Enter in your bake recipe's required levain mass and the expected temperature to receive a suggested feed ratio and amounts.",
+          "If the levain would peak overnight (between 8PM and 5AM), the app suggests optimized alternatives to avoid your 'Sleep Zone.' Tap the option to update your plan.",
           "Once you have a schedule that you like, hit the 'Build this Levain' button and the data will be transferred to the Track a Feed page for you to begin.",
         ],
       },
@@ -168,6 +168,7 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Changed", content: "Not directly tied to the app, but backend code has been modified to accommodate a web version." },
         { type: "Changed", content: "Made the printed PDFs 'prettier'. They now look like the cards in the app or webapp rather than a 1990s data table." },
         { type: "Added", content: "The Plan a Feed page on the Feed tab is now live. If you have logged at least 3 refreshes in the app, your starter vitality data is used to estimate time-to-peak, and can warn you if it's scheduled to peak overnight." },
+        { type: "Added", content: "Device sync has worked for active bakes, now it works for active feeds. If you started a refresh on the web, you can see it on your phone within a few minutes. We use the rule `last write wins`, so whichever device updated the feed most recently gets updated to all other devices." },
       ],
     },
     {

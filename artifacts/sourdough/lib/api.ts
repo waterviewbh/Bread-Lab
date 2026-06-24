@@ -46,6 +46,8 @@ export type ApiFeedSession = {
   deviceId: string;
   savedAt: number;
   startedAt?: number | null;
+  updatedAt?: number | null;
+  inProgress?: boolean;
   data: Record<string, unknown>;
   createdAt: string;
 };
@@ -114,6 +116,8 @@ interface FeedSessionRow {
   user_id: string | null;
   saved_at: number;
   started_at: number | null;
+  updated_at: number | null;
+  in_progress: boolean;
   data: Record<string, unknown>;
   created_at: string;
 }
@@ -169,6 +173,8 @@ function rowToApiFeedSession(r: FeedSessionRow): ApiFeedSession {
     deviceId: r.device_id,
     savedAt: Number(r.saved_at),
     startedAt: r.started_at != null ? Number(r.started_at) : null,
+    updatedAt: r.updated_at != null ? Number(r.updated_at) : null,
+    inProgress: r.in_progress ?? false,
     data: r.data ?? {},
     createdAt: r.created_at,
   };
@@ -489,6 +495,8 @@ export const api = {
         userId?: string;
         savedAt: number;
         startedAt?: number | null;
+        updatedAt?: number;
+        inProgress?: boolean;
         data: Record<string, unknown>;
       }): Promise<ApiFeedSession> => {
         if (!supabase) throw new Error("Supabase not configured");
@@ -500,6 +508,8 @@ export const api = {
             user_id: body.userId ?? null,
             saved_at: body.savedAt,
             started_at: body.startedAt ?? null,
+            updated_at: body.updatedAt ?? Date.now(),
+            in_progress: body.inProgress ?? false,
             data: body.data,
           })
           .select()
@@ -508,6 +518,39 @@ export const api = {
         if (error) throw error;
         return rowToApiFeedSession(data);
       },
+
+    /** Find an in-progress feed session for this device OR this identity —
+     *  used to discover a session another device started. */
+    active: async (deviceId?: string, userId?: string): Promise<ApiFeedSession | null> => {
+      if (!supabase) return null;
+      const filter = ownerFilter(deviceId, userId);
+      if (!filter) return null;
+      const { data, error } = await supabase
+        .from("feed_sessions")
+        .select("*")
+        .or(filter)
+        .eq("in_progress", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .returns<FeedSessionRow[]>()
+        .maybeSingle();
+      if (error) throw error;
+      return data ? rowToApiFeedSession(data) : null;
+    },
+
+    /** Fetch a specific session by id, regardless of in_progress status — used
+     *  to detect when OUR active session was completed on another device. */
+    get: async (id: string): Promise<ApiFeedSession | null> => {
+      if (!supabase) return null;
+      const { data, error } = await supabase
+        .from("feed_sessions")
+        .select("*")
+        .eq("id", id)
+        .returns<FeedSessionRow[]>()
+        .maybeSingle();
+      if (error) throw error;
+      return data ? rowToApiFeedSession(data) : null;
+    },
 
       delete: async (id: string, deviceId?: string, userId?: string): Promise<boolean> => {
         if (!supabase) return false;

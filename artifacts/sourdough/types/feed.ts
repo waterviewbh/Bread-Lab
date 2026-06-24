@@ -26,6 +26,7 @@ export interface FeedSession {
     initialTemp?: string;
     fedPhoto: string | null;
     savedAt: number;
+    updatedAt?: number;       // ← bumped on every local mutation
     completedAt?: number;
     savedToHistory?: boolean;
     peak?: PeakData;
