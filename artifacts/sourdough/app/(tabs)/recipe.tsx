@@ -1065,6 +1065,7 @@ export default function RecipeScreen() {
             {bake.phases.map(phase => {
               const isDone = !!phase.completedAt;
               const isActive = !!phase.startedAt && !phase.completedAt;
+              const isExpanded = expandedDone.has(phase.key); // Tracks expanded completed cards
 
               // State 1: Unstarted Phase Card
               if (!phase.startedAt) {
@@ -1096,6 +1097,24 @@ export default function RecipeScreen() {
                       <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
                       <Text style={{ flex: 1 }}>{phase.name}</Text>
                     </View>
+
+                    {/* Display recipe details inside completed card when toggled open */}
+                    {isExpanded && (
+                      <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 6, marginTop: -4 }}>
+                        {!!phase.ingredients && (
+                          <Text style={{ fontSize: 14, color: colors.foreground }}>
+                            <Text style={{ fontWeight: "600" }}>Ingredients: </Text>
+                            {phase.ingredients}
+                          </Text>
+                        )}
+                        {!!phase.instructions && (
+                          <Text style={{ fontSize: 14, color: colors.mutedForeground }}>
+                            <Text style={{ fontWeight: "600" }}>Instructions: </Text>
+                            {phase.instructions}
+                          </Text>
+                        )}
+                      </View>
+                    )}
                   </Pressable>
                 );
               }
@@ -1115,26 +1134,40 @@ export default function RecipeScreen() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16, marginTop: -4 }}>
                         <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" }}>Folds:</Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
-                         {[0, 1, 2, 3].map((idx) => {
-                           const isFilled = (phase.foldCount || 0) > idx;
-                             return (
-                               <Pressable
-                                 key={idx}
-                                 onPress={() => toggleFold(phase.key, idx)}
-                                 style={{
-                                   width: 24, height: 24, borderRadius: 12, borderWidth: 2,
-                                   borderColor: isFilled ? "#6E7558" : colors.border,
-                                   backgroundColor: isFilled ? "#6E7558" : "transparent",
-                                   alignItems: 'center', justifyContent: 'center'
-                                 }}
-                               >
-                               {/* isFilled && <Feather name="check" size={14} color="white" /> */}
-                               </Pressable>
-                             );
-                         })}
-                       </View>
+                          {[0, 1, 2, 3].map((idx) => {
+                            const isFilled = (phase.foldCount || 0) > idx;
+                            return (
+                              <Pressable
+                                key={idx}
+                                onPress={() => toggleFold(phase.key, idx)}
+                                style={{
+                                  width: 24, height: 24, borderRadius: 12, borderWidth: 2,
+                                  borderColor: isFilled ? "#6E7558" : colors.border,
+                                  backgroundColor: isFilled ? "#6E7558" : "transparent",
+                                  alignItems: 'center', justifyContent: 'center'
+                                }}
+                              />
+                            );
+                          })}
+                        </View>
                       </View>
                     )}
+
+                    {/* Display recipe details inside the active card body layout context */}
+                    <View style={{ marginBottom: 16, gap: 6, paddingHorizontal: 2 }}>
+                      {!!phase.ingredients && (
+                        <Text style={{ fontSize: 14, color: colors.foreground }}>
+                          <Text style={{ fontWeight: "600" }}>Ingredients: </Text>
+                          {phase.ingredients}
+                        </Text>
+                      )}
+                      {!!phase.instructions && (
+                        <Text style={{ fontSize: 14, color: colors.mutedForeground }}>
+                          <Text style={{ fontWeight: "600" }}>Instructions: </Text>
+                          {phase.instructions}
+                        </Text>
+                      )}
+                    </View>
 
                     <View style={s.activeActions}>
                       {phase.key !== "the_bake" && (
