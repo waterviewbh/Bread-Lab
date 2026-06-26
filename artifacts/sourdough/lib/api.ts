@@ -272,15 +272,28 @@ export const api = {
       const email = `${sanitizedFn}.${sanitizedSn}@breadlab.user`;
 
       // Ensure password is at least 6 characters for Supabase Auth
-      const password = sn.length >= 6 ? sn : `${sn}breadlab`.slice(0, 10);
+      const password = sanitizedSn.length >= 6 ? sanitizedSn : `${sanitizedSn}breadlab`.slice(0, 10);
 
-      // 2. Attempt to Sign In
+      // 2. Attempt to Sign In (normalized password — current format)
+      const legacyPassword = sn.length >= 6 ? sn : `${sn}breadlab`.slice(0, 10);
       let { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      // 3. If User doesn't exist (First time), Sign Up
+    // 2b. Legacy fallback — account may have been created before password normalization
+    if (signInError?.message.includes("Invalid login credentials") && legacyPassword !== password) {
+      const { data: legacyData, error: legacyError } = await supabase.auth.signInWithPassword({
+        email,
+        password: legacyPassword,
+      });
+      if (!legacyError && legacyData.user) {
+        authData = legacyData;
+        signInError = null;
+      }
+    }
+
+      // 3. If user doesn't exist (first time), Sign Up
       if (signInError && signInError.message.includes("Invalid login credentials")) {
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
@@ -289,15 +302,23 @@ export const api = {
             data: { first_name: fn, starter_name: sn },
           },
         });
-        if (signUpError) throw signUpError;
-        authData = signUpData;
-      } else if (signInError) {
-        throw signInError;
-      }
+        if (signUpError?.message.includes("User already registered")) {
+    const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({ email, password });
+    if (retryError) throw retryError;
+    authData = retryData;
+  } else if (signUpError) {
+    throw signUpError;
+  } else {
+    authData = signUpData;
+  }
+} else if (signInError) {
+  throw signInError;
+}
 
-      if (!authData.user) throw new Error("Authentication failed");
+// 4. Final safety net — still needed ✅
+if (!authData.user) throw new Error("Authentication failed");
 
-      // 4. Sync the public 'users' table (Backward compatibility for metadata)
+      // 5. Sync the public 'users' table (Backward compatibility for metadata)
       const { data: userRow, error: upsertError } = await supabase
         .from("users")
         .upsert({
@@ -483,6 +504,7 @@ export const api = {
           .select("*")
           .or(filter)
           .order("saved_at", { ascending: false })
+          .eq("in_progress", false)
           .limit(500)
           .returns<FeedSessionRow[]>();
         if (error) throw error;

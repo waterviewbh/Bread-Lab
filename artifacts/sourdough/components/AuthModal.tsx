@@ -74,7 +74,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       onClose();
       await setMigrationPending();
       startMigration();
-      const migrationResult = await migrateLocalDataToAccount().catch(() => null);
+      const migrationResult = await migrateLocalDataToAccount(result.token).catch(() => null);
       finishMigration(migrationResult);
       await getDeviceId()
         .then(async (deviceId) => {

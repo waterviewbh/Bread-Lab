@@ -110,6 +110,7 @@ export async function migrateLocalDataToAccount(): Promise<MigrationResult> {
       api.history.feed.upsert({
         id: s.id,
         deviceId,
+        userId,
         savedAt: s.savedAt,
         startedAt: null,
         data: s as Record<string, unknown>,
@@ -119,6 +120,7 @@ export async function migrateLocalDataToAccount(): Promise<MigrationResult> {
       api.history.bakes.upsert({
         id: b.id,
         deviceId,
+        userId,
         recipeId: b.recipeId ?? null,
         recipeName: b.recipeName,
         savedAt: b.savedAt,
@@ -135,6 +137,7 @@ export async function migrateLocalDataToAccount(): Promise<MigrationResult> {
       api.recipes.upsert({
         id: r.id,
         deviceId,
+        userId,
         name: r.name,
         phases: r.phases.map((p) => ({
           key: p.key,

@@ -96,6 +96,7 @@ interface BakeHistoryEntry {
     readings?: BakePhaseReading[];
     /** Volume recorded at phase activation. */
     startVolume?: string;
+    foldCount?: number;
   }[];
 }
 
@@ -312,7 +313,7 @@ export default function HistoryScreen() {
       const pending = await hasPendingMigration();
       if (!pending) return;
       startMigration();
-      const result = await migrateLocalDataToAccount().catch(() => null);
+      const result = await migrateLocalDataToAccount(token).catch(() => null);
       finishMigration(result);
     } finally {
       migrationInFlightRef.current = false;
@@ -549,6 +550,16 @@ export default function HistoryScreen() {
              </div>`
           : "";
 
+        const foldHtml = p.key === "stretching_folding"
+          ? (() => {
+              const count = (p as any).foldCount ?? 0;
+              const circles = [0,1,2,3].map(i =>
+                `<span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid #6E7558;background:${i < count ? '#6E7558' : 'transparent'};margin-right:6px"></span>`
+              ).join('');
+              return `<div class="section"><div class="label">Folds</div><div>${circles}</div></div>`;
+            })()
+          : "";
+
         return `
           <div class="card">
             <div class="card-header">
@@ -557,6 +568,7 @@ export default function HistoryScreen() {
             </div>
             ${ingredients ? `<div class="section"><div class="label">Ingredients</div><div class="content">${ingredients.replace(/\n/g, "<br>")}</div></div>` : ""}
             ${instructions ? `<div class="section"><div class="label">Instructions</div><div class="content">${instructions.replace(/\n/g, "<br>")}</div></div>` : ""}
+            ${foldHtml}
             ${readingsHtml}
           </div>
         `;
@@ -626,6 +638,7 @@ export default function HistoryScreen() {
       }
     };
 
+
   /** Export a bake session as a PDF and open the native share sheet. */
   const shareBakeDetail = async (bake: BakeHistoryEntry) => {
     try {
@@ -659,7 +672,7 @@ export default function HistoryScreen() {
           recipeId: string;
           recipeName: string;
           startedAt: number;
-          phases: { key: string; name: string; startedAt: number | null; completedAt: number | null }[];
+          phases: { key: string; name: string; startedAt: number | null; completedAt: number | null; foldCount?: number; }[];
         };
         if (!active?.id || !active?.startedAt) return list;
         const alreadyInHistory = list.some((e) => e.id === active.id);
@@ -676,6 +689,7 @@ export default function HistoryScreen() {
               name: p.name,
               startedAt: p.startedAt ?? null,
               completedAt: p.completedAt ?? null,
+              foldCount: (p as any).foldCount,
             })),
           },
           ...list,
@@ -764,6 +778,7 @@ export default function HistoryScreen() {
             loggedAt: r.loggedAt,
           })),
           startVolume: p.startVolume,
+          foldCount: (p as any).foldCount,
         })),
       }));
 

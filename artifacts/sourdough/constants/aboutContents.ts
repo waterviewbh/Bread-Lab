@@ -169,6 +169,7 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Changed", content: "Made the printed PDFs 'prettier'. They now look like the cards in the app or webapp rather than a 1990s data table." },
         { type: "Added", content: "The Plan a Feed page on the Feed tab is now live. If you have logged at least 3 refreshes in the app, your starter vitality data is used to estimate time-to-peak, and can warn you if it's scheduled to peak overnight." },
         { type: "Added", content: "Device sync has worked for active bakes, now it works for active feeds. If you started a refresh on the web, you can see it on your phone within a few minutes. We use the rule `last write wins`, so whichever device updated the feed most recently gets updated to all other devices." },
+        { type: "Changed", content: "The notepad in the Recipe Runner (have you used it yet?) now handles phase tags much more cleanly." },
       ],
     },
     {

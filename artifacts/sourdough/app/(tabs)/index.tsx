@@ -125,7 +125,7 @@ export default function FeedScreen() {
   useEffect(() => {
     const interval = setInterval(() => {
       syncActiveSession();
-    }, SYNC_INTERVAL_MS);
+    }, session ? 30_000 : SYNC_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [syncActiveSession]);
 
