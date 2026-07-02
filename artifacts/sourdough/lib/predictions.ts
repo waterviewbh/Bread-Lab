@@ -31,7 +31,7 @@ export function trainModel(history: FeedSession[]): PredictionModel {
 
   // Biological "Slopes" (The physics of fermentation)
   // These stay relatively constant across starters.
-  const slopeRatio = -12; // More starter = faster
+  const slopeRatio = -3.5; // More starter = faster. Changed from -12 when moved to log ratio
   const slopeTemp = -0.08; // More heat = faster
 
   // Default Intercept: This is what we "tune" to the user's starter.
@@ -48,8 +48,7 @@ export function trainModel(history: FeedSession[]): PredictionModel {
       const temp = parseFloat(s.initialTemp!);
       const actualHours = s.peak!.timeToPeakMs / 3_600_000;
 
-      // Intercept = ActualTime - (slopeRatio * Ratio) - (slopeTemp * Temp)
-      return actualHours - (slopeRatio * ratio) - (slopeTemp * temp);
+      return actualHours - (slopeRatio * Math.log(ratio)) - (slopeTemp * temp);
     });
 
     // Use the average of their offsets as the new personalized intercept
@@ -86,34 +85,33 @@ export function solveForRecipe(
   model: PredictionModel,
   type: PlannedRecipe["type"] = "current"
 ): PlannedRecipe {
-  // Linear Equation: Time = Intercept + (slopeRatio * Ratio) + (slopeTemp * Temp)
-  // Rearranged for Ratio: Ratio = (Time - Intercept - (slopeTemp * Temp)) / slopeRatio
-  let targetRatio = (targetHours - model.intercept - (model.slopeTemp * temp)) / model.slopeRatio;
-
-  // Guardrails for sourdough biology: 1:1 (0.5) to 1:15 (0.03)
-  targetRatio = Math.max(0.03, Math.min(targetRatio, 0.5));
-
-  const freshFood = totalMass / (1 + targetRatio);
-
-    // Calculate and round weights first
-    const sWeight = Math.round(totalMass - freshFood);
-    const fWeight = Math.round(freshFood / (1 + hydration / 100));
-    const wWeight = Math.round(freshFood - fWeight);
-
-    const peakTime = new Date();
-    peakTime.setMilliseconds(peakTime.getMilliseconds() + targetHours * 3_600_000);
-
-    return {
-      starter: sWeight,
-      flour: fWeight,
-      water: wWeight,
-      // Use the global utility on the rounded numbers
-      ratioStr: calcRatioStr(sWeight, fWeight, wWeight),
-      estimatedHours: targetHours,
-      peakTime,
-      type
-    };
-  }
+  let targetRatio = Math.exp(
+    (targetHours - model.intercept - (model.slopeTemp * temp)) / model.slopeRatio
+  );
+  // No lower cap on the ratio — instead we enforce a minimum starter weight below
+  // so that the total mass expands rather than the output freezing.
+  targetRatio = Math.min(targetRatio, 0.5);
+  // No lower cap needed, exp() can never reach zero
+  const MIN_STARTER_G = 6;  // What starter weight does this ratio imply at the user's requested total mass?
+  const impliedStarter = totalMass * targetRatio / (1 + targetRatio);  // If the implied starter is below the minimum, pin starter at MIN_STARTER_G and
+  // let the total mass grow beyond the user's target rather than freezing the output.
+  // Derived from: starter = effectiveTotalMass * targetRatio / (1 + targetRatio)
+  const effectiveTotalMass = impliedStarter < MIN_STARTER_G
+    ? MIN_STARTER_G * (1 + targetRatio) / targetRatio
+    : totalMass;  const freshFood = effectiveTotalMass / (1 + targetRatio);  // Calculate and round weights
+  const sWeight = Math.round(effectiveTotalMass - freshFood);
+  const fWeight = Math.round(freshFood / (1 + hydration / 100));
+  const wWeight = Math.round(freshFood - fWeight);  const peakTime = new Date();
+  peakTime.setMilliseconds(peakTime.getMilliseconds() + targetHours * 3_600_000);  return {
+    starter: sWeight,
+    flour: fWeight,
+    water: wWeight,
+    ratioStr: calcRatioStr(sWeight, fWeight, wWeight),
+    estimatedHours: targetHours,
+    peakTime,
+    type,
+  };
+}
 
 /**
  * The Peak Window Advisor:

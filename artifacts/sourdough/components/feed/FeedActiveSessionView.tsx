@@ -704,8 +704,15 @@ export default function FeedActiveSessionView({
 }
 
 const styles = StyleSheet.create({
+  // --- HEADLINES (Libre Caslon Text) ---
   appHeader: { marginBottom: 28 },
+  //appTitle: { fontSize: 28, fontFamily: "LibreCaslonText_700Bold", color: "#5d3a26", letterSpacing: -0.5 },
   appTitle: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  //modalTitle: { fontSize: 24, fontFamily: "LibreCaslonText_700Bold", color: "#5d3a26" },
+  modalTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  timerText: { fontSize: 52, fontFamily: "LibreCaslonText_700Bold", letterSpacing: -2, color: "#5d3a26" },
+  //timerText: { fontSize: 52, fontFamily: "Inter_700Bold", letterSpacing: -2, marginTop: 4 },
+
   appSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", marginTop: 2 },
   sectionTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 },
   sectionLabel: { fontSize: 13, fontFamily: "Inter_500Medium", letterSpacing: 0.4, textTransform: "uppercase" },
@@ -723,7 +730,6 @@ const styles = StyleSheet.create({
   ghostButton: { alignItems: "center", paddingVertical: 14 },
   ghostButtonText: { fontSize: 15, fontFamily: "Inter_400Regular" },
   divider: { height: 1 },
-  timerText: { fontSize: 52, fontFamily: "Inter_700Bold", letterSpacing: -2, marginTop: 4 },
   ratioRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-around" },
   ratioItem: { alignItems: "center", flex: 1 },
   ratioValue: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
@@ -746,7 +752,6 @@ const styles = StyleSheet.create({
   sessionPhoto: { width: "100%", height: 220, borderWidth: 1 },
   modalContent: { paddingHorizontal: 20 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
-  modalTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
   autoCalcCard: { padding: 14, marginBottom: 20 },
   autoCalcLabel: { fontSize: 12, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
   autoCalcValue: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },

@@ -103,7 +103,7 @@ export const HELP: HelpTab[] = [
         bullets: [
           "Purpose: The active dashboard used while you are hands-on in the kitchen during a live bake.",
           "Dynamic Scaling Controls: Provides instant global multiplier buttons (0.5× to 3×) that flash a reminder banner to help you scale your ingredient math.",
-          "Non-Linear Navigation: Features independent 'Start' buttons next to every step row, allowing you to jump around or execute steps out of order based on how your dough looks. Note: starting a new step pauses the previous one.",
+          "Non-Linear Navigation: Features independent 'Start' buttons next to every step row, allowing you to jump around or execute steps out of order based on how your dough looks. Note: starting a new step stops the previous one.",
           "Independent Step Timers: Tracks the real-time duration of your active step alongside a global phase counter and a segmented progress bar.",
           "Phase Specs: Per-phase sections that act as read-only instructions from the Recipe Builder for that step.",
         ],
@@ -112,7 +112,7 @@ export const HELP: HelpTab[] = [
         heading: "Recipe Runner — Journal Overlay",
         bullets: [
           "Purpose: A full-screen scratchpad used to log reflections on how your active baking session went.",
-          "Global Logging Canvas: Provides an open text ledger at the top to record variables unique to today's bake.",
+          "Global Logging Canvas: Provides an open text ledger at the top to record variables unique to today's bake. A dot on the overlay means that a note has been written.",
           "Tokenized Phase Chips: Allows you to tag comments or reflections to the phase in which you were working when you made the note.",
         ],
       },
@@ -152,15 +152,18 @@ export const HELP: HelpTab[] = [
 ];
 
 export const CHANGELOG: ChangelogVersion[] = [
-/*{
-      version: "v1.0.XX",
+
+    /*{
+      version: "v1.0.13", / -- published 202607XX -- /
       changes: [
-        { type: "Added", content: "A tour of the app is now available from the About tab. Click the Take a tour button to see a complete tour, or revisit just an updated section of the app." },
+        { type: "Fixed", content: "Changed the Plan a Feed model from linear regression to exponential. Exceedingly long target feed times generated funky feed ratios." },
+        { type: "Changed", content: "More back-end refactoring (which means more bug-hunting)." },
+        { type: "Added", content: "Recipes printed from the Recipe Builder now have checkboxes next to ingredients and instructions. Bakers using paper should be able to keep track of where they are and what they've done." },
+        { type: "Added", content: "The Bulk Fermentation phase of an active bake now helps you predict when the dough will be ready for shaping. By observing your dough and logging some readings, you can better predict when your dough is ready." },
       ],
-    },
-*/
+    },*/
     {
-      version: "v1.0.12", /* -- published 202606XX -- */
+      version: "v1.0.12", /* -- published 20260626 -- */
       changes: [
         { type: "Fixed", content: "Unified the view for data entry during an active feed. The initial reading, active log entries, and peak all allow you to gather the same data in the same format." },
         { type: "Added", content: "Increased the amount of refresh data shown on the 'report card' in the Calendar tab." },

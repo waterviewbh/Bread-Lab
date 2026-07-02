@@ -1457,7 +1457,7 @@ export default function HistoryScreen() {
               ) : (
                 selectedEntries.map((entry, idx) => (
                   <Pressable
-                    key={entry.id}
+                    key={`${entry.id}-${idx}`} // <--- Safe fallback to avoid ID collision
                     onPress={() => setSelectedFeedDetail(entry)}
                     style={({ pressed }) => [
                       styles.entryCard,
@@ -1579,7 +1579,7 @@ export default function HistoryScreen() {
                 : null;
               return (
                 <Pressable
-                  key={bake.id}
+                  key={`${bake.id}-${idx}`} // <--- Guarantees uniqueness even if IDs collide
                   onPress={() => openBakeDetail(bake)}
                   style={({ pressed }) => [
                     styles.entryCard,

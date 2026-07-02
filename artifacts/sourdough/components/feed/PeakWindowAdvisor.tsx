@@ -159,6 +159,14 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
             <Text style={[styles.ratioValue, { color: colors.primary }]}>{currentPlan.ratioStr}</Text>
           </View>
         </View>
+        {/* When the minimum starter floor is hit, effective total exceeds the user's target.
+            Show the actual total so they aren't surprised by the weights. */}
+        {(currentPlan.starter + currentPlan.flour + currentPlan.water) > (parseFloat(totalMass) || 100) + 2 && (
+          <Text style={[styles.massOverageNote, { color: colors.mutedForeground }]}>
+            Total levain: {currentPlan.starter + currentPlan.flour + currentPlan.water}g
+            {" "}(expanded from {parseFloat(totalMass) || 100}g to reach minimum starter amount)
+          </Text>
+        )}
 
         <Pressable
           onPress={() => onApplyRecipe(currentPlan)}
