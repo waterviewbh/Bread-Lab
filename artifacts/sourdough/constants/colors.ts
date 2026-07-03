@@ -1,77 +1,83 @@
 const colors = {
   light: {
-    text: "#2A1508",
-    tint: "#C4704F",
+    // Artisan Hearth Surface & Text
+    text: "#5d3a26", // Crust Brown (Primary)
+    tint: "#5d3a26",
 
-    background: "#F5F0E6",
-    foreground: "#2A1508",
+    background: "#fff8f5", // Soft Flour (Surface)
+    foreground: "#5d3a26",
 
-    card: "#FFFEF8",
-    cardForeground: "#2A1508",
+    card: "#ffffff", // Pure Container
+    cardForeground: "#5d3a26",
 
-    primary: "#5C3527",
-    primaryForeground: "#FFFEF8",
+    primary: "#5d3a26",
+    primaryForeground: "#fff8f5",
 
-    secondary: "#E8DDD0",
-    secondaryForeground: "#4A3728",
+    secondary: "#f1ebe8", // Muted Dough (Surface Container)
+    secondaryForeground: "#8d7365", // Baked Earth
 
-    muted: "#E0D5C4",
-    mutedForeground: "#8B7B67",
+    muted: "#e1d8d4", // Surface Dim
+    mutedForeground: "#8d7365",
 
-    accent: "#C4704F",
-    accentForeground: "#FFFEF8",
+    accent: "#8d7365",
+    accentForeground: "#fff8f5",
 
-    destructive: "#A33520",
-    destructiveForeground: "#FFFEF8",
+    destructive: "#a33520",
+    destructiveForeground: "#ffffff",
 
-    border: "#D6CBBA",
-    input: "#D6CBBA",
-    tempLine: "#6b8299",
-    tempBandWarm: "rgba(166,91,67,0.08)",
-    tempBandBalanced: "rgba(209,199,189,0.10)",
-    tempBandCool: "rgba(112,128,144,0.08)",
-    tempZoneWarm: "#a65b43",
-    tempZoneBalanced: "#8b7b67",
-    tempZoneCool: "#6b8299",
+    border: "#e1d8d4",
+    input: "#fbf2ed",
+
+    // --- Scientific Journal Elements ---
+    // Transitioning from clinical blues to earthy, natural tones
+    tempLine: "#8d7365",
+    tempBandWarm: "rgba(141, 115, 101, 0.08)", // Warm Earth
+    tempBandBalanced: "rgba(93, 58, 38, 0.05)", // Neutral Hearth
+    tempBandCool: "rgba(168, 151, 142, 0.08)", // Cool Ash
+    tempZoneWarm: "#8d7365",
+    tempZoneBalanced: "#5d3a26",
+    tempZoneCool: "#a8978e",
   },
 
   dark: {
-    text: "#F0E8DA",
-    tint: "#C4704F",
+    // Dark Mode: Deep Roasted Tones
+    text: "#fbf2ed",
+    tint: "#f1ebe8",
 
-    background: "#1A0E06",
-    foreground: "#F0E8DA",
+    background: "#2a1508", // Deep Hearth
+    foreground: "#fbf2ed",
 
-    card: "#231508",
-    cardForeground: "#F0E8DA",
+    card: "#3a251a",
+    cardForeground: "#fbf2ed",
 
-    primary: "#C4704F",
-    primaryForeground: "#FFFEF8",
+    primary: "#f1ebe8",
+    primaryForeground: "#2a1508",
 
-    secondary: "#2E1E12",
-    secondaryForeground: "#D4C4B0",
+    secondary: "#4a3528",
+    secondaryForeground: "#e1d8d4",
 
-    muted: "#2A1A0E",
-    mutedForeground: "#9B8B77",
+    muted: "#3a251a",
+    mutedForeground: "#a8978e",
 
-    accent: "#A0522D",
-    accentForeground: "#FFFEF8",
+    accent: "#a8978e",
+    accentForeground: "#2a1508",
 
-    destructive: "#C0392B",
-    destructiveForeground: "#FFFEF8",
+    destructive: "#e57373",
+    destructiveForeground: "#2a1508",
 
-    border: "#3A2818",
-    input: "#3A2818",
-    tempLine: "#8faec7",
-    tempBandWarm: "rgba(166,91,67,0.18)",
-    tempBandBalanced: "rgba(180,165,148,0.12)",
-    tempBandCool: "rgba(100,130,160,0.16)",
-    tempZoneWarm: "#c47860",
-    tempZoneBalanced: "#9b8b77",
-    tempZoneCool: "#8faec7",
+    border: "#4a3528",
+    input: "#3a251a",
+
+    tempLine: "#a8978e",
+    tempBandWarm: "rgba(241, 235, 232, 0.1)",
+    tempBandBalanced: "rgba(225, 216, 212, 0.08)",
+    tempBandCool: "rgba(168, 151, 142, 0.1)",
+    tempZoneWarm: "#f1ebe8",
+    tempZoneBalanced: "#e1d8d4",
+    tempZoneCool: "#a8978e",
   },
 
-  radius: 12,
+  radius: 8, // Matching the ROUND_EIGHT system setting
 };
 
 export default colors;

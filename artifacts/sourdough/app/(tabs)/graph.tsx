@@ -24,6 +24,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
+import { typography, spacing, radius, fonts } from "@/constants/theme";
 
 // const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
@@ -126,7 +127,7 @@ function ReadingHint({
 
 const h = StyleSheet.create({
   wrap: {
-    borderRadius: 10,
+    borderRadius: radius.lg,             // 12 — consistent with card radius
     borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 12,
     overflow: "hidden",
@@ -137,28 +138,26 @@ const h = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 12,
     paddingVertical: 9,
-    gap: 8,
+    gap: spacing.sm,                     // 8
   },
   label: {
+    fontFamily: fonts.sansMedium,        // HankenGrotesk_500Medium
     fontSize: 12,
-    fontFamily: "Inter_500Medium",
   },
   body: {
     paddingHorizontal: 12,
     paddingBottom: 12,
-    gap: 8,
+    gap: spacing.sm,                     // 8
   },
   bodyText: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 20,
+    ...typography.bodySm,                // HankenGrotesk_400Regular, 13px, lh 20
   },
   moreLink: {
     alignSelf: "flex-start",
   },
   moreLinkText: {
+    fontFamily: fonts.sansMedium,        // HankenGrotesk_500Medium
     fontSize: 12,
-    fontFamily: "Inter_500Medium",
   },
 });
 
@@ -232,20 +231,12 @@ export default function GraphScreen() {
         contentContainerStyle={{
           paddingTop: insets.top + webTop + 24,
           paddingBottom: insets.bottom + tabBarPad + 32,
-          paddingHorizontal: 20,
+          paddingHorizontal: spacing.containerPadding,
         }}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Page heading ── */}
-        <Text
-          style={{
-            fontSize: 24,
-            fontFamily: "Inter_700Bold",
-            color: colors.foreground,
-            letterSpacing: -0.5,
-            marginBottom: 28,
-          }}
-        >
+        <Text style={[styles.pageTitle, { color: colors.foreground }]}>
           Feed Analytics
         </Text>
 
@@ -315,17 +306,22 @@ export default function GraphScreen() {
 }
 
 const styles = StyleSheet.create({
+  // ── Page title ───────────────────────────────────────────────────────────
+  pageTitle: {
+    ...typography.headlineLgMobile,      // LibreCaslonText_600SemiBold, 28px — serif headline
+    letterSpacing: -0.5,
+    marginBottom: 28,
+  },
+  // ── Chart section headers ─────────────────────────────────────────────────
   sectionHeader: {
-    marginBottom: 10,
+    marginBottom: spacing.sm + 2,        // 10
   },
   sectionTitle: {
-    fontSize: 17,
-    fontFamily: "Inter_600SemiBold",
+    ...typography.titleMd,               // LibreCaslonText_600SemiBold, 20px — serif section title
     letterSpacing: -0.3,
   },
   sectionSubtitle: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
+    ...typography.metaLabel,             // HankenGrotesk_400Regular, 12px
     marginTop: 2,
   },
 });

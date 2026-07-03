@@ -31,6 +31,7 @@ import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
 import { computeSessionAcidVelocity } from "@/lib/analytics";
 import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
+import { typography, spacing, radius, fonts } from "@/constants/theme";
 
 // const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
@@ -174,7 +175,7 @@ function SyncLabel({ ts }: { ts: number }) {
     return () => clearInterval(id);
   }, []);
   return (
-    <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 4, letterSpacing: 0.2, opacity: 0.7, color: colors.mutedForeground }}>
+    <Text style={[styles.syncLabel, { color: colors.mutedForeground }]}>
       Synced {formatSyncTime(ts)}
     </Text>
   );
@@ -1384,8 +1385,8 @@ export default function HistoryScreen() {
                                 ? colors.primary
                                 : colors.foreground,
                               fontFamily: isToday
-                                ? "Inter_600SemiBold"
-                                : "Inter_400Regular",
+                                ?  fonts.sansSemiBold
+                                : fonts.sans,
                             },
                           ]}
                         >
@@ -2039,7 +2040,7 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   pageHeader: {
-    marginBottom: 24,
+    marginBottom: spacing.lg,                // 24
   },
   accountBtn: {
     flexDirection: "row",
@@ -2047,11 +2048,14 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 11,
     paddingVertical: 7,
-    borderRadius: 20,
+    borderRadius: radius.full,               // pill shape
     borderWidth: 1,
-    marginTop: 4,
+    marginTop: spacing.xs,                   // 4
   },
-  accountBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  accountBtnText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium
+    fontSize: 13,
+  },
   avatarMini: {
     width: 18,
     height: 18,
@@ -2059,7 +2063,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarMiniText: { fontSize: 10, fontFamily: "Inter_700Bold" },
+  avatarMiniText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold
+    fontSize: 10,
+  },
   syncBadge: {
     position: "absolute",
     top: -3,
@@ -2070,76 +2077,75 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   pageTitle: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
+    ...typography.headlineLgMobile,          // LibreCaslonText_700Bold, 28px
     letterSpacing: -0.5,
   },
   pageSubtitle: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     fontSize: 14,
-    fontFamily: "Inter_400Regular",
     marginTop: 2,
     letterSpacing: 0.2,
   },
   syncLabel: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     fontSize: 11,
-    fontFamily: "Inter_400Regular",
-    marginTop: 4,
+    marginTop: spacing.xs,                   // 4
     letterSpacing: 0.2,
     opacity: 0.7,
   },
   statsRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 16,
+    marginBottom: spacing.md,               // 16
   },
   filterRow: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
+    gap: spacing.sm,                         // 8
+    marginBottom: spacing.md,               // 16
   },
   filterChip: {
     paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: radius.full,               // pill shape
     borderWidth: 1,
   },
   filterChipText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium
     fontSize: 13,
-    fontFamily: "Inter_500Medium",
   },
   statCard: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
     paddingVertical: 14,
     alignItems: "center",
   },
   statValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — numeric data
     fontSize: 22,
-    fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
   },
   statLabel: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     fontSize: 11,
-    fontFamily: "Inter_400Regular",
     marginTop: 3,
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
   calendarCard: {
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
-    padding: 16,
+    padding: spacing.md,                     // 16
   },
   monthNav: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: spacing.md,               // 16
   },
   monthLabel: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — month name as editorial serif
     fontSize: 17,
-    fontFamily: "Inter_600SemiBold",
     letterSpacing: -0.2,
   },
   weekRow: {
@@ -2151,11 +2157,11 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   weekdayLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium
     fontSize: 12,
-    fontFamily: "Inter_500Medium",
     textTransform: "uppercase",
     letterSpacing: 0.3,
-    paddingBottom: 8,
+    paddingBottom: spacing.sm,               // 8
   },
   dayInner: {
     width: 34,
@@ -2165,6 +2171,7 @@ const styles = StyleSheet.create({
   },
   dayNumber: {
     fontSize: 14,
+    // fontFamily set inline — driven by isToday flag
   },
   dotRow: {
     flexDirection: "row",
@@ -2179,19 +2186,19 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   emptyDay: {
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
-    padding: 20,
+    padding: spacing.md,                     // 16
     alignItems: "center",
   },
   emptyDayText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     fontSize: 14,
-    fontFamily: "Inter_400Regular",
   },
   entryCard: {
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
-    padding: 16,
+    padding: spacing.md,                     // 16
   },
   entryHeader: {
     flexDirection: "row",
@@ -2200,8 +2207,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   entryTime: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold
     fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
   },
   peakedBadge: {
     flexDirection: "row",
@@ -2209,12 +2216,12 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: radius.full,               // pill shape
     borderWidth: 1,
   },
   peakedText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold
     fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
   },
   entryGrid: {
     flexDirection: "row",
@@ -2226,19 +2233,18 @@ const styles = StyleSheet.create({
     minWidth: 56,
   },
   entryVal: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — data readings (pH, weight, ratio, volume)
     fontSize: 18,
-    fontFamily: "Inter_600SemiBold",
   },
   entryLbl: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     fontSize: 11,
-    fontFamily: "Inter_400Regular",
     marginTop: 2,
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
   flourNote: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
+    ...typography.metaLabel,                 // HankenGrotesk_400Regular, 12px
     marginTop: 10,
     letterSpacing: 0.2,
   },
@@ -2248,14 +2254,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   peakTitle: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium
     fontSize: 11,
-    fontFamily: "Inter_500Medium",
     textTransform: "uppercase",
     letterSpacing: 0.6,
-    marginBottom: 10,
+    marginBottom: spacing.sm,               // 8
   },
   emptyState: {
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
     padding: 32,
     alignItems: "center",
@@ -2263,42 +2269,60 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   emptyTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — serif for empty state headline
     fontSize: 17,
-    fontFamily: "Inter_600SemiBold",
   },
   emptyBody: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     fontSize: 14,
-    fontFamily: "Inter_400Regular",
     textAlign: "center",
     lineHeight: 20,
   },
-  // Detail modal styles
+  // ── Detail modal styles ───────────────────────────────────────────────────
   detailHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.md,           // 16
+    paddingBottom: spacing.md,               // 16
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
-  detailTitle: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  detailSubtitle: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  detailTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — modal title in serif
+    fontSize: 16,
+  },
+  detailSubtitle: {
+    ...typography.metaLabel,                 // HankenGrotesk_400Regular, 12px
+    marginTop: 2,
+  },
   detailSectionLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginBottom: 8,
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
+    marginBottom: spacing.sm,               // 8
   },
   detailReadingRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,             // 8
     paddingHorizontal: 14,
     gap: 10,
   },
-  detailReadingTime: { fontSize: 12, fontFamily: "Inter_400Regular", minWidth: 52, paddingTop: 1 },
-  detailReadingPH: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  detailReadingNote: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  detailNoteText: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  detailReadingTime: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — time is data
+    fontSize: 12,
+    minWidth: 52,
+    paddingTop: 1,
+  },
+  detailReadingPH: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — pH is scientific data
+    fontSize: 15,
+  },
+  detailReadingNote: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — freeform text
+    fontSize: 12,
+  },
+  detailNoteText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 14,
+    lineHeight: 20,
+  },
 });

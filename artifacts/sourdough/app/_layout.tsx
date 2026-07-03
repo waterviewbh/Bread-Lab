@@ -4,13 +4,27 @@ if (Platform.OS !== 'web') {
   require('react-native-url-polyfill/auto');
 }
 
+// ── Font imports ─────────────────────────────────────────────────────────────
 import {
   Inter_400Regular,
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
-  useFonts,
 } from "@expo-google-fonts/inter";
+import {
+  LibreCaslonText_400Regular,
+  LibreCaslonText_700Bold,
+} from "@expo-google-fonts/libre-caslon-text";
+import {
+  HankenGrotesk_400Regular,
+  HankenGrotesk_500Medium,
+  HankenGrotesk_600SemiBold,
+} from "@expo-google-fonts/hanken-grotesk";
+import {
+  JetBrainsMono_500Medium,
+} from "@expo-google-fonts/jetbrains-mono";
+import { useFonts } from "expo-font";
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -30,10 +44,18 @@ const queryClient = new QueryClient();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
+    // Inter — kept during migration; remove once all usages are replaced
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    // Artisan Hearth design system fonts
+    LibreCaslonText_400Regular,
+    LibreCaslonText_700Bold,
+    HankenGrotesk_400Regular,
+    HankenGrotesk_500Medium,
+    HankenGrotesk_600SemiBold,
+    JetBrainsMono_500Medium,
   });
 
   useEffect(() => {

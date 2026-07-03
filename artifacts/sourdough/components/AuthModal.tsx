@@ -22,6 +22,7 @@ import { saveAuth, clearAuth, type AuthUser } from "@/lib/auth";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending, clearMigrationPending } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
@@ -278,38 +279,62 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 }
 
 const s = StyleSheet.create({
-  content: { paddingHorizontal: 24 },
-  header: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 28 },
-  title: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5, marginBottom: 4 },
-  subtitle: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
-
-  label: { fontSize: 13, fontFamily: "Inter_500Medium", marginBottom: 6 },
+  content: {
+    paddingHorizontal: spacing.lg,             // 24
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: spacing.lg + 4,              // 28 — matches original
+  },
+  title: {
+    ...typography.headlineLgMobile,            // LibreCaslonText_700Bold, 28px — modal headline in serif
+    letterSpacing: -0.5,
+    marginBottom: spacing.xs,                  // 4
+  },
+  subtitle: {
+    fontFamily: fonts.sans,                    // HankenGrotesk_400Regular
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  label: {
+    fontFamily: fonts.sansMedium,              // HankenGrotesk_500Medium
+    fontSize: 13,
+    marginBottom: 6,
+  },
   input: {
     height: 48,
     paddingHorizontal: 14,
     fontSize: 16,
     borderWidth: 1,
-    borderRadius: 10,
-    fontFamily: "Inter_400Regular",
+    borderRadius: radius.lg,                   // 12
+    fontFamily: fonts.sans,                    // HankenGrotesk_400Regular
   },
-
   submitBtn: {
     height: 52,
-    borderRadius: 12,
+    borderRadius: radius.lg,                   // 12
     alignItems: "center",
     justifyContent: "center",
   },
-  submitText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-
-  divider: { borderTopWidth: 1, marginVertical: 20 },
-  switchLink: { fontSize: 13, fontFamily: "Inter_500Medium" },
-
+  submitText: {
+    fontFamily: fonts.sansSemiBold,            // HankenGrotesk_600SemiBold — primary action
+    fontSize: 16,
+  },
+  divider: {
+    borderTopWidth: 1,
+    marginVertical: spacing.md + 4,            // 20 — matches original
+  },
+  switchLink: {
+    fontFamily: fonts.sansMedium,              // HankenGrotesk_500Medium
+    fontSize: 13,
+  },
   identityCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    padding: 16,
-    borderRadius: 12,
+    padding: spacing.md,                       // 16
+    borderRadius: radius.lg,                   // 12
     borderWidth: 1,
   },
   avatarCircle: {
@@ -319,9 +344,26 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarInitial: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  identityName: { fontSize: 15, fontFamily: "Inter_500Medium" },
-  identityLabel: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  clearBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
-  clearBtnText: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  avatarInitial: {
+    fontFamily: fonts.serifBold,               // LibreCaslonText_700Bold — initial letter in serif feels artisanal
+    fontSize: 18,
+  },
+  identityName: {
+    fontFamily: fonts.sansMedium,              // HankenGrotesk_500Medium
+    fontSize: 15,
+  },
+  identityLabel: {
+    ...typography.metaLabel,                   // HankenGrotesk_400Regular, 12px
+    marginTop: 2,
+  },
+  clearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.md,                   // 8
+    borderWidth: 1,
+  },
+  clearBtnText: {
+    fontFamily: fonts.sans,                    // HankenGrotesk_400Regular
+    fontSize: 13,
+  },
 });

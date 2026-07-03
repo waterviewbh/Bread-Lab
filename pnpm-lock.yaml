@@ -326,6 +326,15 @@ importers:
 
   artifacts/sourdough:
     dependencies:
+      '@expo-google-fonts/hanken-grotesk':
+        specifier: ^0.4.3
+        version: 0.4.3
+      '@expo-google-fonts/jetbrains-mono':
+        specifier: ^0.4.1
+        version: 0.4.1
+      '@expo-google-fonts/libre-caslon-text':
+        specifier: ^0.4.0
+        version: 0.4.0
       '@supabase/supabase-js':
         specifier: ^2.105.4
         version: 2.107.0
@@ -1317,8 +1326,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@expo-google-fonts/hanken-grotesk@0.4.3':
+    resolution: {integrity: sha512-TZn/Ux+nCxEjG/zAenCFbEhOAPxSXN3lo2YU2jHcPsNBPFeicm8feQStL81igJuAwJLCn62VvEOdTtmVEBDl0g==}
+
   '@expo-google-fonts/inter@0.4.2':
     resolution: {integrity: sha512-syfiImMaDmq7cFi0of+waE2M4uSCyd16zgyWxdPOY7fN2VBmSLKEzkfbZgeOjJq61kSqPBNNtXjggiQiSD6gMQ==}
+
+  '@expo-google-fonts/jetbrains-mono@0.4.1':
+    resolution: {integrity: sha512-CslACrtMOcRwoWXCO7OMEI+9w3fukWSoBtvNz46OqPoogEuuoY0tkDY1O8sFumk8t0pC6Cx0Xr95O0TOQhpkug==}
+
+  '@expo-google-fonts/libre-caslon-text@0.4.0':
+    resolution: {integrity: sha512-UVjmtqkwdazHHMUg47IqucrBMou/sUTEdTBddnteWy6bXY295z/rJYXaXYKuu9knXbLqw4Wg1JT8mBPb1+cuEQ==}
 
   '@expo/cli@54.0.23':
     resolution: {integrity: sha512-km0h72SFfQCmVycH/JtPFTVy69w6Lx1cHNDmfLfQqgKFYeeHTjx7LVDP4POHCtNxFP2UeRazrygJhlh4zz498g==}
@@ -8261,7 +8279,13 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
+  '@expo-google-fonts/hanken-grotesk@0.4.3': {}
+
   '@expo-google-fonts/inter@0.4.2': {}
+
+  '@expo-google-fonts/jetbrains-mono@0.4.1': {}
+
+  '@expo-google-fonts/libre-caslon-text@0.4.0': {}
 
   '@expo/cli@54.0.23(expo-router@6.0.24)(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(typescript@5.9.3)':
     dependencies:

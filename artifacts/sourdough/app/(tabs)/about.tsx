@@ -18,6 +18,7 @@ import { useTour } from "@/contexts/TourContext";
 //import { CopilotStep, walkthroughable } from "react-native-copilot"; red-tagged at web-0.1 to avoid crashes. removed after 3 revs
 // const CopilotView = walkthroughable(View); red-tagged at web-0.1 to avoid crashes. removed after 3 revs
 import { TourStep, CopilotView } from "@/components/TourStep";
+import { typography, spacing, radius, fonts } from "@/constants/theme";
 
 // import appConfig from "../../app.json";  red tagged 1.0.10-candidate remove after 3 revs
 import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA } from "../../constants/aboutContents";
@@ -448,98 +449,85 @@ export default function AboutScreen() {
   );
 }
 // ── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
-  },
-
-  logoWrap: {
+    paddingHorizontal: spacing.containerPadding,
+  },  logoWrap: {
     alignItems: "center",
     marginBottom: 36,
   },
   logo: {
     width: 260,
     height: 160,
-    borderRadius: 4,
+    borderRadius: radius.sm,
   },
-
   sectionLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 10,
-    paddingBottom: 6,
+    ...typography.sectionLabel,
+    marginBottom: spacing.sm + 2,
+    paddingBottom: spacing.xs + 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-
   // Simple non-accordion card (Contact)
   card: {
-    borderRadius: 12,
+    borderRadius: radius.lg,
     borderWidth: 1,
     marginBottom: 28,
     overflow: "hidden",
   },
-
   contactRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
   contactIcon: {
     marginRight: 12,
   },
   contactText: {
+    fontFamily: fonts.sansMedium,
     fontSize: 15,
-    fontFamily: "Inter_500Medium",
   },
-
   // Accordion card wrapping one tab's help content
   accordionCard: {
-    borderRadius: 12,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    marginBottom: 10,
+    marginBottom: spacing.sm + 2,
     overflow: "hidden",
   },
   accordionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingVertical: 14,
   },
   accordionTitle: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+    ...typography.cardTitle,
     flex: 1,
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   accordionBody: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingTop: 14,
-    paddingBottom: 16,
+    paddingBottom: spacing.md,
   },
-
   // Sub-section heading inside an expanded accordion
   subHeading: {
+    fontFamily: fonts.sansSemiBold,
     fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
     letterSpacing: 0.8,
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
   subSectionGap: {
     marginTop: 18,
   },
-
   // Individual bullet row
   bulletRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
   bulletDot: {
     width: 4,
@@ -550,48 +538,40 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   bulletText: {
+    ...typography.bodySm,
     flex: 1,
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 20,
   },
   bulletLabel: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: fonts.sansSemiBold,
     fontSize: 13,
   },
-
   changelogEntry: {
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   changelogVersion: {
+    fontFamily: fonts.sansSemiBold,
     fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   changelogBullet: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 20,
+    ...typography.bodySm,
   },
   changelogLabel: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: fonts.sansSemiBold,
     fontSize: 13,
   },
-
   versionLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
+    ...typography.metaLabel,
     textAlign: "center",
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
-
   settingRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingVertical: 14,
     gap: 12,
   },
@@ -599,49 +579,42 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settingTitle: {
+    fontFamily: fonts.sansMedium,
     fontSize: 15,
-    fontFamily: "Inter_500Medium",
     marginBottom: 2,
   },
   settingDescription: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 17,
+    ...typography.metaLabel,
   },
-
   interpretEntry: {
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 6,
   },
   interpretHeading: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+    ...typography.cardTitle,
     marginBottom: 2,
   },
   interpretBody: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 20,
+    ...typography.bodySm,
   },
   interpretLabel: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: fonts.sansSemiBold,
   },
   interpretSectionHeader: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: fonts.sansSemiBold,
     marginTop: 14,
   },
   interpretItalic: {
     fontStyle: "italic",
   },
   interpretPlaceholder: {
+    fontFamily: fonts.sans,
     fontSize: 12,
-    fontFamily: "Inter_400Regular",
     fontStyle: "italic",
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
-
   unitToggle: {
     flexDirection: "row",
     padding: 3,
@@ -654,7 +627,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   unitBtnText: {
+    fontFamily: fonts.sansSemiBold,
     fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
   },
 });
