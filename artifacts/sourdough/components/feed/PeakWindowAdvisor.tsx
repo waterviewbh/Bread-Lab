@@ -14,6 +14,8 @@ import {
   isInDeadZone,
   PlannedRecipe
 } from "@/lib/predictions";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
+
 
 interface Props {
   history: FeedSession[];
@@ -82,7 +84,7 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
         <View style={[styles.warningBox, { borderColor: colors.border }]}>
           <Ionicons name="alert-circle-outline" size={18} color={colors.primary} />
           <Text style={[styles.warningText, { color: colors.mutedForeground }]}>
-            <Text style={{ fontFamily: "Inter_700Bold", color: colors.foreground }}>Note: </Text>
+            <Text style={{ fontFamily: fonts.serifBold, color: colors.foreground }}>Note: </Text>
             This tool is for building <Text style={{ fontStyle: "italic" }}>levains</Text>. Ensure you have reserved your mother starter separately before mixing these amounts.
           </Text>
         </View>
@@ -98,7 +100,7 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
                     value={totalMass}
                     onChangeText={setTotalMass}
                     keyboardType="decimal-pad"
-                    placeholder="e.g. 100"
+                    placeholder="e.g., 100"
                     placeholderTextColor={colors.mutedForeground}
                   />
                 </View>
@@ -109,7 +111,7 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
                     value={temp}
                     onChangeText={setTemp}
                     keyboardType="decimal-pad"
-                    placeholder={`e.g. ${unitDefault}`}
+                    placeholder={`e.g., ${unitDefault}`}
                     placeholderTextColor={colors.mutedForeground}
                   />
                 </View>
@@ -182,7 +184,7 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
         <Animated.View entering={FadeInDown.delay(200)} style={styles.nudgeSection}>
           <View style={styles.nudgeHeader}>
             <Ionicons name="bulb-outline" size={16} color={colors.mutedForeground} />
-            <Text style={[styles.nudgeHeaderText, { color: colors.mutedForeground }]}>Better Options:</Text>
+            <Text style={[styles.nudgeHeaderText, { color: colors.mutedForeground }]}>Better Option:</Text>
           </View>
 
           {nudges.map((nudge, i) => (
@@ -222,47 +224,205 @@ function RecipeItem({ label, value }: { label: string, value: number }) {
 }
 
 const styles = StyleSheet.create({
-  container: { paddingBottom: 100 },
-  title: { fontSize: 22, fontFamily: "Inter_700Bold", marginBottom: 4 },
-  subtitle: { fontSize: 14, fontFamily: "Inter_400Regular", marginBottom: 16 },
-  usageTip: { padding: 12, borderRadius: 8, marginBottom: 16 },
-  usageText: { fontSize: 13, lineHeight: 18, fontFamily: "Inter_400Regular" },
-  warningBox: { flexDirection: "row", gap: 10, padding: 12, borderRadius: 8, borderWidth: 1, borderStyle: "dashed", marginBottom: 24 },
-  warningText: { flex: 1, fontSize: 12, lineHeight: 16 },
-  inputGroup: { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 20 },
-  inputRow: { flexDirection: "row" },
-  label: { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", marginBottom: 6 },
-    input: {
-      height: 46, // Matching FeedSetupView height
-      paddingHorizontal: 14,
-      fontSize: 16, // Matching FeedSetupView font size
-      borderWidth: 1,
-      textAlign: 'center',
-      fontFamily: "Inter_400Regular", // Matching FeedSetupView font
-    },
-  planCard: { borderRadius: 16, borderWidth: 1, padding: 20 },
-  planHeader: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
-  planTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold", marginLeft: 8, flex: 1 },
-  timeBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  timeBadgeText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold" },
-  hoursRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 24 },
-  stepBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: "white", alignItems: "center", justifyContent: "center", elevation: 1, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
-  hoursValue: { fontSize: 32, fontFamily: "Inter_700Bold", marginHorizontal: 24 },
-  hoursLabel: { fontSize: 10, textTransform: "uppercase", fontFamily: "Inter_600SemiBold", marginTop: -4 },
-  recipeRow: { flexDirection: "row", borderTopWidth: 1, paddingTop: 20, marginBottom: 20 },
-  recipeItem: { flex: 1, alignItems: "center" },
-  recipeValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  recipeLabel: { fontSize: 12, marginTop: 2 },
-  ratioItem: { flex: 1.2, alignItems: "center", borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: "#ddd" },
-  ratioLabel: { fontSize: 10, textTransform: "uppercase", fontFamily: "Inter_600SemiBold" },
-  ratioValue: { fontSize: 16, fontFamily: "Inter_700Bold", marginTop: 2 },
-  applyBtn: { height: 48, borderRadius: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  applyBtnText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  nudgeSection: { marginTop: 24 },
-  nudgeHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
-  nudgeHeaderText: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1 },
-  nudgeCard: { flexDirection: "row", alignItems: "center", padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
-  nudgeInfo: { flex: 1 },
-  nudgeType: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
-  nudgeDesc: { fontSize: 13, marginTop: 2 },
+  container: {
+    paddingBottom: 100,
+  },
+  title: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — advisor title as editorial serif
+    fontSize: 22,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 14,
+    marginBottom: spacing.md,               // 16
+  },
+  usageTip: {
+    padding: 12,
+    borderRadius: radius.md,                 // 8
+    marginBottom: spacing.md,               // 16
+  },
+  usageText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  warningBox: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 12,
+    borderRadius: radius.md,                 // 8
+    borderWidth: 1,
+    borderStyle: "dashed",
+    marginBottom: spacing.lg,               // 24
+  },
+  warningText: {
+    flex: 1,
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  inputGroup: {
+    padding: spacing.md,                     // 16
+    borderRadius: radius.lg,                 // 12
+    borderWidth: 1,
+    marginBottom: spacing.lg - 4,           // 20
+  },
+  inputRow: {
+    flexDirection: "row",
+  },
+  label: {
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
+    marginBottom: 6,
+  },
+  input: {
+    height: 46,
+    paddingHorizontal: 10,                   // changed from 14 when added comma to e.g.
+    fontSize: 15,                            // changed from 16 at the same time
+    fontFamily: fonts.mono,                  // HankenGrotesk_400Regular
+    borderWidth: 1,
+    textAlign: "center",
+  },
+  planCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: spacing.lg - 4,               // 20
+  },
+  planHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.lg - 4,           // 20
+  },
+  planTitle: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold
+    fontSize: 16,
+    marginLeft: spacing.sm,                  // 8
+    flex: 1,
+  },
+  timeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,               // pill shape
+  },
+  timeBadgeText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — formatted time string, not raw number
+    color: "#fff",
+    fontSize: 14,
+  },
+  hoursRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.lg,               // 24
+  },
+  stepBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "white",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  hoursValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — hour count is the key data point
+    fontSize: 32,
+    marginHorizontal: spacing.lg,           // 24
+  },
+  hoursLabel: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold
+    fontSize: 10,
+    textTransform: "uppercase",
+    marginTop: -4,
+  },
+  recipeRow: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    paddingTop: spacing.lg - 4,             // 20
+    marginBottom: spacing.lg - 4,           // 20
+  },
+  recipeItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  recipeValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — gram weights are data
+    fontSize: 18,
+  },
+  recipeLabel: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 12,
+    marginTop: 2,
+  },
+  ratioItem: {
+    flex: 1.2,
+    alignItems: "center",
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "#ddd",
+  },
+  ratioLabel: {
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, uppercase
+    fontSize: 10,
+  },
+  ratioValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — ratio is a calculated data value
+    fontSize: 16,
+    marginTop: 2,
+  },
+  massOverageNote: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 11,
+    textAlign: "center",
+    marginBottom: spacing.sm,               // 8
+  },
+  applyBtn: {
+    height: 48,
+    borderRadius: radius.lg,                 // 12
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,                         // 8
+  },
+  applyBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — primary action
+    fontSize: 16,
+  },
+  nudgeSection: {
+    marginTop: spacing.lg,                   // 24
+  },
+  nudgeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  nudgeHeaderText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold
+    fontSize: 11,
+    letterSpacing: 1,
+  },
+  nudgeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: spacing.md,                     // 16
+    borderRadius: radius.lg,                 // 12
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  nudgeInfo: {
+    flex: 1,
+  },
+  nudgeType: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold
+    fontSize: 15,
+  },
+  nudgeDesc: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 13,
+    marginTop: 2,
+  },
 });

@@ -26,6 +26,7 @@ import Svg, {
 import { useColors } from "@/hooks/useColors";
 import { sessionPoints } from "@/lib/analytics";
 import type { SessionForAnalytics } from "@/lib/analytics";
+import { fonts } from "@/constants/theme";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ interface PHChartProps {
   allTimePoints?: [number, number][];
   /** When provided, activates isolate mode: shows individual lines for each session. */
   filteredSessions?: SessionForChart[];
-  /** Legend label for the filtered set, e.g. "Sugar sessions". */
+  /** Legend label for the filtered set, e.g., "Sugar sessions". */
   filteredLabel?: string;
   /** Temperature readings from the current session for the right y-axis overlay. */
   tempReadings?: TempReading[];
@@ -657,7 +658,7 @@ const s = StyleSheet.create({
   },
   label: {
     fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: fonts.sansSemiBold,
     letterSpacing: 0.8,
     textTransform: "uppercase",
   },
@@ -673,15 +674,15 @@ const s = StyleSheet.create({
   },
   tooltipTime: {
     fontSize: 10,
-    fontFamily: "Inter_400Regular",
+    fontFamily: fonts.mono,
   },
   tooltipPH: {
     fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: fonts.mono,
   },
   tooltipTemp: {
     fontSize: 11,
-    fontFamily: "Inter_500Medium",
+    fontFamily: fonts.mono,
   },
   legend: {
     flexDirection: "row",
@@ -696,5 +697,5 @@ const s = StyleSheet.create({
   dash: { width: 14, height: 2, borderRadius: 1 },
   solidStroke: { width: 14, height: 2.5, borderRadius: 1 },
   openCircle: { width: 10, height: 10, borderRadius: 5, borderWidth: 1.5, backgroundColor: "transparent" },
-  lt: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  lt: { fontSize: 11, fontFamily: fonts.sans },
 });

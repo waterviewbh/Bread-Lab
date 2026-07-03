@@ -29,6 +29,7 @@ import type { SessionForChart, TempReading } from "@/components/PHChart";
 import { FeedSession, Reading, PeakData } from "@/types/feed";
 import { formatDuration, formatTimeToPeak } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { fonts } from "@/constants/theme";
 
 // const CopilotView = walkthroughable(View);  red-tagged for web-0.1 rmv in 3 revs
 
@@ -337,9 +338,9 @@ export default function FeedActiveSessionView({
             {(session.initialPH || session.initialTemp || session.initialVolume) && (
               <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: (session.readings?.length ?? 0) > 0 ? 1 : 0, borderBottomColor: colors.border }}>
                 <Text style={[styles.readCol, { color: colors.mutedForeground, width: 75 }]}>0m</Text>
-                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: "Inter_600SemiBold", textAlign: 'center' }]}>{session.initialPH || "—"}</Text>
-                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{session.initialTemp ? `${session.initialTemp}°` : "—"}</Text>
-                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{session.initialVolume ? `${session.initialVolume}` : "—"}</Text>
+                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{session.initialPH || "—"}</Text>
+                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.mono, textAlign: 'center' }]}>{session.initialTemp ? `${session.initialTemp}°` : "—"}</Text>
+                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.mono, textAlign: 'center' }]}>{session.initialVolume ? `${session.initialVolume}` : "—"}</Text>
               </View>
             )}
 
@@ -362,7 +363,7 @@ export default function FeedActiveSessionView({
                     >
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
                         <Text style={[styles.readCol, { color: hasNote ? colors.primary : colors.mutedForeground, width: 75 }]}>{timeStr}</Text>
-                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: "Inter_600SemiBold", textAlign: 'center' }]}>{r.pH}</Text>
+                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{r.pH}</Text>
                         <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{r.temp ? `${r.temp}°` : "—"}</Text>
                         <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{r.volume ? `${r.volume}` : "—"}</Text>
                       </View>
@@ -526,7 +527,7 @@ export default function FeedActiveSessionView({
                       <View style={styles.readingItem}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Peak pH</Text>
                         <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
                           placeholder="3.9"
                           value={peakPH}
                           onChangeText={setPeakPH}
@@ -538,7 +539,7 @@ export default function FeedActiveSessionView({
                       <View style={styles.readingItem}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Temp (°{tempUnit})</Text>
                         <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
                           placeholder="76"
                           value={peakTemp}
                           onChangeText={setPeakTemp}
@@ -549,7 +550,7 @@ export default function FeedActiveSessionView({
                       <View style={styles.readingItem}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Vol (mL)</Text>
                         <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
                           placeholder="200"
                           value={peakVolume}
                           onChangeText={setPeakVolume}
@@ -619,7 +620,7 @@ export default function FeedActiveSessionView({
                       <View style={styles.readingItem}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>pH</Text>
                         <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
                           placeholder="4.2"
                           value={readingPH}
                           onChangeText={setReadingPH}
@@ -632,7 +633,7 @@ export default function FeedActiveSessionView({
                       <View style={styles.readingItem}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Temp (°{tempUnit})</Text>
                         <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
                           placeholder="76"
                           value={readingTemp}
                           onChangeText={setReadingTemp}
@@ -644,7 +645,7 @@ export default function FeedActiveSessionView({
                       <View style={styles.readingItem}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Vol (mL)</Text>
                         <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular", textAlign: 'center' }]}
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
                           placeholder="200"
                           value={readingVolume}
                           onChangeText={setReadingVolume}
@@ -666,7 +667,7 @@ export default function FeedActiveSessionView({
                         borderColor: colors.border,
                         color: colors.foreground,
                         borderRadius: colors.radius,
-                        fontFamily: "Inter_400Regular",
+                        fontFamily: fonts.sans,
                         minHeight: 80,
                         textAlignVertical: "top",
                         paddingTop: 12
@@ -704,59 +705,217 @@ export default function FeedActiveSessionView({
 }
 
 const styles = StyleSheet.create({
-  // --- HEADLINES (Libre Caslon Text) ---
+  // ── Page structure ─────────────────────────────────────────────────────────
   appHeader: { marginBottom: 28 },
-  //appTitle: { fontSize: 28, fontFamily: "LibreCaslonText_700Bold", color: "#5d3a26", letterSpacing: -0.5 },
-  appTitle: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  //modalTitle: { fontSize: 24, fontFamily: "LibreCaslonText_700Bold", color: "#5d3a26" },
-  modalTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  timerText: { fontSize: 52, fontFamily: "LibreCaslonText_700Bold", letterSpacing: -2, color: "#5d3a26" },
-  //timerText: { fontSize: 52, fontFamily: "Inter_700Bold", letterSpacing: -2, marginTop: 4 },
-
-  appSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", marginTop: 2 },
-  sectionTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 },
-  sectionLabel: { fontSize: 13, fontFamily: "Inter_500Medium", letterSpacing: 0.4, textTransform: "uppercase" },
+  appTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — page title
+    fontSize: 28,
+    letterSpacing: -0.5,
+  },
+  modalTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — modal sheet title
+    fontSize: 24,
+    letterSpacing: -0.5,
+  },
+  timerText: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — fermentation elapsed timer
+    fontSize: 52,
+    letterSpacing: -2,
+    color: "#5d3a26",
+  },
+  appSubtitle: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "watching it rise"
+    fontSize: 14,
+    marginTop: 2,
+  },
+// ── Section labels ─────────────────────────────────────────────────────────
+  sectionTitle: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — uppercase section header
+    fontSize: 13,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  },
+  sectionLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Time Since Feed" eyebrow
+    fontSize: 13,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  fieldLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — input field labels
+    fontSize: 12,
+    letterSpacing: 0.3,
+    marginBottom: 6,
+    textTransform: "uppercase",
+  },
+// ── Cards & layout ─────────────────────────────────────────────────────────
   card: { borderRadius: 12, borderWidth: 1, padding: 16 },
-  fieldLabel: { fontSize: 12, fontFamily: "Inter_500Medium", letterSpacing: 0.3, marginBottom: 6, textTransform: "uppercase" },
-  input: { height: 46, paddingHorizontal: 0, fontSize: 16, borderWidth: 1 },
-  calcChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
-  calcChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  photoPicker: { aspectRatio: 4 / 3, borderWidth: 1.5, overflow: "hidden", justifyContent: "center", alignItems: "center" },
-  photoPlaceholder: { alignItems: "center", gap: 10 },
-  photoPlaceholderText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  photoPreview: { width: "100%", height: "100%" },
-  primaryButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", height: 52, gap: 10 },
-  primaryButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  ghostButton: { alignItems: "center", paddingVertical: 14 },
-  ghostButtonText: { fontSize: 15, fontFamily: "Inter_400Regular" },
   divider: { height: 1 },
+  modalContent: { paddingHorizontal: 20 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },  // ── Input ──────────────────────────────────────────────────────────────────
+  input: {
+    height: 46,
+    paddingHorizontal: 0,
+    fontSize: 16,
+    borderWidth: 1,
+    // fontFamily set inline per instance — fonts.mono for numeric data fields
+  },
+// ── Chip / button ──────────────────────────────────────────────────────────
+  calcChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  calcChipText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Log Reading" chip label
+    fontSize: 14,
+  },
+  primaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 52,
+    gap: 10,
+  },
+  primaryButtonText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Save Peak", "Mark as Peak"
+    fontSize: 16,
+  },
+  ghostButton: { alignItems: "center", paddingVertical: 14 },
+  ghostButtonText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "New Session"
+    fontSize: 15,
+  },
+// ── Photo picker ───────────────────────────────────────────────────────────
+  photoPicker: {
+    aspectRatio: 4 / 3,
+    borderWidth: 1.5,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoPlaceholder: { alignItems: "center", gap: 10 },
+  photoPlaceholderText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "Add peak photo"
+    fontSize: 14,
+  },
+  photoPreview: { width: "100%", height: "100%" },
+  sessionPhoto: { width: "100%", height: 220, borderWidth: 1 },
+  // ── Feed ratio card ────────────────────────────────────────────────────────
   ratioRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-around" },
   ratioItem: { alignItems: "center", flex: 1 },
-  ratioValue: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  ratioLabel: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 4, textTransform: "uppercase", letterSpacing: 0.5 },
-  ratioColon: { fontSize: 22, fontFamily: "Inter_400Regular" },
-  ratioBadge: { textAlign: "center", marginTop: 12, fontSize: 12, fontFamily: "Inter_400Regular", letterSpacing: 0.3 },
-  flourSplitRow: { flexDirection: "row", marginTop: 14, paddingTop: 14, borderTopWidth: 1, alignItems: "center" },
+  ratioValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — starter/flour/water gram values
+    fontSize: 22,
+    letterSpacing: -0.5,
+  },
+  ratioLabel: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "Starter", "Flour", "Water"
+    fontSize: 12,
+    marginTop: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  ratioColon: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — punctuation separator
+    fontSize: 22,
+  },
+  ratioBadge: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — "ratio 1:2:2" is data
+    textAlign: "center",
+    marginTop: 12,
+    fontSize: 12,
+    letterSpacing: 0.3,
+  },
+  flourSplitRow: {
+    flexDirection: "row",
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    alignItems: "center",
+  },
   flourSplitItem: { flex: 1, alignItems: "center" },
-  flourSplitValue: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
-  flourSplitLabel: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 3, textTransform: "uppercase", letterSpacing: 0.4 },
+  flourSplitValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — gram weights are numeric data
+    fontSize: 18,
+  },
+  flourSplitLabel: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "AP (70%)" description label
+    fontSize: 11,
+    marginTop: 3,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
   flourSplitDivider: { width: 1, height: 36, marginHorizontal: 8 },
-  headerCol: { fontSize: 11, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5 },
-  readCol: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  readingsRow: { flexDirection: "row", justifyContent: "space-around", flexWrap: "wrap", gap: 16 },
+  // ── Readings table ─────────────────────────────────────────────────────────
+  headerCol: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Time", "pH", "Temp", "Volume"
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  readCol: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — all table cell data values
+    fontSize: 14,
+  },
+  readingsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    flexWrap: "wrap",
+    gap: 16,
+  },
   readingItem: { alignItems: "center", flex: 1 },
-  readingValue: { fontSize: 22, fontFamily: "Inter_600SemiBold" },
-  readingLabel: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 4, textTransform: "uppercase", letterSpacing: 0.5 },
-  peakBadge: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, alignSelf: "flex-start" },
-  peakBadgeText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  sessionPhoto: { width: "100%", height: 220, borderWidth: 1 },
-  modalContent: { paddingHorizontal: 20 },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
+  readingValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — peak pH, volume, rise %
+    fontSize: 22,
+  },
+  readingLabel: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "Peak pH", "Rise" labels
+    fontSize: 12,
+    marginTop: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+// ── Peak badge ─────────────────────────────────────────────────────────────
+  peakBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignSelf: "flex-start",
+  },
+  peakBadgeText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Peak Reached"
+    fontSize: 13,
+  },
+// ── Auto-calc card ─────────────────────────────────────────────────────────
   autoCalcCard: { padding: 14, marginBottom: 20 },
-  autoCalcLabel: { fontSize: 12, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
-  autoCalcValue: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  autoCalcLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Time to Peak", "Total Rise"
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  autoCalcValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — calculated time/percentage values
+    fontSize: 22,
+    letterSpacing: -0.5,
+  },
+// ── Unit toggle ────────────────────────────────────────────────────────────
   tempRow: { flexDirection: "row", gap: 10, alignItems: "center" },
   unitToggle: { flexDirection: "row", borderWidth: 1, padding: 3, height: 48, alignItems: "center" },
   unitBtn: { paddingHorizontal: 12, height: 36, alignItems: "center", justifyContent: "center" },
-  unitBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  unitBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "°F" / "°C" toggle
+    fontSize: 14,
+  },
 });

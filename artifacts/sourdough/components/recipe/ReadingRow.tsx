@@ -9,6 +9,7 @@ import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { type Reading } from "@/lib/recipeTypes";
 import { formatTime } from "@/lib/recipeUtils";
+import { fonts } from "@/constants/theme";
 
 interface ReadingRowProps {
   reading: Reading;
@@ -69,7 +70,6 @@ export function ReadingRow({ reading, colors, onDelete }: ReadingRowProps) {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-// Moved from recipe.tsx s StyleSheet. These are used only by ReadingRow.
 const s = StyleSheet.create({
   readingRow: {
     flexDirection: "row",
@@ -78,8 +78,8 @@ const s = StyleSheet.create({
     flexWrap: "wrap",
   },
   readingTime: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — timestamp label
     fontSize: 12,
-    fontFamily: "Inter_400Regular",
     paddingTop: 3,
     minWidth: 62,
   },
@@ -99,12 +99,12 @@ const s = StyleSheet.create({
     borderWidth: 1,
   },
   pillText: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — pH and temp values are data
     fontSize: 12,
-    fontFamily: "Inter_500Medium",
   },
   readingNote: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — free-text note
     fontSize: 12,
-    fontFamily: "Inter_400Regular",
     paddingTop: 3,
     flex: 1,
   },

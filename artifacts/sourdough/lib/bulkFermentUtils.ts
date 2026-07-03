@@ -52,7 +52,7 @@ function pad(n: number): string {
 }
 
 /**
- * Returns a short human-readable target volume string, e.g. "Target: 1,560 ml".
+ * Returns a short human-readable target volume string, e.g., "Target: 1,560 ml".
  * Returns null if the engine hasn't computed a target yet.
  */
 export function getBulkTargetLabel(state: BulkFermentState | undefined): string | null {

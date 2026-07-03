@@ -11,6 +11,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 // A category with its phases pre-filtered to only available (not yet added) ones
 interface AvailableCategory {
@@ -136,27 +137,40 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.lg - 4,       // 20
+    paddingBottom: spacing.md,               // 16
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  sheetTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — modal title in serif
+    fontSize: 18,
+  },
   sheetRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.lg - 4,       // 20
     paddingVertical: 15,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
-  sheetRowName: { fontSize: 16, fontFamily: "Inter_500Medium", marginBottom: 2 },
-  sheetRowHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  sheetRowName: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — phase option name
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  sheetRowHint: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — phase hint text
+    fontSize: 12,
+  },
   phaseGroupHeader: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.lg - 4,       // 20
+    paddingVertical: spacing.sm,             // 8
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  phaseGroupName: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 1 },
+  phaseGroupName: {
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
+    letterSpacing: 1,
+  },
   pickerCheckbox: {
     width: 22,
     height: 22,
@@ -166,13 +180,16 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   pickerFooter: {
-    padding: 16,
+    padding: spacing.md,                     // 16
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   pickerContinueBtn: {
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     paddingVertical: 14,
     alignItems: "center",
   },
-  pickerContinueBtnText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  pickerContinueBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — primary action
+    fontSize: 16,
+  },
 });

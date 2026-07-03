@@ -25,6 +25,7 @@ import { useBulkFermentTimer } from "@/hooks/useBulkFermentTimer";
 import { getBulkTargetLabel, getBulkRisePercent } from "@/lib/bulkFermentUtils";
 import { PhaseHighlight } from "@/components/recipe/PhaseHighlight";
 import { ReadingRow } from "@/components/recipe/ReadingRow";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 // ─── PendingPhaseCard ─────────────────────────────────────────────────────────
 export interface PendingPhaseCardProps {
@@ -67,7 +68,7 @@ export function PendingPhaseCard({
         >
           <Ionicons name="ellipse-outline" size={18} color={colors.border} />
           <Text
-            style={[s.compactName, { color: colors.mutedForeground, fontFamily: "Inter_400Regular", flex: 1 }]}
+          style={[s.compactName, { color: colors.mutedForeground, fontFamily: fonts.sans, flex: 1 }]}
           >
             {phase.name}
           </Text>
@@ -165,7 +166,7 @@ export function DonePhaseCard({
       >
         <View style={s.compactRow}>
           <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-          <Text style={[s.compactName, { color: colors.foreground, fontFamily: "Inter_500Medium", flex: 1 }]}>
+          <Text style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansMedium, flex: 1 }]}>
             {phase.name}
           </Text>
           <Text style={[s.doneTime, { color: colors.mutedForeground }]}>
@@ -319,7 +320,7 @@ export function ActivePhaseCard({
             <Ionicons name="radio-button-on" size={18} color={colors.accent} />
             {/* Name + optional bulk smart-timer subtitle stacked in a column */}
             <View style={{ flex: 1 }}>
-              <Text style={[s.compactName, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+              <Text style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansSemiBold }]}>
                 {phase.name}
               </Text>
               {/* Countdown: shown once the PD engine has enough data to project */}
@@ -392,7 +393,7 @@ export function ActivePhaseCard({
       {/* Fold tracker — stretching & folding phase only */}
       {phase.key === "stretching_folding" && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16, marginTop: -4, paddingLeft: 12 }}>
-          <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" }}>Folds:</Text>
+          <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: fonts.sansSemiBold }}>Folds:</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             {[0, 1, 2, 3].map((idx) => {
               const isFilled = (phase.foldCount || 0) > idx;
@@ -504,11 +505,13 @@ export function ActivePhaseCard({
 // ─── End of ActivePhaseCard function ──────────────────────────────────────────
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-// Moved from recipe.tsx s StyleSheet. All keys below are used only by the
-// three phase card variants above.
 const s = StyleSheet.create({
   // ── Shared ──────────────────────────────────────────────────────────────────
-  compactCard: { borderRadius: 10, borderWidth: 1, overflow: "hidden" },
+  compactCard: {
+    borderRadius: radius.md,                 // 8 — matches card radius used across Feed tab
+    borderWidth: 1,
+    overflow: "hidden",
+  },
   compactRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -516,20 +519,26 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  compactName: { fontSize: 15 },
+  compactName: {
+    fontSize: 15,                            // fontFamily set inline — varies by phase state (pending/done/active)
+  },
   expandedSection: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 14,
     paddingTop: 10,
     paddingBottom: 10,
-    gap: 8,
+    gap: spacing.sm,                         // 8
   },
-
-  // Generic spec text — ingredients, instructions body copy
-  specText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 20 },
-  // Generic section label — "Ingredients", "Instructions", "No readings logged"
-  sectionLabel: { fontSize: 13, fontFamily: "Inter_400Regular", paddingVertical: 4 },
-
+  specText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — recipe body copy
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  sectionLabel: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "Ingredients", "No readings"
+    fontSize: 13,
+    paddingVertical: 4,
+  },
   // ── Pending ──────────────────────────────────────────────────────────────────
   startBtn: {
     flexDirection: "row",
@@ -537,13 +546,19 @@ const s = StyleSheet.create({
     gap: 2,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
   },
-  startBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
-
+  startBtnText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — minor action label
+    fontSize: 13,
+  },
   // ── Done ─────────────────────────────────────────────────────────────────────
-  doneTime: { fontSize: 12, fontFamily: "Inter_400Regular", marginRight: 4 },
+  doneTime: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — elapsed time label
+    fontSize: 12,
+    marginRight: 4,
+  },
   readingCountBadge: {
     width: 20,
     height: 20,
@@ -553,7 +568,10 @@ const s = StyleSheet.create({
     justifyContent: "center",
     marginRight: 2,
   },
-  readingCountText: { fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  readingCountText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — count is a small data label
+    fontSize: 10,
+  },
   addReadingBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -561,11 +579,14 @@ const s = StyleSheet.create({
     paddingVertical: 6,
     alignSelf: "flex-start",
   },
-  addReadingText: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  addReadingText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 12,
+  },
   volRangeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,                         // 8
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
@@ -573,32 +594,56 @@ const s = StyleSheet.create({
     marginBottom: 2,
   },
   volRangeLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Volume" unit label
     fontSize: 11,
-    fontFamily: "Inter_500Medium",
     textTransform: "uppercase",
     letterSpacing: 0.3,
     minWidth: 52,
   },
-  volRangeValue: { fontSize: 13, fontFamily: "Inter_500Medium", flex: 1 },
-
+  volRangeValue: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — mL values are data
+    fontSize: 13,
+    flex: 1,
+  },
   // ── Active ───────────────────────────────────────────────────────────────────
-  activeCard: { borderRadius: 10, borderWidth: 1.5, overflow: "hidden", position: "relative" },
-  activeStrip: { position: "absolute", left: 0, top: 0, bottom: 0, width: 3 },
-  activeHeader: { paddingLeft: 3 },
-  timerLarge: { fontSize: 16, fontFamily: "Inter_600SemiBold", letterSpacing: -0.5 },
+  activeCard: {
+    borderRadius: radius.md,                 // 8
+    borderWidth: 1.5,
+    overflow: "hidden",
+    position: "relative",
+  },
+  activeStrip: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+  },
+  activeHeader: {
+    paddingLeft: 3,
+  },
+  timerLarge: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — elapsed time is data
+    fontSize: 16,
+    letterSpacing: -0.5,
+  },
   startVolRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingHorizontal: 17,
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,             // 8
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  startVolLabel: { fontSize: 12, fontFamily: "Inter_500Medium", minWidth: 68 },
+  startVolLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Start vol." field label
+    fontSize: 12,
+    minWidth: 68,
+  },
   startVolInput: {
     flex: 1,
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     fontSize: 14,
-    fontFamily: "Inter_400Regular",
     borderWidth: 1,
     borderRadius: 6,
     paddingHorizontal: 10,
@@ -613,7 +658,11 @@ const s = StyleSheet.create({
     paddingVertical: 9,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  recipeInfoToggleText: { fontSize: 12, fontFamily: "Inter_500Medium", flex: 1 },
+  recipeInfoToggleText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Phase specs" toggle label
+    fontSize: 12,
+    flex: 1,
+  },
   recipeInfoSection: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 17,
@@ -621,13 +670,14 @@ const s = StyleSheet.create({
     paddingBottom: 12,
   },
   recipeInfoLabel: {
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
     marginBottom: 4,
   },
-  recipeInfoText: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 19 },
+  recipeInfoText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — recipe body copy
+    fontSize: 13,
+    lineHeight: 19,
+  },
   ingredientsLabelRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -641,7 +691,10 @@ const s = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 6,
   },
-  copyBtnText: { fontSize: 10, fontFamily: "Inter_500Medium" },
+  copyBtnText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Copy" / "Copied ✓"
+    fontSize: 10,
+  },
   sharePhaseBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -653,10 +706,13 @@ const s = StyleSheet.create({
     borderRadius: 7,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  sharePhaseText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  sharePhaseText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Share spec"
+    fontSize: 12,
+  },
   activeActions: {
     flexDirection: "row",
-    gap: 8,
+    gap: spacing.sm,                         // 8
     paddingHorizontal: 14,
     paddingLeft: 17,
     paddingBottom: 12,
@@ -666,19 +722,22 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,             // 8
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
   },
-  actionBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  actionBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Log Reading", "Complete"
+    fontSize: 13,
+  },
   activeReadings: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 14,
     paddingLeft: 17,
     paddingTop: 10,
     paddingBottom: 10,
-    gap: 8,
+    gap: spacing.sm,                         // 8
   },
   scaleBadge: {
     paddingHorizontal: 10,
@@ -687,40 +746,44 @@ const s = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 10,
   },
-    scaleBadgeText: { fontSize: 12, fontFamily: "Inter_500Medium" },  // ── Bulk ferment status panel ─────────────────────────────────────────────
-    bulkStatusPanel: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      paddingHorizontal: 17,
-      paddingVertical: 10,
-      gap: 8,
-    },
-    bulkStatusRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    bulkStatusLabel: {
-      fontSize: 12,
-      fontFamily: "Inter_500Medium",
-      flex: 1,
-    },
-    bulkReadingCount: {
-      fontSize: 11,
-      fontFamily: "Inter_400Regular",
-    },
-    bulkProgressTrack: {
-      height: 4,
-      borderRadius: 2,
-      overflow: "hidden",
-    },
-    bulkProgressFill: {
-      height: 4,
-      borderRadius: 2,
-    },
-    // ── Smart timer subtitle (bulk countdown / overtime) ─────────────────────
-    bulkTimerSub: {
-      fontSize: 11,
-      fontFamily: "Inter_500Medium",
-      marginTop: 1,
-    },
+  scaleBadgeText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — scale ratio label
+    fontSize: 12,
+  },
+  // ── Bulk ferment status panel ─────────────────────────────────────────────
+  bulkStatusPanel: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 17,
+    paddingVertical: 10,
+    gap: spacing.sm,                         // 8
+  },
+  bulkStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  bulkStatusLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — target description
+    fontSize: 12,
+    flex: 1,
+  },
+  bulkReadingCount: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 11,
+  },
+  bulkProgressTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  bulkProgressFill: {
+    height: 4,
+    borderRadius: 2,
+  },
+  // ── Smart timer subtitle (bulk countdown / overtime) ─────────────────────
+  bulkTimerSub: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — "Est. X remaining"
+    fontSize: 11,
+    marginTop: 1,
+  },
 });

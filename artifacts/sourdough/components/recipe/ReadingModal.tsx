@@ -25,6 +25,7 @@ import {
   type BulkFermentReading,
   type BulkSensoryScores,
 } from "@/lib/recipeTypes";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 // ─── Sensory dimension config ──────────────────────────────────────────────────
 // Each entry drives one SegmentedPicker row in the bulk form.
@@ -133,22 +134,28 @@ function SegmentedPicker<T extends number>({
 }
 
 const sp = StyleSheet.create({
-  row: { marginBottom: 12 },
+  row: {
+    marginBottom: 12,
+  },
   label: {
-    fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
     marginBottom: 6,
   },
-  options: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  options: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+  },
   option: {
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 8,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
   },
-  optionText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  optionText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — segmented picker choice
+    fontSize: 13,
+  },
 });
 
 // ─── Main modal ────────────────────────────────────────────────────────────────
@@ -289,7 +296,7 @@ return (
                   s.input,
                   { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: 10 },
                 ]}
-                placeholder="e.g. 1200"
+                placeholder="e.g., 1200"
                 placeholderTextColor={colors.mutedForeground}
                 value={volumeMl}
                 onChangeText={setVolumeMl}
@@ -305,7 +312,7 @@ return (
                     s.input,
                     { flex: 1, backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: 10 },
                   ]}
-                  placeholder="e.g. 76"
+                  placeholder="e.g., 76"
                   placeholderTextColor={colors.mutedForeground}
                   value={doughTemp}
                   onChangeText={setDoughTemp}
@@ -337,7 +344,7 @@ return (
                   s.input,
                   { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: 10 },
                 ]}
-                placeholder="e.g. 72"
+                placeholder="e.g., 72"
                 placeholderTextColor={colors.mutedForeground}
                 value={ambientTemp}
                 onChangeText={setAmbientTemp}
@@ -400,7 +407,7 @@ return (
                   s.input,
                   { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: 10 },
                 ]}
-                placeholder="e.g. 5.2"
+                placeholder="e.g., 5.2"
                 placeholderTextColor={colors.mutedForeground}
                 value={pH}
                 onChangeText={setPH}
@@ -414,7 +421,7 @@ return (
                     s.input,
                     { flex: 1, backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: 10 },
                   ]}
-                  placeholder="e.g. 76"
+                  placeholder="e.g., 76"
                   placeholderTextColor={colors.mutedForeground}
                   value={temp}
                   onChangeText={setTemp}
@@ -446,7 +453,7 @@ return (
                       s.input,
                       { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: 10 },
                     ]}
-                    placeholder="e.g. 450 mL"
+                    placeholder="e.g., 450 mL"
                     placeholderTextColor={colors.mutedForeground}
                     value={volume}
                     onChangeText={setVolume}
@@ -461,7 +468,7 @@ return (
                   s.inputMulti,
                   { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderRadius: 10 },
                 ]}
-                placeholder="e.g. dough is extensible, nice window pane"
+                placeholder="e.g., dough is extensible, nice window pane"
                 placeholderTextColor={colors.mutedForeground}
                 value={note}
                 onChangeText={setNote}
@@ -477,47 +484,92 @@ return (
   );
 }
 const s = StyleSheet.create({
-  modalContent: { paddingHorizontal: 20 },
+  modalContent: {
+    paddingHorizontal: spacing.lg - 4,       // 20
+  },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 28,
   },
-  modalTitle: { fontSize: 20, fontFamily: "Inter_700Bold", letterSpacing: -0.5, textAlign: "center" },
-  modalSubtitle: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2, textAlign: "center" },
-  saveLink: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  fieldLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 8,
+  modalTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — modal title in serif
+    fontSize: 20,
+    letterSpacing: -0.5,
+    textAlign: "center",
   },
-  input: { height: 48, paddingHorizontal: 14, fontSize: 16, borderWidth: 1 },
+  modalSubtitle: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — phase name subtitle
+    fontSize: 13,
+    marginTop: 2,
+    textAlign: "center",
+  },
+  saveLink: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Save" tappable link
+    fontSize: 16,
+  },
+  fieldLabel: {
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
+    marginBottom: spacing.sm,               // 8
+  },
+  input: {
+    height: 48,
+    paddingHorizontal: 10,                   // changed from 14 when added comma to e.g.
+    fontSize: 15,                            // changed from 16 at the same time
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    borderWidth: 1,
+  },
   inputMulti: {
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     borderWidth: 1,
     minHeight: 72,
     textAlignVertical: "top",
   },
-  tempRow: { flexDirection: "row", gap: 10, alignItems: "center" },
-  unitToggle: { flexDirection: "row", borderWidth: 1, padding: 3, height: 48, alignItems: "center" },
-  unitBtn: { paddingHorizontal: 12, height: 36, alignItems: "center", justifyContent: "center" },
-  unitBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  tempRow: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+  unitToggle: {
+    flexDirection: "row",
+    borderWidth: 1,
+    padding: 3,
+    height: 48,
+    alignItems: "center",
+  },
+  unitBtn: {
+    paddingHorizontal: 12,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unitBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — °F / °C toggle
+    fontSize: 14,
+  },
   interventionRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     marginTop: 16,
     padding: 14,
-    borderRadius: 10,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
   },
-  interventionLabel: { fontSize: 14, fontFamily: "Inter_500Medium", marginBottom: 3 },
-  interventionHint: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17 },
+  interventionLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — toggle row title
+    fontSize: 14,
+    marginBottom: 3,
+  },
+  interventionHint: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — helper text
+    fontSize: 12,
+    lineHeight: 17,
+  },
   saveReadingBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -525,5 +577,8 @@ const s = StyleSheet.create({
     height: 52,
     marginTop: 24,
   },
-  saveReadingBtnText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  saveReadingBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — primary action
+    fontSize: 16,
+  },
 });

@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import type { MigrationResult } from "@/lib/migrate";
+import { fonts } from "@/constants/theme";
 
 type MigrationPhase = "hidden" | "progress" | "done" | "partial";
 
@@ -250,7 +251,7 @@ const styles = StyleSheet.create({
   },
   toastText: {
     fontSize: 13,
-    fontFamily: "Inter_500Medium",
+    fontFamily: fonts.sansMedium,
     flexShrink: 1,
   },
 });

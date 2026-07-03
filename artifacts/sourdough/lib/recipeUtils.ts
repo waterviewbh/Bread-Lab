@@ -24,7 +24,7 @@ export function scalePhaseText(text: string, multiplier: number): string {
     MASS_VOLUME_RE,
     (_match, numStr: string, space: string | undefined, unit: string) => {
       const scaled = parseFloat(numStr) * multiplier;
-      // Drop trailing ".0" — e.g. 500.0 → "500", 250.5 → "250.5"
+      // Drop trailing ".0" — e.g., 500.0 → "500", 250.5 → "250.5"
       const formatted = parseFloat(scaled.toFixed(1)).toString();
       return `${formatted}${space ?? ""}${unit}`;
     }

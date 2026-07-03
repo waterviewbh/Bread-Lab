@@ -44,6 +44,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { fonts } from "@/constants/theme";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,8 +213,9 @@ export default function SegmentedNotepad({
       });
     },
     [onChange]
-  );  // ── Text change ────────────────────────────────────────────────────────────
+  );
 
+  // ── Text change ────────────────────────────────────────────────────────────
   const onChangeText = useCallback(
     (id: string, value: string) => {
       const prev = prevValueRef.current.get(id) ?? "";
@@ -261,7 +263,7 @@ const insertChip = useCallback(
       const chip: ChipSeg = { id: uid(), type: "chip", label };
       const after: TextSeg = { id: uid(), type: "text", value: "" };
       let next: Segment[];      if (active.value.trim() === "") {
-        // Active segment is empty (e.g. two chips tapped in a row).
+        // Active segment is empty (e.g., two chips tapped in a row).
         // Replace the empty segment directly with [chip, new empty seg]
         // so no blank row appears between consecutive chips.
         next = [
@@ -437,7 +439,7 @@ const styles = StyleSheet.create({
 // Free-text input segment
   textInput: {
     fontSize: 15,
-    fontFamily: "Inter_400Regular",
+    fontFamily: fonts.sans,
     lineHeight: 24,
     minHeight: 0,  // was 24
     textAlignVertical: "top",
@@ -453,7 +455,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: fonts.sansSemiBold,
     letterSpacing: 0.2,
   },
 // Phase tag dock
@@ -463,7 +465,7 @@ const styles = StyleSheet.create({
   },
   tagLabel: {
     fontSize: 11,
-    fontFamily: "Inter_500Medium",
+    fontFamily: fonts.sansMedium,
     textTransform: "uppercase",
     letterSpacing: 0.5,
     paddingHorizontal: 16,
@@ -484,6 +486,6 @@ const styles = StyleSheet.create({
   },
   tagText: {
     fontSize: 11,
-    fontFamily: "Inter_500Medium",
+    fontFamily: fonts.sansMedium,
   },
 });

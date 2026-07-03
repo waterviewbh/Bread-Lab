@@ -5,6 +5,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { fonts } from "@/constants/theme";
 
 interface Props {
   onNameMyData: () => void;
@@ -92,7 +93,7 @@ const s = StyleSheet.create({
   message: {
     flex: 1,
     fontSize: 13,
-    fontFamily: "Inter_400Regular",
+    fontFamily: fonts.sans,
     lineHeight: 18,
   },
   actions: {
@@ -109,6 +110,6 @@ const s = StyleSheet.create({
   },
   nameBtnText: {
     fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: fonts.sansSemiBold,
   },
 });

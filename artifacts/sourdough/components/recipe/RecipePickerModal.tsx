@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { formatDate } from "@/lib/recipeUtils";
 import type { SavedRecipe } from "@/lib/recipeTypes";
+import { fonts, spacing, radius } from "@/constants/theme";
 
 interface Props {
   visible: boolean;
@@ -75,19 +76,29 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.lg - 4, // 20
+    paddingBottom: spacing.md, // 16
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  sheetTitle: {
+    fontFamily: fonts.serifBold, // LibreCaslonText_700Bold — modal title in serif
+    fontSize: 18,
+  },
   sheetRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.lg - 4, // 20
     paddingVertical: 15,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
-  sheetRowName: { fontSize: 16, fontFamily: "Inter_500Medium", marginBottom: 2 },
-  sheetRowHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  sheetRowName: {
+    fontFamily: fonts.sansMedium, // HankenGrotesk_500Medium — recipe name
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  sheetRowHint: {
+    fontFamily: fonts.sans, // HankenGrotesk_400Regular — phase count + date
+    fontSize: 12,
+  },
 });

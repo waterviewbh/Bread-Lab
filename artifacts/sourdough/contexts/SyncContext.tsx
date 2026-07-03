@@ -9,6 +9,7 @@ import { Animated, Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { Feather } from "@expo/vector-icons";
+import { fonts } from "@/constants/theme";
 
 type ToastState = "hidden" | "synced" | "offline";
 
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
   },
   toastText: {
     fontSize: 13,
-    fontFamily: "Inter_500Medium",
+    fontFamily: fonts.sansMedium,
   },
 });
 

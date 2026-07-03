@@ -3,6 +3,7 @@ import React, { useRef } from "react";
 import { PanResponder, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
+import { fonts } from "@/constants/theme";
 
 interface FlourSliderProps {
   wwPercent: number;
@@ -120,11 +121,25 @@ export default function FlourSlider({ wwPercent, onChange, flourWeight }: FlourS
 
 const sliderStyles = StyleSheet.create({
   labelRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 4 },
-  flourLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5 },
-  flourGrams: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  flourLabel: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — flour type label (AP / WW)
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  flourGrams: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — gram weight is numeric data
+    fontSize: 12,
+    marginTop: 2,
+  },
   pctBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
-  pctText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  pctDivider: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  pctText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — percentage label
+    fontSize: 13,
+  },
+  pctDivider: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — punctuation separator
+    fontSize: 13,
+  },
   trackContainer: { justifyContent: "center", position: "relative" },
   track: { width: "100%", flexDirection: "row", overflow: "hidden" },
   trackFillAP: { height: "100%" },

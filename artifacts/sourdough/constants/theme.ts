@@ -18,8 +18,8 @@ export const spacing = {
 // ── Border radius ────────────────────────────────────────────────────────────
 export const radius = {
   sm:   4,
-  md:   8,   // was "DEFAULT" in the doc (0.5rem → 8px)
-  lg:   12,  // was "lg" in the doc (0.75rem → 12px) — matches your current `radius: 12`
+  md:   8,
+  lg:   12,
   xl:   16,
   xxl:  24,
   full: 9999,
@@ -94,7 +94,7 @@ export const typography = {
   // ── Convenience aliases matching current usage ───────────────────────────
   // These make migration easier — they map to the closest spec scale point
   // so existing StyleSheets can swap fontFamily/fontSize lines for one spread.
-  sectionLabel: {   // e.g. the "SETTINGS" uppercase caps labels
+  sectionLabel: {   // e.g., the "SETTINGS" uppercase caps labels
     fontFamily: fonts.sansSemiBold,
     fontSize: 11,
     lineHeight: 16,

@@ -52,7 +52,7 @@ export interface BulkFermentReading extends Reading {
   /* Structured sensory observations; undefined = tap-form not yet submitted */
   sensory?: BulkSensoryScores;
   /* True if this reading was taken immediately after a structural intervention
-   *  (e.g. coil fold, lamination) — flags a likely temporary volume dip
+   *  (e.g., coil fold, lamination) — flags a likely temporary volume dip
    *  so the PD engine can damp rather than react to the negative derivative */
   postIntervention?: boolean;
 }

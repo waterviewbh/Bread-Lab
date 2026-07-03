@@ -722,7 +722,7 @@ export default function HistoryScreen() {
 
       // Merge Supabase results with local-only entries so a failed or
       // incomplete sync never silently erases sessions that exist only
-      // in AsyncStorage (e.g. the session from last night that didn't sync).
+      // in AsyncStorage (e.g., the session from last night that didn't sync).
       const [localFeedRaw, localBakeRaw, deletedFeedRaw, deletedBakeRaw] = await Promise.all([
         AsyncStorage.getItem(HISTORY_KEY),
         AsyncStorage.getItem(BAKE_HISTORY_KEY),

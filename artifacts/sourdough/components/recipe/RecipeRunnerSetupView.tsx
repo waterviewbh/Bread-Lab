@@ -30,6 +30,8 @@ import type { SavedRecipe } from "@/lib/recipeTypes";interface Props {
   onStartBake: () => void;
   onRefresh: () => void;
 }
+import { fonts, spacing, radius, typography } from "@/constants/theme";
+
 export function RecipeRunnerSetupView({
   hasRecipes,
   selectedRecipe,
@@ -145,7 +147,7 @@ export function RecipeRunnerSetupView({
                         s.confirmPhaseName,
                         {
                           color: enabled ? colors.foreground : colors.mutedForeground,
-                          fontFamily: enabled ? "Inter_500Medium" : "Inter_400Regular",
+                          fontFamily: enabled ? fonts.sansMedium : fonts.sans,
                         },
                       ]}
                     >
@@ -277,10 +279,19 @@ export function RecipeRunnerSetupView({
       </Animated.View>
     </ScrollView>
   );
-}const s = StyleSheet.create({
-  // Landing screen
-  sectionTitle: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  pageSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular" },
+}
+
+const s = StyleSheet.create({
+  // ── Landing screen ───────────────────────────────────────────────────────
+  sectionTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — "Recipe Runner" page title
+    fontSize: 24,
+    letterSpacing: -0.5,
+  },
+  pageSubtitle: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — page subtitle
+    fontSize: 14,
+  },
   emptyCard: {
     borderRadius: 14,
     borderWidth: 1,
@@ -288,10 +299,13 @@ export function RecipeRunnerSetupView({
     alignItems: "center",
     gap: 10,
   },
-  emptyTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  emptyTitle: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — empty state headline
+    fontSize: 16,
+  },
   emptyBody: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — empty state body
     fontSize: 13,
-    fontFamily: "Inter_400Regular",
     textAlign: "center",
     lineHeight: 19,
   },
@@ -302,17 +316,24 @@ export function RecipeRunnerSetupView({
     height: 52,
     gap: 10,
   },
-  primaryBtnText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  primaryBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — primary action
+    fontSize: 16,
+  },
   ghostBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     height: 48,
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
     gap: 4,
   },
-  ghostBtnText: { fontSize: 14, fontFamily: "Inter_400Regular" },  // Pre-start confirm screen
+  ghostBtnText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — ghost action
+    fontSize: 14,
+  },
+  // ── Pre-start confirm screen ─────────────────────────────────────────────
   preStartHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -320,31 +341,43 @@ export function RecipeRunnerSetupView({
     marginBottom: 24,
     gap: 12,
   },
-  preStartLabel: { fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 2 },
-  preStartName: { fontSize: 22, fontFamily: "Inter_700Bold", letterSpacing: -0.4 },
+  preStartLabel: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "Baking from" eyebrow
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  preStartName: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — recipe name display
+    fontSize: 22,
+    letterSpacing: -0.4,
+  },
   changeBtn: {
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 8,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
     marginTop: 6,
   },
-  changeBtnText: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  fieldLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 8,
+  changeBtnText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "Change" minor action
+    fontSize: 13,
   },
-  preStartHint: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  fieldLabel: {
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
+    marginBottom: spacing.sm,               // 8
+  },
+  preStartHint: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — helper copy
+    fontSize: 13,
+    lineHeight: 18,
+  },
   confirmPhaseRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
   },
   confirmCheck: {
@@ -355,6 +388,13 @@ export function RecipeRunnerSetupView({
     alignItems: "center",
     justifyContent: "center",
   },
-  confirmPhaseName: { fontSize: 15 },
-  confirmPhaseSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  confirmPhaseName: {
+    fontSize: 15,
+    // fontFamily set inline — fonts.sansMedium when enabled, fonts.sans when disabled
+  },
+  confirmPhaseSub: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — ingredient preview
+    fontSize: 12,
+    marginTop: 2,
+  },
 });

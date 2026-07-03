@@ -29,6 +29,7 @@ import { usePreferences } from "@/contexts/PreferencesContext";
 import PeakWindowAdvisor from "./PeakWindowAdvisor";
 import { PlannedRecipe } from "@/lib/predictions";
 import { FeedSession } from "@/types/feed";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 // const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
@@ -165,14 +166,16 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
             borderBottomColor: colors.border,
           },
         ]}
-      ><View style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+      >
+      <View style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           {(["track", "plan"] as const).map((sec) => (
             <TourStep
               key={sec}
               text={sec === "track" ? "Start here to monitor a live refresh." : "Click here to estimate when a refresh will peak..."}
               order={sec === "track" ? 2 : 3}
               name={sec === "track" ? "track-feed-btn" : "plan-feed-btn"}
-            ><CopilotView
+            >
+            <CopilotView
                 style={[
                   styles.sectionBtn,
                   section === sec && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
@@ -182,7 +185,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                   style={{ width: '100%', alignItems: 'center' }}
                 ><Text style={[styles.sectionBtnText,
                     { color: section === sec ? colors.foreground : colors.mutedForeground,
-                      fontFamily: section === sec ? "Inter_600SemiBold" : "Inter_400Regular" }
+                      fontFamily: section === sec ? fonts.sansSemiBold : fonts.sans,
+                    }
                   ]}>
                     {sec === "track" ? "Track a Feed" : "Plan a Feed"}
                   </Text>
@@ -229,8 +233,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                     <View style={{ flex: 1, marginRight: 8 }}>
                       <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Starter (g)</Text>
                       <TextInput
-                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]}
-                        placeholder="e.g. 50"
+                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                        placeholder="e.g., 10"
                         placeholderTextColor={colors.mutedForeground}
                         value={starterWeight}
                         onChangeText={setStarterWeight}
@@ -240,8 +244,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                     <View style={{ flex: 1, marginRight: 8 }}>
                       <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Flour (g)</Text>
                       <TextInput
-                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]}
-                        placeholder="e.g. 100"
+                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                        placeholder="e.g., 75"
                         placeholderTextColor={colors.mutedForeground}
                         value={flourWeightStr}
                         onChangeText={setFlourWeightStr}
@@ -251,8 +255,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Water (g)</Text>
                       <TextInput
-                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]}
-                        placeholder="e.g. 100"
+                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                        placeholder="e.g., 75"
                         placeholderTextColor={colors.mutedForeground}
                         value={waterWeightStr}
                         onChangeText={setWaterWeightStr}
@@ -275,8 +279,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                   {sugarEnabled && (
                     <View style={{ marginTop: 8 }}>
                       <TextInput
-                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, fontFamily: "Inter_400Regular" }]}
-                        placeholder="Sugar (g)"
+                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, fontFamily: fonts.mono }]}
+                        placeholder="e.g., 50"
                         placeholderTextColor={colors.mutedForeground}
                         value={sugarWeightStr}
                         onChangeText={setSugarWeightStr}
@@ -317,8 +321,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>pH</Text>
                         <TextInput
-                          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]}
-                          placeholder="e.g. 4.8"
+                          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                          placeholder="e.g., 4.8"
                           placeholderTextColor={colors.mutedForeground}
                           value={initialPH}
                           onChangeText={setInitialPH}
@@ -329,8 +333,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Temp (°{tempUnit})</Text>
                         <TextInput
-                          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius }]}
-                          placeholder="e.g. 76"
+                          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                          placeholder="e.g., 76"
                           value={initialTemp}
                           onChangeText={setInitialTemp}
                           keyboardType="decimal-pad"
@@ -339,8 +343,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Volume (mL)</Text>
                         <TextInput
-                          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: "Inter_400Regular" }]}
-                          placeholder="e.g. 200"
+                          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                          placeholder="e.g., 200"
                           placeholderTextColor={colors.mutedForeground}
                           value={initialVolume}
                           onChangeText={setInitialVolume}
@@ -411,30 +415,148 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
 }
 
 const styles = StyleSheet.create({
-  sectionToggleWrap: { paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth },
-  sectionToggle: { flexDirection: "row", borderRadius: 10, borderWidth: 1, padding: 3, gap: 3 },
-  sectionBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  sectionBtnText: { fontSize: 14 },
-  appHeader: { marginBottom: 28 },
-  appTitle: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  appSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", marginTop: 2, letterSpacing: 0.2 },
-  sectionTitle: { fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 },
-  card: { borderRadius: 12, borderWidth: 1, padding: 16 },
-  inputRow: { flexDirection: "row" },
-  fieldLabel: { fontSize: 12, fontFamily: "Inter_500Medium", letterSpacing: 0.3, marginBottom: 6, textTransform: "uppercase" },
-  input: { height: 46, paddingHorizontal: 14, fontSize: 16, borderWidth: 1 },
-  calcRow: { flexDirection: "row", gap: 10, marginTop: 14, flexWrap: "wrap" },
-  calcChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
-  calcChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  calcHint: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 12 },
-  photoPicker: { aspectRatio: 4 / 3, borderWidth: 1.5, overflow: "hidden", justifyContent: "center", alignItems: "center" },
-  photoPlaceholder: { alignItems: "center", gap: 10 },
-  photoPlaceholderText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  photoPreview: { width: "100%", height: "100%" },
-  photoChangeOverlay: { position: "absolute", top: 8, right: 8, backgroundColor: "rgba(0,0,0,0.45)", padding: 6, borderRadius: 20 },
-  primaryButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", height: 52, gap: 10 },
-  primaryButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  sugarRow: { flexDirection: "row", alignItems: "center", marginTop: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  sugarToggle: { width: 36, height: 20, borderRadius: 10, padding: 2, justifyContent: "center" },
-  sugarThumb: { width: 16, height: 16, borderRadius: 8, backgroundColor: "white" },
+  sectionToggleWrap: {
+    paddingBottom: spacing.md,               // 16
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sectionToggle: {
+    flexDirection: "row",
+    borderRadius: radius.lg,                 // 12
+    borderWidth: 1,
+    padding: 3,
+    gap: 3,
+  },
+  sectionBtn: {
+    flex: 1,
+    paddingVertical: spacing.sm,             // 8
+    borderRadius: radius.md,                 // 8
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionBtnText: {
+    fontSize: 14,
+    // fontFamily set inline — driven by active state
+  },
+  appHeader: {
+    marginBottom: 28,
+  },
+  appTitle: {
+    ...typography.headlineLgMobile,          // LibreCaslonText_700Bold, 28px — the app wordmark
+    letterSpacing: -0.5,
+  },
+  appSubtitle: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 14,
+    marginTop: 2,
+    letterSpacing: 0.2,
+  },
+  sectionTitle: {
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+  card: {
+    borderRadius: radius.lg,                 // 12
+    borderWidth: 1,
+    padding: spacing.md,                     // 16
+  },
+  inputRow: {
+    flexDirection: "row",
+  },
+  fieldLabel: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium
+    fontSize: 12,
+    letterSpacing: 0.3,
+    marginBottom: 6,
+    textTransform: "uppercase",
+  },
+  input: {
+    height: 46,
+    paddingHorizontal: 10,                   // changed from 14 when added comma to e.g.
+    fontSize: 15,                            // changed from 16 at the same time
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    borderWidth: 1,
+  },
+  calcRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+    flexWrap: "wrap",
+  },
+  calcChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.full,               // pill shape
+    borderWidth: 1,
+  },
+  calcChipText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold
+    fontSize: 14,
+  },
+  calcHint: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 13,
+    marginTop: 12,
+  },
+  photoPicker: {
+    aspectRatio: 4 / 3,
+    borderWidth: 1.5,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoPlaceholder: {
+    alignItems: "center",
+    gap: 10,
+  },
+  photoPlaceholderText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
+    fontSize: 14,
+  },
+  photoPreview: {
+    width: "100%",
+    height: "100%",
+  },
+  photoChangeOverlay: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    padding: 6,
+    borderRadius: 20,
+  },
+  primaryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 52,
+    gap: 10,
+  },
+  primaryButtonText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — primary action
+    fontSize: 16,
+  },
+  sugarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  sugarToggle: {
+    width: 36,
+    height: 20,
+    borderRadius: 10,
+    padding: 2,
+    justifyContent: "center",
+  },
+  sugarThumb: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "white",
+  },
 });

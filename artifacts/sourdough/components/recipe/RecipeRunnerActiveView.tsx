@@ -73,6 +73,7 @@ import type { ActiveBake, BakePhase } from "@/lib/recipeTypes";interface Props {
   onOverlayDraftChange: (text: string) => void;
   onRefresh: () => void;
 }
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 export function RecipeRunnerActiveView({
   bake,
@@ -410,69 +411,130 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: spacing.md,               // 16
   },
-  trackerRecipeName: { fontSize: 12, fontFamily: "Inter_400Regular", marginBottom: 2 },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  activeDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 15, fontFamily: "Inter_500Medium" },
-  timerInline: { fontSize: 15, fontFamily: "Inter_600SemiBold", letterSpacing: -0.3 },
-  newBakeBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, marginTop: 4 },
-  newBakeBtnText: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  trackerRecipeName: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — recipe name eyebrow
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  activeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — active phase name
+    fontSize: 15,
+  },
+  timerInline: {
+    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — elapsed time is data
+    fontSize: 15,
+    letterSpacing: -0.3,
+  },
+  newBakeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.md,                 // 8
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  newBakeBtnText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "New Bake" minor action
+    fontSize: 13,
+  },
   segmentCount: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "X / Y phases" caption
     fontSize: 11,
-    fontFamily: "Inter_400Regular",
     marginTop: 6,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   allDoneCard: {
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
     padding: 24,
     alignItems: "center",
-    gap: 8,
-    marginTop: 20,
+    gap: spacing.sm,                         // 8
+    marginTop: spacing.lg - 4,             // 20
   },
-  allDoneTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
-  allDoneBody: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 19 },
+  allDoneTitle: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — completion headline
+    fontSize: 17,
+  },
+  allDoneBody: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — completion body
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 19,
+  },
   staleWarning: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8,
+    gap: spacing.sm,                         // 8
     padding: 10,
-    borderRadius: 8,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
     marginBottom: 14,
   },
-  staleWarningText: { fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 17, flex: 1 },
+  staleWarningText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — warning copy
+    fontSize: 12,
+    lineHeight: 17,
+    flex: 1,
+  },
   scaleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 20,
+    marginBottom: spacing.lg - 4,           // 20
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  scaleLabel: { fontSize: 12, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5, minWidth: 38 },
-  scalePills: { flexDirection: "row", gap: 6, flexWrap: "wrap", flex: 1 },
-  scalePill: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
-  scalePillText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  scaleLabel: {
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
+    minWidth: 38,
+  },
+  scalePills: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+    flex: 1,
+  },
+  scalePill: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radius.full,               // pill shape
+    borderWidth: 1,
+  },
+  scalePillText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — scale factor label
+    fontSize: 12,
+  },
   printBakeBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
+    gap: spacing.sm,                         // 8
+    paddingHorizontal: spacing.md,           // 16
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
     marginTop: 4,
   },
-  printBakeBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  printBakeBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Print" / "Share PDF"
+    fontSize: 14,
+  },
   fab: {
     position: "absolute",
-    right: 20,
+    right: spacing.lg - 4,                  // 20
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -496,11 +558,21 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.lg - 4,       // 20
+    paddingBottom: spacing.md,               // 16
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sheetTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  notesSaveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
-  notesSaveBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  sheetTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — "Bake Notes" modal title
+    fontSize: 18,
+  },
+  notesSaveBtn: {
+    paddingHorizontal: spacing.md,           // 16
+    paddingVertical: spacing.sm,             // 8
+    borderRadius: radius.md,                 // 8
+  },
+  notesSaveBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Save" action
+    fontSize: 14,
+  },
 });

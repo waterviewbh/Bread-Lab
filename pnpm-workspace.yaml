@@ -13,10 +13,10 @@
 # chain attacks, which have been the #1 vector for npm ecosystem compromises.
 #
 # If you absolutely need to install a package before the 1-day window has
-# passed (e.g. an urgent security bugfix), you can add it to the
+# passed (e.g., an urgent security bugfix), you can add it to the
 # `minimumReleaseAgeExclude` allowlist below. Only consider doing this for
 # packages released by trusted organizations with an impeccable security
-# posture (e.g. Replit packsges, react from Meta, typescript from Microsoft). Even then,
+# posture (e.g., Replit packages, react from Meta, typescript from Microsoft). Even then,
 # remove the exclusion once the 1-day window has passed.
 #
 # Example:

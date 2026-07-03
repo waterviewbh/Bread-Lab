@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { YieldPill } from "@/components/YieldPill";
 import type { SavedRecipe, RecipePhaseConfig } from "@/lib/recipeTypes";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 interface Props {
   editingRecipe: SavedRecipe;
@@ -91,10 +92,10 @@ export function RecipeBuilderEditView({
                 backgroundColor: colors.card,
                 borderColor: colors.border,
                 color: colors.foreground,
-                fontFamily: "Inter_500Medium",
+                fontFamily: fonts.sansMedium,
               },
             ]}
-            placeholder="e.g. Saturday Country Loaf"
+            placeholder="e.g., Saturday Country Loaf"
             placeholderTextColor={colors.mutedForeground}
             value={editingRecipe.name}
             onChangeText={onChangeName}
@@ -181,10 +182,10 @@ export function RecipeBuilderEditView({
                       backgroundColor: colors.background,
                       borderColor: colors.border,
                       color: colors.foreground,
-                      fontFamily: "Inter_400Regular",
+                      fontFamily: fonts.sans,
                     },
                   ]}
-                  placeholder="e.g. 500 g bread flour, 350 g water, 100 g levain…"
+                  placeholder="e.g., 500 g bread flour, 350 g water, 100 g levain…"
                   placeholderTextColor={colors.mutedForeground}
                   value={phase.ingredients}
                   onChangeText={(v) => onUpdatePhaseField(phase.key, "ingredients", v)}
@@ -204,10 +205,10 @@ export function RecipeBuilderEditView({
                       backgroundColor: colors.background,
                       borderColor: colors.border,
                       color: colors.foreground,
-                      fontFamily: "Inter_400Regular",
+                      fontFamily: fonts.sans,
                     },
                   ]}
-                  placeholder="e.g. Mix until shaggy, autolyse 30 min, then add salt…"
+                  placeholder="e.g., Mix until shaggy, autolyse 30 min, then add salt…"
                   placeholderTextColor={colors.mutedForeground}
                   value={phase.instructions}
                   onChangeText={(v) => onUpdatePhaseField(phase.key, "instructions", v)}
@@ -278,34 +279,38 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 24,
   },
-  editTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
-  saveLink: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  editTitle: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — edit screen title
+    fontSize: 18,
+  },
+  saveLink: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Save" tappable link
+    fontSize: 16,
+  },
   fieldLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: 8,
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
+    marginBottom: spacing.sm,               // 8
   },
   nameInput: {
     height: 50,
     paddingHorizontal: 14,
     fontSize: 16,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: radius.md,                 // 8
+    // fontFamily set inline — driven by TextInput's fontFamily prop
   },
   emptyPhasesHint: {
-    borderRadius: 10,
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
-    padding: 16,
+    padding: spacing.md,                     // 16
   },
   emptyPhasesText: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — helper copy
     fontSize: 13,
-    fontFamily: "Inter_400Regular",
     lineHeight: 19,
   },
   editPhaseCard: {
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
     padding: 14,
   },
@@ -315,7 +320,11 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 12,
   },
-  editPhaseHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  editPhaseHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   phaseNumBadge: {
     width: 24,
     height: 24,
@@ -323,49 +332,65 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  phaseNumText: { fontSize: 12, fontFamily: "Inter_700Bold" },
-  editPhaseName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  phaseNumText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 12,
+  },
+  editPhaseName: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — phase card title
+    fontSize: 15,
+  },
   subFieldLabel: {
+    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, 11px, uppercase
     fontSize: 11,
-    fontFamily: "Inter_500Medium",
-    textTransform: "uppercase",
     letterSpacing: 0.4,
     marginBottom: 6,
   },
   phaseTextarea: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: radius.md,                 // 8
     padding: 12,
     fontSize: 15,
-    marginTop: 8,
-    textAlignVertical: "top", // Critical for multiline alignment on Android
-    minHeight: 44,            // ~1 row with padding
-    maxHeight: 220,           // ~10 rows
+    marginTop: spacing.sm,                   // 8
+    textAlignVertical: "top",               // Critical for multiline alignment on Android
+    minHeight: 44,                           // ~1 row with padding
+    maxHeight: 220,                          // ~10 rows
+    // fontFamily set inline — driven by TextInput's fontFamily prop
   },
   addPhaseBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,                         // 8
     paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    paddingHorizontal: spacing.md,           // 16
+    borderRadius: radius.md,                 // 8
     borderWidth: 1,
     borderStyle: "dashed",
   },
-  addPhaseBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold", flex: 1 },
-  addPhaseHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  addPhaseBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "Add Phase"
+    fontSize: 14,
+    flex: 1,
+  },
+  addPhaseHint: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "X remaining"
+    fontSize: 12,
+  },
   deleteLinkRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: spacing.sm,                         // 8
     justifyContent: "center",
     marginTop: 28,
     paddingVertical: 12,
   },
-  deleteLink: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  deleteLink: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — destructive action
+    fontSize: 14,
+  },
   fab: {
     position: "absolute",
-    right: 20,
+    right: spacing.lg - 4,                  // 20
     width: 56,
     height: 56,
     borderRadius: 28,

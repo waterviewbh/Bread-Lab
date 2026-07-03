@@ -308,7 +308,7 @@ export default function GraphScreen() {
 const styles = StyleSheet.create({
   // ── Page title ───────────────────────────────────────────────────────────
   pageTitle: {
-    ...typography.headlineLgMobile,      // LibreCaslonText_600SemiBold, 28px — serif headline
+    ...typography.headlineLgMobile,      // LibreCaslonText_700Bold, 28px — serif headline
     letterSpacing: -0.5,
     marginBottom: 28,
   },
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm + 2,        // 10
   },
   sectionTitle: {
-    ...typography.titleMd,               // LibreCaslonText_600SemiBold, 20px — serif section title
+    ...typography.titleMd,               // LibreCaslonText_700Bold, 20px — serif section title
     letterSpacing: -0.3,
   },
   sectionSubtitle: {

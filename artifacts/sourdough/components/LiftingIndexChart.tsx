@@ -25,6 +25,7 @@ import Svg, {
 } from "react-native-svg";
 import { useColors } from "@/hooks/useColors";
 import type { LiftingPoint } from "@/lib/analytics";
+import { fonts } from "@/constants/theme";
 
 const CHART_H = 200;
 const PAD = { top: 20, right: 52, bottom: 38, left: 44 };
@@ -383,7 +384,7 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   hatchLine: { width: 20, height: 1.5 },
-  lt: { fontSize: 10, fontFamily: "Inter_400Regular" },
+  lt: { fontSize: 10, fontFamily: fonts.sans },
   axisRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -391,12 +392,12 @@ const s = StyleSheet.create({
   },
   axisLabel: {
     fontSize: 10,
-    fontFamily: "Inter_400Regular",
+    fontFamily: fonts.mono,
     opacity: 0.7,
   },
   scrollHint: {
     fontSize: 10,
-    fontFamily: "Inter_400Regular",
+    fontFamily: font.sans,
     opacity: 0.5,
     textAlign: "center",
     marginTop: 2,

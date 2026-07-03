@@ -17,6 +17,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, G, Line, Path, Text as SvgText } from "react-native-svg";
 import { useColors } from "@/hooks/useColors";
 import type { AcidificationPoint } from "@/lib/analytics";
+import { fonts } from "@/constants/theme";
 
 const CHART_H = 180;
 const PAD = { top: 18, right: 16, bottom: 38, left: 46 };
@@ -333,12 +334,12 @@ const s = StyleSheet.create({
   },
   axisLabel: {
     fontSize: 10,
-    fontFamily: "Inter_400Regular",
+    fontFamily: fonts.mono,
     opacity: 0.7,
   },
   scrollHint: {
     fontSize: 10,
-    fontFamily: "Inter_400Regular",
+    fontFamily: fonts.sans,
     opacity: 0.5,
     textAlign: "center",
     marginTop: 2,
@@ -352,6 +353,6 @@ const s = StyleSheet.create({
   },
   pillText: {
     fontSize: 9,
-    fontFamily: "Inter_500Medium",
+    fontFamily: fonts.mono,
   },
 });

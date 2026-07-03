@@ -4,6 +4,7 @@
 // that create the 3-D keycap illusion, with the label centred on the face.import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Polygon } from "react-native-svg";
+import { fonts } from "@/constants/theme";
 
 // ── Geometry constants ─────────────────────────────────────────────────────────
 export const KEY_W = 30;    // standard letter/symbol key face width (px)
@@ -57,7 +58,7 @@ export function KeycapKey({
           { alignItems: "center", justifyContent: "center", paddingBottom: LEDGE_H },
         ]}
       >
-        <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: textColor }}>
+        <Text style={{ fontSize: 12, fontFamily: fonts.sansSemiBold, color: textColor }}>
           {label}
         </Text>
       </View>

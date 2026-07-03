@@ -28,6 +28,7 @@ import type { SavedRecipe } from "@/lib/recipeTypes";interface Props {
   onSetLetterFilter: (letter: string | null) => void;
   onRefresh: () => void;
 }
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 export function RecipeBuilderListView({
   recipes,
@@ -234,20 +235,26 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: spacing.md,               // 16
   },
-  sectionTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  sectionTitle: {
+    fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — "Recipes" page title in serif
+    fontSize: 22,
+  },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: spacing.sm,             // 8
+    borderRadius: radius.md,                 // 8
   },
-  addBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  addBtnText: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "New Recipe" button
+    fontSize: 13,
+  },
   recipeCard: {
-    borderRadius: 12,
+    borderRadius: radius.lg,                 // 12
     borderWidth: 1,
     padding: 14,
     gap: 6,
@@ -257,12 +264,35 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  recipeName: { fontSize: 16, fontFamily: "Inter_600SemiBold", flex: 1 },
-  recipeCardMeta: { flexDirection: "row", gap: 2 },
-  recipeMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  phasePillRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 2 },
-  phasePill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
-  phasePillText: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  recipeName: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — recipe card title
+    fontSize: 16,
+    flex: 1,
+  },
+  recipeCardMeta: {
+    flexDirection: "row",
+    gap: 2,
+  },
+  recipeMeta: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — phase count + date
+    fontSize: 12,
+  },
+  phasePillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 2,
+  },
+  phasePill: {
+    paddingHorizontal: spacing.sm,           // 8
+    paddingVertical: 3,
+    borderRadius: radius.full,               // pill shape
+    borderWidth: 1,
+  },
+  phasePillText: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — phase tag label
+    fontSize: 11,
+  },
   emptyCard: {
     borderRadius: 14,
     borderWidth: 1,
@@ -270,10 +300,13 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  emptyTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  emptyTitle: {
+    fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — empty state headline
+    fontSize: 16,
+  },
   emptyBody: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — empty state body
     fontSize: 13,
-    fontFamily: "Inter_400Regular",
     textAlign: "center",
     lineHeight: 19,
   },

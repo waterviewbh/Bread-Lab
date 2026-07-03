@@ -156,10 +156,11 @@ export const CHANGELOG: ChangelogVersion[] = [
     /*{
       version: "v1.0.13", / -- published 202607XX -- /
       changes: [
-        { type: "Fixed", content: "Changed the Plan a Feed model from linear regression to exponential. Exceedingly long target feed times generated funky feed ratios." },
+        { type: "Fixed", content: "Changed the Plan a Feed model from using linear regression to an exponential model. Exceedingly long target feed times no longer generate funky feed ratios." },
         { type: "Changed", content: "More back-end refactoring (which means more bug-hunting)." },
         { type: "Added", content: "Recipes printed from the Recipe Builder now have checkboxes next to ingredients and instructions. Bakers using paper should be able to keep track of where they are and what they've done." },
         { type: "Added", content: "The Bulk Fermentation phase of an active bake now helps you predict when the dough will be ready for shaping. By observing your dough and logging some readings, you can better predict when your dough is ready." },
+        { type: "Changed", content: "Moved to an Artisan Hearth style for the app visuals." },
       ],
     },*/
     {
@@ -274,7 +275,7 @@ export const ACIDIFICATION_DATA = {
       diagnosticStandard: "Hyper-acidic runaway. The bacteria are completely outrunning the yeast, dropping the pH into the high 3s almost immediately. This creates an extreme risk of proteolysis (gluten-melt).",
       diagnosticSweet: "Severe acid shock. The yeast is completely paralyzed by sugar pressure, stretching the hours-to-peak denominator out, while high-stress bacteria panic-produce acid.",
       insight: "Acidification velocity is dangerously high, meaning bacteria are outrunning your yeast. This risks degrading your dough's gluten structure, leading to a sticky, unmanageable mix.",
-      status: "Do Not Bake. Dilute immediately with a high-ratio refresh (e.g. 1:2:2 or 1:3:3) to reset the baseline."
+      status: "Do Not Bake. Dilute immediately with a high-ratio refresh (e.g., 1:2:2 or 1:3:3) to reset the baseline."
     },
     {
       heading: "The Compression Slide (High & Decreasing)",
