@@ -148,6 +148,10 @@ export interface HistoryEntryForSeries {
   peak?: { pH: string; timeToPeakMs: number; volumeIncreasePct: number };
   sugarWeight?: number;
   wwPercent?: number;
+  // ── FCS scatter additions ──────────────────────────────────────────────
+  ratioStr?: string;           // e.g. "1:2:2" — needed for flour/water bucketing
+  initialTemp?: string;        // ambient temp at feed start — drives thermal color
+  initialTempUnit?: "F" | "C"; // unit for initialTemp
 }
 
 export type StarterType = "standard" | "sugar" | "ww";

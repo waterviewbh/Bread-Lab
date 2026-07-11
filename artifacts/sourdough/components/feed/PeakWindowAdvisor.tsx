@@ -15,6 +15,7 @@ import {
   PlannedRecipe
 } from "@/lib/predictions";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
+import LevainSlider from "./LevainSlider";
 
 
 interface Props {
@@ -33,6 +34,12 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
   const [temp, setTemp] = useState("");
   const [targetHours, setTargetHours] = useState(6); // Default 6 hour plan
 
+   // ── Levain hydration slider state ──────────────────────────────────────────
+   // 0 = stiffest (all added flour, no water beyond starter)
+   // 50 = standard equal-parts 1:2:2 feed
+   // 100 = slackest (all added water, no extra flour)
+   const [levainHydration, setLevainHydration] = useState(50);
+
   // --- Logic ---
   const model = useMemo(() => trainModel(history), [history]);
 
@@ -47,6 +54,35 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
 
     return solveForRecipe(targetHours, mass, t, 100, model);
   }, [totalMass, temp, targetHours, model, tempUnit]);
+
+     // ── Levain breakdown — depends on currentPlan, must follow it ──────────────
+     // addedStarter is timing-driven (duration stepper → inoculation ratio via solveForRecipe).
+     // The remaining feed portion is split flour/water by the stiffness slider.
+     const levainBreakdown = useMemo(() => {
+       const totalEffective = currentPlan.starter + currentPlan.flour + currentPlan.water;
+       const addedStarter = currentPlan.starter;
+       const feedPortion = totalEffective - addedStarter;    // Enforce minimums of 10g each for flour and water by clamping the slider range
+       const minHydration = feedPortion > 20
+         ? Math.ceil((10 / feedPortion) * 100)
+         : 50;
+       const maxHydration = feedPortion > 20
+         ? Math.floor(((feedPortion - 10) / feedPortion) * 100)
+         : 50;
+       const clampedHydration = Math.max(minHydration, Math.min(maxHydration, levainHydration));    const addedWaterRatio = clampedHydration / 100;
+       const addedFlourRatio = 1 - addedWaterRatio;
+       const addedFlour  = Math.round(feedPortion * addedFlourRatio * 10) / 10;
+       const addedWater  = Math.round(feedPortion * addedWaterRatio * 10) / 10;    // 1:X:Y where 1 = starter, X = flour multiple, Y = water multiple
+       const ratioFlour = addedStarter > 0 ? (addedFlour / addedStarter).toFixed(1) : "—";
+       const ratioWater = addedStarter > 0 ? (addedWater / addedStarter).toFixed(1) : "—";    return {
+         addedStarter,
+         addedFlour,
+         addedWater,
+         ratioStr: `1 : ${ratioFlour} : ${ratioWater}`,
+         clampedHydration,
+         minHydration,
+         maxHydration,
+       };
+     }, [currentPlan, levainHydration]);
 
   // Use targetHours here as it's the direct input to the nudge calculation
   const nudges = useMemo(() => {
@@ -119,75 +155,87 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
             </View>
 
       {/* --- The Current Plan --- */}
-      <Animated.View layout={Layout} style={[styles.planCard, { backgroundColor: colors.primary + "08", borderColor: colors.primary + "20" }]}>
+      <Animated.View layout={Layout} style={[styles.planCard, {
+          backgroundColor: colors.primary + "08", borderColor: colors.primary + "20" }]}>
+        {/* Sleep zone / target peak header */}
         <View style={styles.planHeader}>
-                  <MaterialCommunityIcons
-                    name={isInSleepWindow ? "moon-waning-crescent" : "clock-outline"}
-                    size={20}
-                    color={isInSleepWindow ? "#f59e0b" : colors.primary}
-                  />
-                  <Text style={[styles.planTitle, { color: isInSleepWindow ? "#92400e" : colors.primary }]}>
-                    {isInSleepWindow ? "Peaks in the Sleep Zone" : "Target Peak"}
-                  </Text>
-                  <View style={[
-                    styles.timeBadge,
-                    { backgroundColor: isInSleepWindow ? "#f59e0b" : colors.primary }
-                  ]}>
-                    <Text style={styles.timeBadgeText}>{formatTime(currentPlan.peakTime)}</Text>
-                  </View>
-                </View>
-
+          <MaterialCommunityIcons
+            name={isInSleepWindow ? "moon-waning-crescent" : "clock-outline"}
+            size={20}
+            color={isInSleepWindow ? "#f59e0b" : colors.primary}
+          />
+          <Text style={[styles.planTitle, { color: isInSleepWindow ? "#92400e" : colors.primary }]}>
+            {isInSleepWindow ? "Peaks in the Sleep Zone" : "Target Peak"}
+          </Text>
+          <View style={[styles.timeBadge, { backgroundColor: isInSleepWindow ? "#f59e0b" : colors.primary }]}>
+            <Text style={styles.timeBadgeText}>{formatTime(currentPlan.peakTime)}</Text>
+          </View>
+        </View>
+        {/* Duration stepper */}
         <View style={styles.hoursRow}>
           <Pressable
-            onPress={() => { setTargetHours(Math.max(2, targetHours - 0.5)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            onPress={() => {
+                setTargetHours(Math.max(2, targetHours - 0.5));
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
             style={styles.stepBtn}
-          ><Feather name="minus" size={20} color={colors.primary} /></Pressable>
+          ><Feather name="minus" size={20} color={colors.primary} />
+          </Pressable>
           <View style={{ alignItems: "center" }}>
-            <Text style={[styles.hoursValue, { color: colors.foreground }]}>{targetHours % 1 === 0 ? targetHours : targetHours.toFixed(1)}h</Text>
+            <Text style={[styles.hoursValue, {
+                color: colors.foreground }]}>
+                {targetHours % 1 === 0 ? targetHours : targetHours.toFixed(1)}h</Text>
             <Text style={[styles.hoursLabel, { color: colors.mutedForeground }]}>duration</Text>
           </View>
           <Pressable
-            onPress={() => { setTargetHours(Math.min(24, targetHours + 0.5)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            onPress={() => {
+                setTargetHours(Math.min(24, targetHours + 0.5));
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
             style={styles.stepBtn}
           ><Feather name="plus" size={20} color={colors.primary} /></Pressable>
         </View>
-
-        <View style={[styles.recipeRow, { borderTopColor: colors.border + "40" }]}>
-          <RecipeItem label="Starter" value={currentPlan.starter} />
-          <RecipeItem label="Flour" value={currentPlan.flour} />
-          <RecipeItem label="Water" value={currentPlan.water} />
-          <View style={styles.ratioItem}>
-            <Text style={[styles.ratioLabel, { color: colors.mutedForeground }]}>Ratio</Text>
-            <Text style={[styles.ratioValue, { color: colors.primary }]}>{currentPlan.ratioStr}</Text>
+        {/* ── Levain Builder — stiffness slider + output tiles ─────────────── */}
+        <View style={[styles.levainSection, { borderTopColor: colors.border + "40" }]}>
+          <Text style={[styles.levainSectionLabel, { color: colors.mutedForeground }]}>
+            Levain Hydration
+          </Text>
+          <LevainSlider
+            value={levainBreakdown.clampedHydration}
+            onChange={setLevainHydration}
+            ratioStr={levainBreakdown.ratioStr}
+            minValue={levainBreakdown.minHydration}
+            maxValue={levainBreakdown.maxHydration}
+          />
+          {/* Single set of output weights */}
+          <View style={styles.breakdownRow}>
+            <LevainTile label="Starter"  value={levainBreakdown.addedStarter} colors={colors} />
+            <LevainTile label="+ Flour"  value={levainBreakdown.addedFlour}   colors={colors} />
+            <LevainTile label="+ Water"  value={levainBreakdown.addedWater}   colors={colors} />
           </View>
         </View>
-        {/* When the minimum starter floor is hit, effective total exceeds the user's target.
-            Show the actual total so they aren't surprised by the weights. */}
-        {(currentPlan.starter + currentPlan.flour + currentPlan.water) > (parseFloat(totalMass) || 100) + 2 && (
-          <Text style={[styles.massOverageNote, { color: colors.mutedForeground }]}>
-            Total levain: {currentPlan.starter + currentPlan.flour + currentPlan.water}g
-            {" "}(expanded from {parseFloat(totalMass) || 100}g to reach minimum starter amount)
-          </Text>
-        )}
-
+        {/* Apply button — passes hydration-adjusted weights to Track a Feed */}
         <Pressable
-          onPress={() => onApplyRecipe(currentPlan)}
+          onPress={() => onApplyRecipe({
+            ...currentPlan,
+            starter:  levainBreakdown.addedStarter,
+            flour:    levainBreakdown.addedFlour,
+            water:    levainBreakdown.addedWater,
+            ratioStr: levainBreakdown.ratioStr,
+          })}
           style={({ pressed }) => [styles.applyBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 }]}
         >
           <Text style={[styles.applyBtnText, { color: colors.primaryForeground }]}>Build this Levain</Text>
           <Feather name="arrow-right" size={16} color={colors.primaryForeground} />
-        </Pressable>
-      </Animated.View>
+        </Pressable>      </Animated.View>
 
       {/* --- Smart Nudges --- */}
       {nudges.length > 0 && (
         <Animated.View entering={FadeInDown.delay(200)} style={styles.nudgeSection}>
           <View style={styles.nudgeHeader}>
             <Ionicons name="bulb-outline" size={16} color={colors.mutedForeground} />
-            <Text style={[styles.nudgeHeaderText, { color: colors.mutedForeground }]}>Better Option:</Text>
+            <Text style={[styles.nudgeHeaderText, { color: colors.mutedForeground }]}>Better Option(s):</Text>
           </View>
 
-          {nudges.map((nudge, i) => (
+          {nudges.map((nudge) => (
             <Pressable
               key={nudge.type}
               onPress={() => { setTargetHours(nudge.estimatedHours); Haptics.selectionAsync(); }}
@@ -201,7 +249,7 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
                   {nudge.type === "early" ? "Early Bird" : "Morning Fresh"}
                 </Text>
                 <Text style={[styles.nudgeDesc, { color: colors.mutedForeground }]}>
-                  Peak by {formatTime(nudge.peakTime)} ({nudge.ratioStr})
+                  {'Peak by {formatTime(nudge.peakTime)} ({nudge.ratioStr})'}
                 </Text>
               </View>
               <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
@@ -210,6 +258,25 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
         </Animated.View>
       )}
     </ScrollView>
+  );
+}
+
+// ── LevainTile ──────────────────────────────────────────────────────────────
+// Small data tile for the Starter / Added Flour / Added Water breakdown.
+function LevainTile({
+  label,
+  value,
+  colors,
+}: {
+  label: string;
+  value: number;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={[styles.levainTile, { backgroundColor: colors.background, borderColor: colors.border }]}>
+      <Text style={[styles.levainTileLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={[styles.levainTileValue, { color: colors.foreground }]}>{value}g</Text>
+    </View>
   );
 }
 
@@ -339,46 +406,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginTop: -4,
   },
-  recipeRow: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    paddingTop: spacing.lg - 4,             // 20
-    marginBottom: spacing.lg - 4,           // 20
-  },
-  recipeItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-  recipeValue: {
-    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — gram weights are data
-    fontSize: 18,
-  },
-  recipeLabel: {
-    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
-    fontSize: 12,
-    marginTop: 2,
-  },
-  ratioItem: {
-    flex: 1.2,
-    alignItems: "center",
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: "#ddd",
-  },
-  ratioLabel: {
-    ...typography.sectionLabel,              // HankenGrotesk_600SemiBold, uppercase
-    fontSize: 10,
-  },
-  ratioValue: {
-    fontFamily: fonts.mono,                  // JetBrainsMono_500Medium — ratio is a calculated data value
-    fontSize: 16,
-    marginTop: 2,
-  },
-  massOverageNote: {
-    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
-    fontSize: 11,
-    textAlign: "center",
-    marginBottom: spacing.sm,               // 8
-  },
   applyBtn: {
     height: 48,
     borderRadius: radius.lg,                 // 12
@@ -424,5 +451,38 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sans,                  // HankenGrotesk_400Regular
     fontSize: 13,
     marginTop: 2,
+  },
+  // ── Levain Builder ────────────────────────────────────────────────────────
+  levainSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.lg - 4,              // 20 — breathing room below "Build this Levain" button
+    paddingTop: spacing.md,                 // 16
+  },
+  levainSectionLabel: {
+    ...typography.sectionLabel,             // HankenGrotesk_600SemiBold, uppercase, 11px
+    marginBottom: spacing.sm,              // 8
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    gap: spacing.sm,                        // 8
+    marginTop: spacing.md,                  // 16
+  },
+  levainTile: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: spacing.sm,            // 8
+    borderRadius: radius.md,               // 8
+    borderWidth: 1,
+  },
+  levainTileLabel: {
+    fontFamily: fonts.sans,                // HankenGrotesk_400Regular
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  levainTileValue: {
+    fontFamily: fonts.mono,                // JetBrainsMono_500Medium — gram weights are data
+    fontSize: 16,
   },
 });

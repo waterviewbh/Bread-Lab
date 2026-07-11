@@ -71,11 +71,13 @@ export async function loadAll(): Promise<{
       api.recipes.list(deviceId, token ?? undefined),
       localBakeFound ? Promise.resolve(null) : api.history.bakes.active(deviceId),
       getRecipeTombstone(),
-    ]);    const mapped: SavedRecipe[] = apiRecipes
+    ]);
+    const mapped: SavedRecipe[] = apiRecipes
       .filter((r) => !deletedRecipeIds.includes(r.id))
       .map((r) => ({
         id: r.id,
         name: r.name,
+        overview: r.overview ?? undefined,
         createdAt: new Date(r.createdAt).getTime(),
         phases: r.phases.map((p) => ({
           key: p.key,
@@ -168,6 +170,7 @@ export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
         deviceId,
         userId: userId ?? undefined,
         name: recipe.name,
+        overview: recipe.overview,
         phases: recipe.phases.map((p) => ({
           key: p.key,
           name: p.name,

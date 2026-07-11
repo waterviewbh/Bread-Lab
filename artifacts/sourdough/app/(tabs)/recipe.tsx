@@ -83,8 +83,10 @@ import { RecipeBuilderListView } from "@/components/recipe/RecipeBuilderListView
 import { RecipeBuilderEditView } from "@/components/recipe/RecipeBuilderEditView";
 import { RecipeRunnerSetupView } from "@/components/recipe/RecipeRunnerSetupView";
 import { RecipeRunnerActiveView } from "@/components/recipe/RecipeRunnerActiveView";
+import { TourStep, CopilotView } from "@/components/TourStep";
 import { computeBulkFermentState } from "@/lib/bulkFermentEngine";
 import { fonts, spacing, radius } from "@/constants/theme";
+import { estimateInoculationPercent } from "@/lib/bulkFermentEngine";
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -530,7 +532,8 @@ const handleSaveReading = async (reading: Reading) => {
       const bulkReadings = updatedReadings as import("@/lib/recipeTypes").BulkFermentReading[];
       const updatedState = computeBulkFermentState(
         bulkReadings,
-        p.bulkFermentState ?? {}
+        p.bulkFermentState ?? {},
+        bake.phases
       );
       return { ...p, readings: updatedReadings, bulkFermentState: updatedState };
     }
@@ -637,6 +640,23 @@ const handleSaveReading = async (reading: Reading) => {
     phases: cat.phases.filter((d) => availablePhases.some((a) => a.key === d.key)),
   })).filter((cat) => cat.phases.length > 0);
 
+// ── Inoculation anchor: the last mixing phase that contains flour/starter
+// (fermentolysing > incorporating > building_levain, in priority order).
+// Used to attach the inoculation% badge to the right phase card.
+const INOCULATION_ANCHOR_PRIORITY = ["fermentolysing", "incorporating", "building_levain"] as const;
+const inoculationAnchorKey: string | null = (() => {
+  if (!bake) return null;
+  const bakePhaseKeys = new Set(bake.phases.map((p) => p.key));
+  return INOCULATION_ANCHOR_PRIORITY.find((k) => bakePhaseKeys.has(k)) ?? null;
+})();
+
+// Eagerly calculate inoculation% from ingredient text (available before any reading).
+// After the first bulk reading the engine also stores this on bulkFermentState;
+// we use the eager value here so the badge appears as soon as the phase is active.
+const inoculationPercent: 10 | 20 | 30 | null = bake
+  ? estimateInoculationPercent(bake.phases)
+  : null;
+
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════
@@ -656,32 +676,27 @@ const handleSaveReading = async (reading: Reading) => {
           },
         ]}
       >
-        <View
-          style={[s.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}
-        >
-          {(["builder", "runner"] as const).map((sec) => (
-            <Pressable
-              key={sec}
-              onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
-              style={[
-                s.sectionBtn,
-                section === sec && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
-              ]}
-            >
-              <Text
-                style={[
-                  s.sectionBtnText,
-                  {
-                    color: section === sec ? colors.foreground : colors.mutedForeground,
-                    fontFamily: section === sec ? fonts.sansSemiBold : fonts.sans,
-                  },
-                ]}
-              >
-                {sec === "builder" ? "Recipe Builder" : "Recipe Runner"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        {/* ── Top section toggle — one step highlights both tabs ── */}
+        <TourStep  order={15} name="recipe-pages">
+          <CopilotView>
+            <View style={[s.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              {(["builder", "runner"] as const).map((sec) => (
+                <Pressable
+                  key={sec}
+                  onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
+                  style={[
+                    s.sectionBtn,
+                    section === sec && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+                  ]}
+                >
+                  <Text style={[s.sectionBtnText, { color: section === sec ? colors.foreground : colors.mutedForeground, fontFamily: section === sec ? fonts.sansSemiBold : fonts.sans }]}>
+                    {sec === "builder" ? "Recipe Builder" : "Recipe Runner"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </CopilotView>
+        </TourStep>
       </View>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
@@ -711,6 +726,9 @@ const handleSaveReading = async (reading: Reading) => {
         isNewRecipe={isNewRecipe}
         availablePhaseCount={availablePhases.length}
         onChangeName={updateEditName}
+        onChangeOverview={(v) =>
+          setEditingRecipe((prev) => prev ? { ...prev, overview: v } : prev)
+        }
         onChangeYield={(t) => setEditingRecipe({ ...editingRecipe, yieldValue: t })}
         onUpdatePhaseField={updatePhaseField}
         onRemovePhase={removePhaseFromEdit}
@@ -756,6 +774,8 @@ const handleSaveReading = async (reading: Reading) => {
             allDone={allDone}
             completedCount={completedCount}
             recipeStale={recipeStale}
+            inoculationAnchorKey={inoculationAnchorKey}
+            inoculationPercent={inoculationPercent}
             expandedDone={expandedDone}
             expandedRecipeInfo={expandedRecipeInfo}
             expandedPending={expandedPending}

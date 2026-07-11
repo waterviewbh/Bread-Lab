@@ -15,7 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { formatDate } from "@/lib/recipeUtils";
 import { KeycapKey } from "@/components/recipe/KeycapKey";
-import type { SavedRecipe } from "@/lib/recipeTypes";interface Props {
+import type { SavedRecipe } from "@/lib/recipeTypes";
+interface Props {
   recipes: SavedRecipe[];
   displayedRecipes: SavedRecipe[];
   populatedLetters: string[];
@@ -200,6 +201,15 @@ export function RecipeBuilderListView({
                       · {formatDate(r.createdAt)}
                     </Text>
                   </View>
+                  {/* Overview preview — only shown if the recipe has one */}
+                  {!!r.overview && (
+                    <Text
+                      style={[s.recipeOverview, { color: colors.mutedForeground }]}
+                      numberOfLines={2}
+                    >
+                      {r.overview}
+                    </Text>
+                  )}
                   {r.phases.length > 0 && (
                     <View style={s.phasePillRow}>
                       {r.phases.map((p) => (
@@ -276,6 +286,12 @@ const s = StyleSheet.create({
   recipeMeta: {
     fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — phase count + date
     fontSize: 12,
+  },
+  recipeOverview: {
+    fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — overview blurb
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
   },
   phasePillRow: {
     flexDirection: "row",

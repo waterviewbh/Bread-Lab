@@ -137,12 +137,13 @@ export const HELP: HelpTab[] = [
     label: "Tab 5 — About",
     sections: [
       {
-        heading: "About",
+        heading: "About & Legal",
         bullets: [
           "Purpose: Provides app information and customer support access.",
           "Logo: Official branding for Waterview Bakehouse, the maker of this app.",
           "Developer Contact: Email the developer to submit bugs, feature requests, or project feedback.",
           "Documentation: This document.",
+          "Privacy Policy: https://privacy.bakersbench.app/",
           "Changelog: a running list of updates and fixes.",
           "Version: The current app version number and build code.",
         ],
@@ -154,7 +155,30 @@ export const HELP: HelpTab[] = [
 export const CHANGELOG: ChangelogVersion[] = [
 
     /*{
-      version: "v1.0.13", / -- published 202607XX -- /
+      version: "v1.1.0", / -- published 202607XX -- /
+      changes: [
+        { type: "Changed", content: "We're now publicly findable in the Google Play Store! Thanks to all of the early supporters to help make this happen!" },
+        { type: "Added", content: "On demand, you can take a tour of the app to see or be reminded of the many different ways that the Sourdough Bread Lab app can help turn bakers into scientists, and back again. Start your tour by clicking the Tour button in the About tab." },
+      ],
+    },
+    {
+      version: "v1.0.15", / -- published 202607XX -- /
+      changes: [
+        { type: "Fixed", content: "Lingering visual fixes." },
+        { type: "Changed", content: "Increased the accuracy of the Bulk Ferment completion estimate. We now calculate your recipe's inoculation percent and use it as either 10%, 20%, or 30% to build a better timeframe." },
+        { type: "Added", content: "A new graph on the Graph tab, Metabolic Map, tracks the stiffness of your feeds over time. If you feed or build levains other than 1:1:1, this will be an especially useful tool." },
+        { type: "Changed", content: "Updated the Plan a Feed page to allow for predicting rise times of those stiffer or slacker refreshes and levains." },
+        { type: "Added", content: "The app's privacy policy has been added as a clickable link in the About & Legal section of the About tab." },
+      ],
+    },*/
+    {
+      version: "v1.0.14", /* -- published 20260703 -- */
+      changes: [
+        { type: "Fixed", content: "A typo caused a silent crash when clicking on the Graph tab. Rookie mistake." },
+      ],
+    },
+    {
+      version: "v1.0.13", /* -- published 20260703 -- */
       changes: [
         { type: "Fixed", content: "Changed the Plan a Feed model from using linear regression to an exponential model. Exceedingly long target feed times no longer generate funky feed ratios." },
         { type: "Changed", content: "More back-end refactoring (which means more bug-hunting)." },
@@ -162,7 +186,7 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Added", content: "The Bulk Fermentation phase of an active bake now helps you predict when the dough will be ready for shaping. By observing your dough and logging some readings, you can better predict when your dough is ready." },
         { type: "Changed", content: "Moved to an Artisan Hearth style for the app visuals." },
       ],
-    },*/
+    },
     {
       version: "v1.0.12", /* -- published 20260626 -- */
       changes: [

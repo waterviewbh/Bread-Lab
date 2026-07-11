@@ -7,7 +7,6 @@ import { Feather } from "@expo/vector-icons";
 import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { TourProvider } from "@/contexts/TourContext";
-import { TOUR_CHAPTERS } from "@/constants/TourConfig";
 //import { CopilotStep, walkthroughable } from "react-native-copilot"; red-tagged for web-0.1 rmv after 3 revs
 import { TourStep, CopilotView } from "@/components/TourStep";
 
@@ -99,19 +98,14 @@ function ClassicTabLayout() {
               options={{
                 title: "Graph",
                 tabBarIcon: ({ color }) => (
-                  <TourStep
-                    text="When finished, check your growth trends in the Analytics tab."
-                    order={10}
-                    name="next-chapter-is-graph"
-                  >
-                    <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-                      {isIOS ? (
-                        <SymbolView name="chart.line.uptrend.xyaxis" tintColor={color} size={24} />
-                      ) : (
-                        <Feather name="activity" size={22} color={color} />
-                      )}
-                    </CopilotView>
-                  </TourStep>
+                  // Sizing wrapper only — tour transition anchor lives at bottom of Graph screen
+                  <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                    {isIOS ? (
+                      <SymbolView name="chart.line.uptrend.xyaxis" tintColor={color} size={24} />
+                    ) : (
+                      <Feather name="activity" size={22} color={color} />
+                    )}
+                  </CopilotView>
                 ),
               }}
             />
@@ -120,40 +114,29 @@ function ClassicTabLayout() {
               options={{
                 title: "Recipe",
                 tabBarIcon: ({ color }) => (
-                  <TourStep
-                    text="Plan your next bake in the Recipes tab."
-                    order={12}
-                    name="next-chapter-is-recipe"
-                  >
-                    <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-                      {isIOS ? (
-                        <SymbolView name="list.clipboard" tintColor={color} size={24} />
-                      ) : (
-                        <Feather name="book-open" size={22} color={color} />
-                      )}
-                    </CopilotView>
-                  </TourStep>
-                ),
-              }}
+                  // Sizing wrapper only — tour transition anchor lives at bottom of Recipe screen
+                  <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                    {isIOS ? (
+                      <SymbolView name="list.clipboard" tintColor={color} size={24} />
+                    ) : (
+                      <Feather name="book-open" size={22} color={color} />
+                    )}
+                  </CopilotView>
+                ),              }}
             />
             <Tabs.Screen
               name="history"
               options={{
                 title: "Calendar",
                 tabBarIcon: ({ color }) => (
-                  <TourStep
-                    text="View your completed bakes in the Calendar."
-                    order={16}
-                    name="next-chapter-is-history"
-                  >
-                    <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-                      {isIOS ? (
-                        <SymbolView name="calendar" tintColor={color} size={24} />
-                      ) : (
-                        <Feather name="calendar" size={22} color={color} />
-                      )}
-                    </CopilotView>
-                  </TourStep>
+                  // Sizing wrapper only — tour transition anchor lives at bottom of Calendar screen
+                  <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                    {isIOS ? (
+                      <SymbolView name="calendar" tintColor={color} size={24} />
+                    ) : (
+                      <Feather name="calendar" size={22} color={color} />
+                    )}
+                  </CopilotView>
                 ),
               }}
             />
@@ -162,19 +145,14 @@ function ClassicTabLayout() {
               options={{
                 title: "About",
                 tabBarIcon: ({ color }) => (
-                  <TourStep
-                    text="Finally, learn more about the app in About."
-                    order={21}
-                    name="next-chapter-is-about"
-                  >
-                    <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-                      {isIOS ? (
-                        <SymbolView name="info.circle" tintColor={color} size={24} />
-                      ) : (
-                        <Feather name="info" size={22} color={color} />
-                      )}
-                    </CopilotView>
-                  </TourStep>
+                  // Sizing wrapper only — tour transition anchor lives at bottom of About screen
+                  <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+                    {isIOS ? (
+                      <SymbolView name="info.circle" tintColor={color} size={24} />
+                    ) : (
+                      <Feather name="info" size={22} color={color} />
+                    )}
+                  </CopilotView>
                 ),
               }}
             />
@@ -195,7 +173,7 @@ export default function TabLayout() {
 
   // 2. Wrap it in the TourProvider so all tabs can see it
   return (
-    <TourProvider chapters={TOUR_CHAPTERS}>
+    <TourProvider>
       {content}
     </TourProvider>
   );

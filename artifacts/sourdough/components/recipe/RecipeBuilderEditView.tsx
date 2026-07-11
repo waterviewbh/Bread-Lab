@@ -25,6 +25,7 @@ interface Props {
   // availablePhases is only needed for the "Add Phase" button hint count
   availablePhaseCount: number;
   onChangeName: (name: string) => void;
+  onChangeOverview: (overview: string) => void;
   onChangeYield: (value: string) => void;
   onUpdatePhaseField: (key: string, field: "ingredients" | "instructions", value: string) => void;
   onRemovePhase: (key: string) => void;
@@ -39,6 +40,7 @@ export function RecipeBuilderEditView({
   isNewRecipe,
   availablePhaseCount,
   onChangeName,
+  onChangeOverview,
   onChangeYield,
   onUpdatePhaseField,
   onRemovePhase,
@@ -100,6 +102,29 @@ export function RecipeBuilderEditView({
             value={editingRecipe.name}
             onChangeText={onChangeName}
             returnKeyType="done"
+          />
+          {/* ── Overview textarea ───────────────────────────────────────── */}
+          <Text style={[s.fieldLabel, { color: colors.mutedForeground, marginTop: 16 }]}>
+            Overview
+          </Text>
+          <TextInput
+            style={[
+              s.overviewInput,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                color: colors.foreground,
+                fontFamily: fonts.sans,
+              },
+            ]}
+            placeholder="e.g., Great for snow days — quick levain, bold crust."
+            placeholderTextColor={colors.mutedForeground}
+            value={editingRecipe.overview ?? ""}
+            onChangeText={onChangeOverview}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+            scrollEnabled={true}
           />
           {/* ── Yield pill ───────────────────────────────────────────────── */}
           <YieldPill
@@ -298,6 +323,15 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius.md,                 // 8
     // fontFamily set inline — driven by TextInput's fontFamily prop
+  },
+  overviewInput: {
+    borderWidth: 1,
+    borderRadius: radius.md,                 // 8
+    padding: 14,
+    fontSize: 15,
+    minHeight: 72,                           // ~3 rows
+    maxHeight: 160,
+    textAlignVertical: "top",               // Android multiline alignment
   },
   emptyPhasesHint: {
     borderRadius: radius.md,                 // 8

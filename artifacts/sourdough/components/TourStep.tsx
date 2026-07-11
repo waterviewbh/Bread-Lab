@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform, View } from 'react-native';
+import { TOUR_STEP_TEXT } from '@/constants/TourConfig';
 
 // 1. Isolate the mobile-only libraries from the web bundler
 let CopilotStep: any = null;
@@ -18,28 +19,49 @@ if (Platform.OS !== 'web') {
 }
 
 interface TourStepProps {
-  text: string;
-  order: number;
   name: string;
+  order: number;
   children: React.ReactNode;
-  style?: any; // To accept formatting styles seamlessly
+  style?: any;
+  text?: string; // optional override — omit in normal usage
 }
 
-// Export a web-safe view wrapper
-export function CopilotView({ children, style }: { children: React.ReactNode, style?: any }) {
+// Accept `copilot` (injected by CopilotStep via cloneElement) and any
+// other forwarded props, then pass them through to the walkthroughable View
+// so react-native-copilot can attach its wrapperRef and measure the element.
+export function CopilotView({
+  children,
+  style,
+  copilot,
+  ...rest
+}: {
+  children: React.ReactNode;
+  style?: any;
+  copilot?: any;
+  [key: string]: any;
+}) {
   if (Platform.OS === 'web' || !RealCopilotView) {
     return <View style={style}>{children}</View>;
   }
-  return <RealCopilotView style={style}>{children}</RealCopilotView>;
+  return (
+    <RealCopilotView copilot={copilot} style={style} {...rest}>
+      {children}
+    </RealCopilotView>
+  );
 }
 
 // Export a web-safe step wrapper
 export function TourStep({ text, order, name, children }: TourStepProps) {
+  // Prefer explicit prop (escape hatch), fall back to TourConfig lookup
+  const resolvedText = text ?? TOUR_STEP_TEXT[name] ?? '';
   if (Platform.OS === 'web' || !CopilotStep) {
     return <>{children}</>;
   }
+  if (__DEV__ && resolvedText === '') {
+    console.warn(`[TourStep] No text found in TourConfig for step name: "${name}"`);
+  }
   return (
-    <CopilotStep text={text} order={order} name={name}>
+    <CopilotStep text={resolvedText} order={order} name={name}>
       {children}
     </CopilotStep>
   );

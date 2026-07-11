@@ -13,6 +13,7 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { TourStep, CopilotView } from "@/components/TourStep";
 import { YieldPill } from "@/components/YieldPill";
 import type { SavedRecipe } from "@/lib/recipeTypes";interface Props {
   // Whether any recipes exist at all (drives empty-state vs. select-button)
@@ -185,6 +186,12 @@ export function RecipeRunnerSetupView({
             </Text>
           </Pressable>
         </Animated.View>
+        {/* Tour transition anchor — zero-height, end of recipe chapter */}
+        <TourStep order={16} name="next-chapter-is-history">
+          <CopilotView>
+            <View style={{ height: 0 }} />
+          </CopilotView>
+        </TourStep>
       </ScrollView>
     );
   }
@@ -277,6 +284,12 @@ export function RecipeRunnerSetupView({
           </>
         )}
       </Animated.View>
+      {/* Tour transition anchor — zero-height, end of recipe chapter */}
+      <TourStep order={16} name="next-chapter-is-history">
+        <CopilotView>
+          <View style={{ height: 0 }} />
+        </CopilotView>
+      </TourStep>
     </ScrollView>
   );
 }

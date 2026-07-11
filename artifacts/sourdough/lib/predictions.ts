@@ -92,7 +92,7 @@ export function solveForRecipe(
   // so that the total mass expands rather than the output freezing.
   targetRatio = Math.min(targetRatio, 0.5);
   // No lower cap needed, exp() can never reach zero
-  const MIN_STARTER_G = 6;  // What starter weight does this ratio imply at the user's requested total mass?
+  const MIN_STARTER_G = 2.44;  // most extreme refresh allowed is 1:20:20, 41 parts. 100/41=2.44
   const impliedStarter = totalMass * targetRatio / (1 + targetRatio);  // If the implied starter is below the minimum, pin starter at MIN_STARTER_G and
   // let the total mass grow beyond the user's target rather than freezing the output.
   // Derived from: starter = effectiveTotalMass * targetRatio / (1 + targetRatio)

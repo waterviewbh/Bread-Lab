@@ -144,13 +144,14 @@ const sp = StyleSheet.create({
   options: {
     flexDirection: "row",
     gap: 6,
-    flexWrap: "wrap",
   },
   option: {
+    flex: 1,                                 // each button takes an equal share of the row
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.md,                 // 8
     borderWidth: 1,
+    alignItems: "center",                    // center the label text within the expanded button
   },
   optionText: {
     fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — segmented picker choice
@@ -194,10 +195,12 @@ export function ReadingModal({
     setAmbientTemp("");
     setSensory({});
     setPostIntervention(false);
-  };  const handleClose = () => {
+  };
+  const handleClose = () => {
     resetForm();
     onClose();
-  };  const handleSave = () => {
+  };
+  const handleSave = () => {
     if (isBulkPhase) {
       // Bulk mode: volume_ml is required so the engine has a data point
       const ml = parseFloat(volumeMl);
@@ -576,6 +579,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     height: 52,
     marginTop: 24,
+    marginBottom: 8,
   },
   saveReadingBtnText: {
     fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — primary action

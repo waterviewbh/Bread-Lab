@@ -23,6 +23,7 @@ import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for
 
 import { useColors } from "@/hooks/useColors";
 import FlourSlider from "@/components/FlourSlider";
+import AffiliateCarousel from "@/components/AffiliateCarousel";
 import { calcRatioStr } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
@@ -152,6 +153,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
 
   const webTop = Platform.OS === "web" ? 67 : 0;
   const tabBarPad = Platform.OS === "web" ? 84 : 49;
+  const [isFocused, setIsFocused] = useState(false);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -167,35 +169,32 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
           },
         ]}
       >
-      <View style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          {(["track", "plan"] as const).map((sec) => (
-            <TourStep
-              key={sec}
-              text={sec === "track" ? "Start here to monitor a live refresh." : "Click here to estimate when a refresh will peak..."}
-              order={sec === "track" ? 2 : 3}
-              name={sec === "track" ? "track-feed-btn" : "plan-feed-btn"}
-            >
-            <CopilotView
+      {/* ── Top section toggle — one step highlights both buttons ── */}
+      <TourStep order={2} name="feed-pages">
+        <CopilotView>
+          <View style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            {(["track", "plan"] as const).map((sec) => (
+              <Pressable
+                key={sec}
+                onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
                 style={[
                   styles.sectionBtn,
                   section === sec && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
                 ]}
-              ><Pressable
-                  onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
-                  style={{ width: '100%', alignItems: 'center' }}
-                ><Text style={[styles.sectionBtnText,
-                    { color: section === sec ? colors.foreground : colors.mutedForeground,
-                      fontFamily: section === sec ? fonts.sansSemiBold : fonts.sans,
-                    }
-                  ]}>
-                    {sec === "track" ? "Track a Feed" : "Plan a Feed"}
-                  </Text>
-                </Pressable>
-              </CopilotView>
-            </TourStep>
-          ))}
-        </View>
-      </View>
+              >
+                <Text style={[styles.sectionBtnText,
+                  { color: section === sec ? colors.foreground : colors.mutedForeground,
+                    fontFamily: section === sec ? fonts.sansSemiBold : fonts.sans,
+                  }
+                ]}>
+                  {sec === "track" ? "Track a Feed" : "Plan a Feed"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </CopilotView>
+      </TourStep>
+    </View>
 
       {/* Track a Feed Section */}
       {section === "track" && (
@@ -213,11 +212,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
             showsVerticalScrollIndicator={false}
           >
             <Animated.View entering={FadeIn.duration(400)} style={styles.appHeader}>
-              <TourStep
-                name="app-name"
-                order={1}
-                text="Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by logging your starter's feeds."
-              ><CopilotView>
+              <TourStep order={1} name="app-name">
+                <CopilotView>
                  <Text style={[styles.appTitle, { color: colors.foreground }]}>Bread Lab</Text>
                  <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>log a feed</Text>
                </CopilotView>
@@ -227,7 +223,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
             {/* Feed Amounts */}
             <Animated.View entering={FadeInDown.delay(60).duration(400)}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Feed Amounts</Text>
-              <TourStep text="Enter your starter, flour, and water weights here." order={5} name="feed-ratios-input">
+              <TourStep order={4} name="feed-ratios-input">
                 <CopilotView style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.inputRow}>
                     <View style={{ flex: 1, marginRight: 8 }}>
@@ -279,12 +275,20 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                   {sugarEnabled && (
                     <View style={{ marginTop: 8 }}>
                       <TextInput
-                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, fontFamily: fonts.mono }]}
+                        style={[styles.input, {
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                          color: colors.foreground,
+                          fontFamily: fonts.mono,
+                        }]}
                         placeholder="e.g., 50"
+                        // textAlign="center"
                         placeholderTextColor={colors.mutedForeground}
                         value={sugarWeightStr}
                         onChangeText={setSugarWeightStr}
                         keyboardType="decimal-pad"
+                        // onFocus={() => setIsFocused(true)}
+                        // onBlur={() => setIsFocused(false)}
                       />
                     </View>
                   )}
@@ -313,7 +317,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
 
             {/* Initial Readings */}
             <Animated.View entering={FadeInDown.delay(160).duration(400)} style={{ marginTop: 20 }}>
-              <TourStep text="A log of your temperature, pH, and rise data during the refresh." order={6} name="live-data-log">
+              <TourStep order={5} name="live-data-log">
                 <CopilotView>
                   <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Initial Readings</Text>
                   <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -359,7 +363,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
 
             {/* Just Fed Photo */}
             <Animated.View entering={FadeInDown.delay(220).duration(400)} style={{ marginTop: 20 }}>
-              <TourStep text="Capture or upload an image of your starter right after feeding it." order={7} name="just-fed-photo">
+              <TourStep order={6} name="just-fed-photo">
                 <CopilotView>
                   <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Just Fed Photo</Text>
                   <Pressable
@@ -384,7 +388,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
 
             {/* Start Button */}
             <Animated.View entering={FadeInDown.delay(280).duration(400)} style={{ marginTop: 28 }}>
-              <TourStep text="Tap this to begin the refresh timer." order={8} name="start-feed-btn">
+              <TourStep order={7} name="start-feed-btn">
                 <CopilotView>
                   <Pressable onPress={handleStart} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1 }]}>
                     <Ionicons name="timer-outline" size={20} color={colors.primaryForeground} />
@@ -393,6 +397,15 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                 </CopilotView>
               </TourStep>
             </Animated.View>
+            {/* Affiliate product carousel — shown while user is on setup screen */}
+            <AffiliateCarousel />
+            {/* Tour transition anchor — zero-height, sits just above tab bar.
+                Only the tooltip matters; no highlight hole needed here. */}
+            <TourStep order={10} name="next-chapter-is-graph">
+              <CopilotView>
+                <View style={{ height: 0 }} />
+              </CopilotView>
+            </TourStep>
           </ScrollView>
         </KeyboardAvoidingView>
       )}

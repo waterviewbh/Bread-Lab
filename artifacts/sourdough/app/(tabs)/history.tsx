@@ -1164,11 +1164,7 @@ export default function HistoryScreen() {
             </Text>
             {lastSynced !== null && <SyncLabel ts={lastSynced} />}
           </View>
-          <TourStep
-            text="Sync and name your data across devices."
-            order={17}
-            name="name-name-button"
-          >
+          <TourStep order={17} name="name-name-button">
             <CopilotView>
               <Pressable
                 onPress={() => setShowAuthModal(true)}
@@ -1205,11 +1201,7 @@ export default function HistoryScreen() {
         </Animated.View>
 
         {/* Stat strip */}
-        <TourStep
-          text="Track the number of refreshes, and see your longest daily activity streak."
-          order={18}
-          name="feed-leaderboard"
-        >
+        <TourStep order={18} name="feed-leaderboard">
           <CopilotView
             style={styles.statsRow}
           >
@@ -1293,11 +1285,7 @@ export default function HistoryScreen() {
         </Animated.View>
 
         {/* Calendar card */}
-        <TourStep
-          text="View your activity history on the calendar."
-          order={19}
-          name="calendar"
-        >
+        <TourStep order={19} name="calendar">
           <CopilotView
             style={[
               styles.calendarCard,
@@ -1434,11 +1422,7 @@ export default function HistoryScreen() {
 
         {/* Selected day detail */}
         {selectedDay !== null && (
-          <TourStep
-            text="Review, print, and share your refreshes and your bakes (including added notes)."
-            order={20}
-            name="activity-history"
-          >
+          <TourStep order={20} name="activity-history">
             <CopilotView style={{ marginTop: 20 }}>
               {selectedEntries.length === 0 && selectedBakeEntries.length === 0 ? (
                 <View
@@ -1719,6 +1703,13 @@ export default function HistoryScreen() {
             </Text>
           </Animated.View>
         )}
+        {/* Tour transition anchor — zero-height, sits just above tab bar.
+            Only the tooltip matters; no highlight hole needed here. */}
+        <TourStep order={21} name="next-chapter-is-about">
+          <CopilotView>
+            <View style={{ height: 0 }} />
+          </CopilotView>
+        </TourStep>
       </ScrollView>
 
       {/* ─── Feed session full-detail modal ───────────────────────────────── */}

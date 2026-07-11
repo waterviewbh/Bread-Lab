@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
+import AffiliateCarousel from "@/components/AffiliateCarousel";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -22,7 +23,8 @@ import {
   ActivePhaseCard,
 } from "@/components/recipe/PhaseCard";
 import { formatTimer } from "@/lib/recipeUtils";
-import type { ActiveBake, BakePhase } from "@/lib/recipeTypes";interface Props {
+import type { ActiveBake, BakePhase } from "@/lib/recipeTypes";
+interface Props {
   bake: ActiveBake;
   // Elapsed ms per phase key — from useActiveBakeTimer
   elapsed: Record<string, number>;
@@ -36,6 +38,10 @@ import type { ActiveBake, BakePhase } from "@/lib/recipeTypes";interface Props {
   allDone: boolean;
   completedCount: number;
   recipeStale: boolean;
+  // Key of the phase that should show the inoculation% badge (computed in recipe.tsx)
+  inoculationAnchorKey: string | null;
+  // Calculated inoculation tier (10/20/30%), available even before first bulk reading
+  inoculationPercent: 10 | 20 | 30 | null;
   // Per-phase UI state
   expandedDone: Set<string>;
   expandedRecipeInfo: Set<string>;
@@ -87,6 +93,8 @@ export function RecipeRunnerActiveView({
   allDone,
   completedCount,
   recipeStale,
+  inoculationAnchorKey,
+  inoculationPercent,
   expandedDone,
   expandedRecipeInfo,
   expandedPending,
@@ -282,8 +290,12 @@ export function RecipeRunnerActiveView({
                 />
               );
             }
+            // Pass inoculationPercent only to the designated anchor phase card
+            const phaseInoculationPercent =
+              phase.key === inoculationAnchorKey ? inoculationPercent : null;
             // Active phase
             return (
+              // this is the <ActivePhaseCard> JSX; not sure what a JSX is....
               <ActivePhaseCard
                 key={`${phase.key}-active`}
                 phase={phase}
@@ -302,10 +314,13 @@ export function RecipeRunnerActiveView({
                 onComplete={() => onCompletePhase(phase.key)}
                 onShareSpec={() => onShareSpec(phase)}
                 onLayout={(y) => { phaseCardYOffsets.current[phase.key] = y; }}
+                inoculationPercent={phaseInoculationPercent}
               />
-            );
+          );
           })}
         </View>
+        {/* Affiliate carousel — shown during active bake beneath all phase cards */}
+        <AffiliateCarousel />
         {/* ── All-done completion card ──────────────────────────────────── */}
         {allDone && (
           <Animated.View
@@ -404,7 +419,7 @@ export function RecipeRunnerActiveView({
       </Modal>
     </>
   );
-}
+}  // end of Props
 
 const s = StyleSheet.create({
   trackerHeader: {

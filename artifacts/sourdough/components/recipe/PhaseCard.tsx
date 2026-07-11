@@ -273,6 +273,9 @@ export interface ActivePhaseCardProps {
   onComplete: () => void;
   onShareSpec: () => void;
   onLayout: (y: number) => void;
+  // When non-null, render an inoculation% badge below ingredients in the spec panel.
+  // Only passed for the phase that anchors the inoculation calculation.
+  inoculationPercent?: 10 | 20 | 30 | null;
 }
 
 export function ActivePhaseCard({
@@ -292,6 +295,7 @@ export function ActivePhaseCard({
   onComplete,
   onShareSpec,
   onLayout,
+  inoculationPercent,
 }: ActivePhaseCardProps) {
     const hasRecipeInfo = !!(phase.ingredients || phase.instructions);
     // ── Bulk ferment derived display values ──────────────────────────────────
@@ -455,6 +459,18 @@ export function ActivePhaseCard({
                 </Text>
               </>
             )}
+            {/* ── Inoculation badge — appears below ingredients on the anchor phase ── */}
+            {!!inoculationPercent && (
+              <View style={[s.inoculationBadge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Feather name="percent" size={11} color={colors.mutedForeground} />
+                <Text style={[s.inoculationBadgeText, { color: colors.mutedForeground }]}>
+                  Inoculation:{" "}
+                  <Text style={{ fontFamily: fonts.sansSemiBold, color: colors.foreground }}>
+                    {inoculationPercent}
+                  </Text>
+                </Text>
+              </View>
+            )}
             {!!phase.instructions && (
               <>
                 <Text style={[s.recipeInfoLabel, { color: colors.mutedForeground, marginTop: phase.ingredients ? 12 : 0 }]}>
@@ -538,6 +554,21 @@ const s = StyleSheet.create({
     fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "Ingredients", "No readings"
     fontSize: 13,
     paddingVertical: 4,
+  },
+  inoculationBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginTop: 10,
+    alignSelf: "flex-start",    // don't stretch full width — it's a badge, not a banner
+  },
+  inoculationBadgeText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
   },
   // ── Pending ──────────────────────────────────────────────────────────────────
   startBtn: {
@@ -752,11 +783,17 @@ const s = StyleSheet.create({
   },
   // ── Bulk ferment status panel ─────────────────────────────────────────────
   bulkStatusPanel: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 17,
-    paddingVertical: 10,
-    gap: spacing.sm,                         // 8
-  },
+      // Remove the top border — the box itself will be visually separated
+      // by the margin gap instead
+      borderWidth: StyleSheet.hairlineWidth,   // give the box its own border
+      borderRadius: radius.md,                 // match card radius (8)
+      marginHorizontal: 12,                    // inset from card edges
+      marginTop: 10,                           // space above the box
+      marginBottom: 2,                         // small breath below
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      gap: spacing.sm,
+    },
   bulkStatusRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -35,6 +35,7 @@ export type ApiRecipe = {
   id: string;
   deviceId: string;
   name: string;
+  overview?: string;
   phases: ApiRecipePhase[];
   createdAt: string;
   updatedAt: string;
@@ -104,6 +105,7 @@ interface RecipeRow {
   device_id: string;
   user_id: string | null;
   name: string;
+  overview?: string | null;
   phases: ApiRecipePhase[];
   created_at: string;
   updated_at: string | null;
@@ -160,6 +162,7 @@ function rowToApiRecipe(r: RecipeRow): ApiRecipe {
     id: r.id,
     deviceId: r.device_id,
     name: r.name,
+    overview: r.overview ?? undefined,
     phases: r.phases ?? [],
     createdAt: r.created_at,
     updatedAt: r.updated_at ?? r.created_at,
@@ -428,6 +431,7 @@ if (!authData.user) throw new Error("Authentication failed");
       deviceId: string;
       userId?: string;
       name: string;
+      overview?: string;
       yield_value: number;
       phases: ApiRecipePhase[];
     }): Promise<ApiRecipe> => {
@@ -439,6 +443,7 @@ if (!authData.user) throw new Error("Authentication failed");
           device_id: body.deviceId,
           user_id: body.userId ?? null,
           name: body.name,
+          overview: body.overview ?? null,
           yield_value: body.yield_value,
           phases: body.phases,
           updated_at: new Date().toISOString(),

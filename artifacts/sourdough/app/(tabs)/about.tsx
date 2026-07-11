@@ -20,7 +20,7 @@ import { useTour } from "@/contexts/TourContext";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 
-// import appConfig from "../../app.json";  red tagged 1.0.10-candidate remove after 3 revs
+// import appConfig from "../../app.json";  red tagged 1.0.10-candidate remove 3 revs after tour reintroduced
 import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA } from "../../constants/aboutContents";
 
 const SUPPORT_EMAIL = "waterviewbakehouse@gmail.com";
@@ -103,7 +103,18 @@ function HelpAccordion({ tab, colors }: { tab: HelpTab; colors: ReturnType<typeo
                       {label ? (
                         <>
                           <Text style={styles.bulletLabel}>{label}:</Text>
-                          {" "}{body}
+                          {" "}
+                          {/* If the body is a URL, render it as a tappable link */}
+                          {body.startsWith("http://") || body.startsWith("https://") ? (
+                            <Text
+                              style={[styles.bulletLink, { color: colors.primary }]}
+                              onPress={() => Linking.openURL(body)}
+                              accessibilityRole="link"
+                              accessibilityLabel={`Open ${label}`}
+                            >
+                              {body}
+                            </Text>
+                          ) : body}
                         </>
                       ) : body}
                     </Text>
@@ -303,11 +314,7 @@ export default function AboutScreen() {
       </Text>
 
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <TourStep
-          text="Toggle advanced accessibility settings here."
-          order={22}
-          name="font-setting-toggle"
-        >
+        <TourStep order={22} name="font-setting-toggle">
           <CopilotView style={styles.settingRow}>
             <View style={styles.settingText}>
               <Text style={[styles.settingTitle, { color: colors.foreground }]}>
@@ -383,26 +390,23 @@ export default function AboutScreen() {
           </Text>
           <Pressable
             onPress={() => startChapter('feed')}
-            disabled={true}  // disables the new user tour
+            disabled={false}  // disables the new user tour, set to false to enable tour
             style={({ pressed }) => ({
-              backgroundColor: colors.background,  // when disabled=false colors.primary here and the Text style for Take the Tour
+              backgroundColor: colors.background,  // when disabled=false colors.primaryForeground here
               paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 12,
               opacity: pressed ? 0.7 : 1
             })}
           >
+            {/* Change color to colors.primaryForeground when tour is active */}
             <Text style={{ color: colors.background, fontSize: 12, fontFamily: fonts.semiSansBold }}>
               Take the Tour
             </Text>
           </Pressable>
         </View>
 
-        <TourStep
-          text="Detailed help for every tab in the Bread Lab."
-          order={23}
-          name="help-section"
-        >
+        <TourStep order={23} name="help-section">
           <CopilotView>
             {HELP.map((tab, i) => (
               <HelpAccordion key={i} tab={tab} colors={colors} />
@@ -419,11 +423,7 @@ export default function AboutScreen() {
       >
         {"Interpreting Your Data"}
       </Text>
-      <TourStep
-        text="A deep dive into how to read your dough and the data you collect from it."
-        order={24}
-        name="interpreting-data-section"
-      >
+      <TourStep order={24} name="interpreting-data-section">
         <CopilotView>
           <InterpretationCard data={ACIDIFICATION_DATA} colors={colors} />
           <InterpretationCard data={LIFTING_DATA} colors={colors} />
@@ -544,6 +544,11 @@ const styles = StyleSheet.create({
   bulletLabel: {
     fontFamily: fonts.sansSemiBold,
     fontSize: 13,
+  },
+  bulletLink: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 13,
+    textDecorationLine: "underline",
   },
   changelogEntry: {
     paddingHorizontal: spacing.md,

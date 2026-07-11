@@ -27,6 +27,7 @@ import { useColors } from "@/hooks/useColors";
 import PHChart from "@/components/PHChart";
 import type { SessionForChart, TempReading } from "@/components/PHChart";
 import { FeedSession, Reading, PeakData } from "@/types/feed";
+import AffiliateCarousel from "@/components/AffiliateCarousel";
 import { formatDuration, formatTimeToPeak } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { fonts } from "@/constants/theme";
@@ -196,11 +197,7 @@ export default function FeedActiveSessionView({
         }}
         showsVerticalScrollIndicator={false}
       >
-        <TourStep
-          name="app-name"
-          order={1}
-          text="Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by logging your starter's feeds."
-        >
+        <TourStep order={1} name="app-name">
           <CopilotView style={styles.appHeader}>
             <Text style={[styles.appTitle, { color: colors.foreground }]}>
               Bread Lab
@@ -212,11 +209,7 @@ export default function FeedActiveSessionView({
         </TourStep>
 
         <Animated.View entering={FadeInDown.duration(500)}>
-          <TourStep
-            name="active-timer"
-            order={4}
-            text="This timer tracks exactly how long your starter has been fermenting."
-          >
+          <TourStep order={3} name="active-timer">
             <CopilotView>
               <Text
                 style={[
@@ -246,7 +239,7 @@ export default function FeedActiveSessionView({
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
             Feed Ratios
           </Text>
-          <TourStep text="Enter your starter, flour, and water weights here." order={5} name="feed-ratios-input">
+          <TourStep order={4} name="feed-ratios-input">
             <CopilotView style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.ratioRow}>
                 <View style={styles.ratioItem}>
@@ -313,7 +306,7 @@ export default function FeedActiveSessionView({
 
         {/* Unified Feed Readings Section */}
         <Animated.View entering={FadeInDown.delay(175).duration(400)} style={{ marginTop: 24 }}>
-          <TourStep text="A timeline of your starter's vitality: pH, Temp, and Volume readings." order={6} name="live-data-log">
+          <TourStep order={5} name="live-data-log">
             <CopilotView style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0, textTransform: "none" }]}>Feed Readings</Text>
               {!session.peak && (
@@ -394,11 +387,7 @@ export default function FeedActiveSessionView({
             entering={FadeInDown.delay(150).duration(400)}
             style={{ marginTop: 20 }}
           >
-            <TourStep
-              text="Elapsed time along the bottom, pH on the left axis, and temperature on the right. A graph of your real-time log."
-              order={9}
-              name="feed-trends"
-            >
+            <TourStep order={8} name="feed-trends">
               <CopilotView>
                 <PHChart
                   session={session as SessionForChart}
@@ -477,7 +466,7 @@ export default function FeedActiveSessionView({
 
         {!session.peak && (
           <Animated.View entering={FadeInUp.delay(300).duration(400)}>
-            <TourStep text="Once your starter reaches its peak, mark the refresh complete..." order={10} name="mark-as-peak">
+            <TourStep order={9} name="mark-as-peak">
               <CopilotView>
                 <Pressable onPress={() => setShowPeakModal(true)} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.accent, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1 }]}>
                   <Ionicons name="trending-up" size={20} color={colors.accentForeground} />
@@ -487,90 +476,99 @@ export default function FeedActiveSessionView({
             </TourStep>
           </Animated.View>
         )}
+        {/* Affiliate product carousel — shown while session is active */}
+        <AffiliateCarousel />
 
         <Pressable onPress={onClearSession} style={({ pressed }) => [styles.ghostButton, { opacity: pressed ? 0.5 : 1, marginTop: 12 }]}>
           <Text style={[styles.ghostButtonText, { color: colors.mutedForeground }]}>New Session</Text>
         </Pressable>
+        {/* Tour transition anchor — zero-height, sits just above tab bar.
+            Only the tooltip matters; no highlight hole needed here. */}
+        <TourStep order={10} name="next-chapter-is-graph" >
+          <CopilotView>
+            <View style={{ height: 0 }} />
+          </CopilotView>
+        </TourStep>
       </ScrollView>
 
-            {/* Log Peak Modal */}
-            <Modal visible={showPeakModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPeakModal(false)}>
-              <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: colors.background }}>
-                <ScrollView contentContainerStyle={[styles.modalContent, { paddingTop: insets.top + webTop + 24, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 32 }]} keyboardShouldPersistTaps="handled">
-                  <View style={styles.modalHeader}>
-                    <Text style={[styles.modalTitle, { color: colors.foreground }]}>Log Peak</Text>
-                    <Pressable onPress={() => setShowPeakModal(false)}><Ionicons name="close" size={24} color={colors.foreground} /></Pressable>
+        {/* Log Peak Modal */}
+        <Modal visible={showPeakModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPeakModal(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: colors.background }}>
+            <ScrollView contentContainerStyle={[styles.modalContent, { paddingTop: insets.top + webTop + 24, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 32 }]} keyboardShouldPersistTaps="handled">
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>Log Peak</Text>
+                <Pressable onPress={() => setShowPeakModal(false)}><Ionicons name="close" size={24} color={colors.foreground} /></Pressable>
+              </View>
+
+              {/* Top Card: Time and Rise */}
+              <View style={[styles.autoCalcCard, { backgroundColor: colors.secondary, borderRadius: colors.radius, marginBottom: 16, flexDirection: 'row' }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.autoCalcLabel, { color: colors.mutedForeground }]}>Time to Peak</Text>
+                  <Text style={[styles.autoCalcValue, { color: colors.foreground }]}>{formatTimeToPeak(elapsed)}</Text>
+                </View>
+                <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 16, opacity: 0.5 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.autoCalcLabel, { color: colors.mutedForeground }]}>Total Rise</Text>
+                  <Text style={[styles.autoCalcValue, { color: colors.accent }]}>
+                    {(() => {
+                      const pv = parseFloat(peakVolume);
+                      const iv = parseFloat(session.initialVolume);
+                      return iv > 0 && pv > 0 ? `+${Math.round(((pv - iv) / iv) * 100)}%` : "—";
+                    })()}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 3-Column Inputs: pH, Temp, Volume */}
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 16, marginBottom: 20 }]}>
+                <View style={styles.readingsRow}>
+                  <View style={styles.readingItem}>
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Peak pH</Text>
+                    <TextInput
+                      style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
+                      placeholder="3.9"
+                      value={peakPH}
+                      onChangeText={setPeakPH}
+                      keyboardType="decimal-pad"
+                      autoFocus
+                    />
                   </View>
 
-                  {/* Top Card: Time and Rise */}
-                  <View style={[styles.autoCalcCard, { backgroundColor: colors.secondary, borderRadius: colors.radius, marginBottom: 16, flexDirection: 'row' }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.autoCalcLabel, { color: colors.mutedForeground }]}>Time to Peak</Text>
-                      <Text style={[styles.autoCalcValue, { color: colors.foreground }]}>{formatTimeToPeak(elapsed)}</Text>
-                    </View>
-                    <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 16, opacity: 0.5 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.autoCalcLabel, { color: colors.mutedForeground }]}>Total Rise</Text>
-                      <Text style={[styles.autoCalcValue, { color: colors.accent }]}>
-                        {(() => {
-                          const pv = parseFloat(peakVolume);
-                          const iv = parseFloat(session.initialVolume);
-                          return iv > 0 && pv > 0 ? `+${Math.round(((pv - iv) / iv) * 100)}%` : "—";
-                        })()}
-                      </Text>
-                    </View>
+                  <View style={styles.readingItem}>
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Temp (°{tempUnit})</Text>
+                    <TextInput
+                      style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
+                      placeholder="76"
+                      value={peakTemp}
+                      onChangeText={setPeakTemp}
+                      keyboardType="decimal-pad"
+                    />
                   </View>
 
-                  {/* 3-Column Inputs: pH, Temp, Volume */}
-                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, padding: 16, marginBottom: 20 }]}>
-                    <View style={styles.readingsRow}>
-                      <View style={styles.readingItem}>
-                        <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Peak pH</Text>
-                        <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
-                          placeholder="3.9"
-                          value={peakPH}
-                          onChangeText={setPeakPH}
-                          keyboardType="decimal-pad"
-                          autoFocus
-                        />
-                      </View>
-
-                      <View style={styles.readingItem}>
-                        <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Temp (°{tempUnit})</Text>
-                        <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
-                          placeholder="76"
-                          value={peakTemp}
-                          onChangeText={setPeakTemp}
-                          keyboardType="decimal-pad"
-                        />
-                      </View>
-
-                      <View style={styles.readingItem}>
-                        <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Vol (mL)</Text>
-                        <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
-                          placeholder="200"
-                          value={peakVolume}
-                          onChangeText={setPeakVolume}
-                          keyboardType="decimal-pad"
-                        />
-                      </View>
-                    </View>
+                  <View style={styles.readingItem}>
+                    <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Vol (mL)</Text>
+                    <TextInput
+                      style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
+                      placeholder="200"
+                      value={peakVolume}
+                      onChangeText={setPeakVolume}
+                      keyboardType="decimal-pad"
+                    />
                   </View>
+                </View>
+              </View>
 
-                  <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Peak Photo</Text>
-                  <Pressable onPress={() => pickPhoto((uri) => { setPeakPhoto(uri); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); })} style={[styles.photoPicker, { backgroundColor: peakPhoto ? "transparent" : colors.card, borderColor: colors.border, borderRadius: colors.radius, borderStyle: peakPhoto ? "solid" : "dashed" }]}>
-                    {peakPhoto ? <Image source={{ uri: peakPhoto }} style={[styles.photoPreview, { borderRadius: colors.radius }]} /> : <View style={styles.photoPlaceholder}><Feather name="camera" size={24} color={colors.mutedForeground} /><Text style={[styles.photoPlaceholderText, { color: colors.mutedForeground }]}>Add peak photo</Text></View>}
-                  </Pressable>
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Peak Photo</Text>
+              <Pressable onPress={() => pickPhoto((uri) => { setPeakPhoto(uri); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); })} style={[styles.photoPicker, { backgroundColor: peakPhoto ? "transparent" : colors.card, borderColor: colors.border, borderRadius: colors.radius, borderStyle: peakPhoto ? "solid" : "dashed" }]}>
+                {peakPhoto ? <Image source={{ uri: peakPhoto }} style={[styles.photoPreview, { borderRadius: colors.radius }]} /> : <View style={styles.photoPlaceholder}><Feather name="camera" size={24} color={colors.mutedForeground} /><Text style={[styles.photoPlaceholderText, { color: colors.mutedForeground }]}>Add peak photo</Text></View>}
+              </Pressable>
 
-                  <Pressable onPress={handleSavePeak} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1, marginTop: 24 }]}>
-                    <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>Save Peak</Text>
-                  </Pressable>
-                </ScrollView>
-              </KeyboardAvoidingView>
-            </Modal>
+              <Pressable onPress={handleSavePeak} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: pressed ? 0.85 : 1, marginTop: 24 }]}>
+                <Text style={[styles.primaryButtonText, { color: colors.primaryForeground }]}>Save Peak</Text>
+              </Pressable>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </Modal>
 
             {/* Log Reading Modal */}
             <Modal

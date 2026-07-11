@@ -25,11 +25,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
 import { typography, spacing, radius, fonts } from "@/constants/theme";
-
-// const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
+import FCSScatterPlot from "@/components/FCSScatterPlot";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const STORAGE_KEY = "sourdough_feed_session_v1";
+const [selectedFeedNum, setSelectedFeedNum] = useState<number | null>(null);
 
 /** Attempt to compute a single acidification velocity for the live active session.
  *  Returns null when the session lacks sufficient data for a meaningful calculation. */
@@ -98,7 +98,7 @@ function ReadingHint({
         accessibilityState={{ expanded: open }}
       >
         <Text style={[h.label, { color: colors.mutedForeground }]}>
-          How to read this
+          How to read this graph
         </Text>
         <Feather
           name={open ? "chevron-up" : "chevron-down"}
@@ -116,7 +116,7 @@ function ReadingHint({
             accessibilityRole="link"
           >
             <Text style={[h.moreLinkText, { color: colors.accent }]}>
-              More in About →
+              More in the About Tab →
             </Text>
           </Pressable>
         </View>
@@ -173,10 +173,20 @@ const ACID_HINT =
 const LIFT_HINT =
   "Bars show hours to peak (left axis); triangles (△) mark rise % at peak (right axis). " +
   "Bar fill varies by starter type: solid for standard, diagonal hatch for sugar, cross-hatch for whole wheat.\n\n" +
+  "The vertical axes share a calibrated baseline: 4 hours = healthy time-to-peak; " +
+  "100% volume expansion = healthy rise target. Both are locked at the same pixel height so a standard starter running 4h/100% lands exactly at the midline.\n\n" +
   "Standard Starter: A healthy, un-shocked standard white or whole wheat starter can hit 150\u2013200% volume expansion in 3\u20134 hours.\n\n" +
   "Sweet Starter: Because of osmotic pressure slowing down the yeast, a healthy sweet starter might demonstrate a 100\u2013125% expansion in 5\u20137 hours.\n\n" +
   "The vertical axes are locked into a calibrated baseline of 100% expansion in 4 hours \u2014 so a healthy sweet starter will naturally sit lower on the graph than a standard one. " +
   "It\u2019s the metabolic \u201Ctax\u201D that sugar imposes on the culture.";
+
+const FCS_HINT =
+  "Each dot represents a completed feed. The column it lands in is determined by that feed's flour workload; a 1:2:2 feed has more flour for the bacteria to work through than a 1:1:1 feed, and a 1:7:7 feed has even more.\n\n" +
+  "Within each workload box, dots are organized horizontally by hydration: stiffer starters (i.e., feeds with less water than flour) sit on the left edge, while slacker starters (more water than flour) sit on the right. Read more about stiff and slack starters in About.\n\n" +
+  "Dot height tracks hours to peak, while dot color mirrors ambient temperature: cool tones for lower room temperatures and deep, warm hues for accelerated, warm ferments.\n\n" +
+  "Filled dots represent a robust feed that successfully doubled or better (≥ 100% rise), while hollow dots indicate sub-100% expansion.\n\n" +
+  "Opacity naturally drops as feeds age: your last 10 feeds remain vivid, feeds 11–20 fade to a 35% ghost state, and anything older is hidden.\n\n" +
+  "Use the Season Compare button to overlay the current week against the exact same calendar week from 1 year ago. This normalized view can help clear away the noise that comes from temperature and humidity changes, etc.";
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 
@@ -241,11 +251,7 @@ export default function GraphScreen() {
         </Text>
 
         {/* ── Acidification Index ── */}
-        <TourStep
-          text="Monitor your bacterial vitality with the Acidification Index."
-          order={9}
-          name="acidification-index"
-        >
+        <TourStep order={11} name="acidification-index">
           <CopilotView>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -267,11 +273,7 @@ export default function GraphScreen() {
         </TourStep>
 
         {/* ── Lifting Index ── */}
-        <TourStep
-          text="Track your yeast velocity and rise capacity here."
-          order={10}
-          name="lifting-index"
-        >
+        <TourStep order={12} name="lifting-index">
           <CopilotView style={{ marginTop: 32 }}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -288,17 +290,44 @@ export default function GraphScreen() {
             </View>
 
             <ReadingHint body={LIFT_HINT} onAbout={goToAbout} colors={colors} />
-            <LiftingIndexChart data={liftSeries} />
+            <LiftingIndexChart
+              data={liftSeries}
+              selectedFeedNum={selectedFeedNum}
+              onSelectFeedNum={setSelectedFeedNum}
+            />
           </CopilotView>
         </TourStep>
 
-        {/* ── 3rd graph ── */}
-        <TourStep
-          text="More data analysis and visualization coming soon."
-          order={11}
-          name="3rd-graph"
-        >
-          <CopilotView style={{ height: 1 }} />
+        {/* ── Feed Coordinate System — Metabolic Map ── */}
+        <TourStep order={13} name="fcs-scatter">
+          <CopilotView style={{ marginTop: 32 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                Metabolic Map
+              </Text>
+              <Text
+                style={[
+                  styles.sectionSubtitle,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                Feed Ratios × Temperature
+              </Text>
+            </View>
+            <FCSScatterPlot
+              sessions={history}
+              selectedFeedNum={selectedFeedNum}
+              onSelectFeedNum={setSelectedFeedNum}
+            />
+            <ReadingHint body={FCS_HINT} onAbout={goToAbout} colors={colors} />
+          </CopilotView>
+        </TourStep>
+        {/* Tour transition anchor — zero-height, sits just above tab bar.
+            Only the tooltip matters; no highlight hole needed here. */}
+        <TourStep order={14} name="next-chapter-is-recipe">
+          <CopilotView>
+            <View style={{ height: 0 }} />
+          </CopilotView>
         </TourStep>
       </ScrollView>
     </View>

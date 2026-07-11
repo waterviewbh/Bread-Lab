@@ -1,5 +1,6 @@
 {
   "_warning": "This is where we update the version for test builds.",
-  "version": "1.0.13-candidate",
+  "_warning": "Be sure version.json matches this candidate version before build.",
+  "version": "1.0.15-candidate",
   "versionCode": 1
 }

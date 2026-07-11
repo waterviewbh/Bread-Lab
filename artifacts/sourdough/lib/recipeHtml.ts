@@ -78,6 +78,7 @@ export function buildRecipeHtml(recipe: SavedRecipe): string {
   <body>
     <h1>${recipe.name}</h1>
     <p class="meta">${recipe.phases.length} ${recipe.phases.length === 1 ? "phase" : "phases"} · Created ${date}</p>
+    ${recipe.overview ? `<p class="overview">${recipe.overview}</p>` : ""}
     <h2>Phases</h2>
     ${phasesHtml}
     <p class="footer">Bread Lab · ${new Date().toLocaleDateString()}</p>
@@ -107,7 +108,81 @@ export function buildPhaseHtml(
     : "";
   const emptyHtml = !scaledIngredients && !scaledInstructions
     ? `<p class="empty">No ingredients or instructions defined for this phase.</p>`
-    : "";  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${phase.name} — ${recipeName}</title><style>*{box-sizing:border-box}body{font-family:-apple-system,Helvetica,sans-serif;margin:0;padding:28px;color:#111;font-size:14px;line-height:1.6}h1{font-size:22px;margin:0 0 4px;font-weight:700}.recipe{color:#888;font-size:13px;margin:0 0 24px}.section{margin-bottom:20px}.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:#999;display:block;margin-bottom:6px}.text{margin:0;white-space:pre-wrap;color:#333;font-size:14px;line-height:1.6}.empty{color:#bbb;font-style:italic;margin:0}.footer{margin-top:32px;color:#aaa;font-size:11px;text-align:center}@media print{body{padding:20px}}</style></head><body><h1>${phase.name}</h1><p class="recipe">${recipeName}${scaleNote}</p>${ingHtml}${insHtml}${emptyHtml}<p class="footer">Bread Lab · ${new Date().toLocaleDateString()}</p></body></html>`;
+    : "";
+    return `<!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>${phase.name} — ${recipeName}</title>
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+          body {
+            font-family: -apple-system, Helvetica, sans-serif;
+            margin: 0;
+            padding: 28px;
+            color: #111;
+            font-size: 14px;
+            line-height: 1.6;
+          }
+          h1 {
+            font-size: 22px;
+            margin: 0 0 4px;
+            font-weight: 700;
+          }
+          .recipe {
+            color: #888;
+            font-size: 13px;
+            margin: 0 0 24px;
+          }
+          .section {
+            margin-bottom: 20px;
+          }
+          .label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            color: #999;
+            display: block;
+            margin-bottom: 6px;
+          }
+          .text {
+            margin: 0;
+            white-space: pre-wrap;
+            color: #333;
+            font-size: 14px;
+            line-height: 1.6;
+          }
+          .empty {
+            color: #bbb;
+            font-style: italic;
+            margin: 0;
+          }
+          .footer {
+            margin-top: 32px;
+            color: #aaa;
+            font-size: 11px;
+            text-align: center;
+          }
+          @media print {
+            body {
+              padding: 20px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>${phase.name}</h1>
+        <p class="recipe">${recipeName}${scaleNote}</p>
+        ${ingHtml}
+        ${insHtml}
+        ${emptyHtml}
+        <p class="footer">Bread Lab · ${new Date().toLocaleDateString()}</p>
+      </body>
+    </html>`;
+
 }
 
 // ─── buildBakeHtml ────────────────────────────────────────────────────────────
@@ -163,7 +238,145 @@ export function buildBakeHtml(
     })
     .join("");  const notesHtml = bakeNotes
     ? `<div class="notes"><strong>Bake Notes</strong><p>${bakeNotes.replace(/\n/g, "<br>")}</p></div>`
-    : "";  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${bake.recipeName} — ${date}</title><style>*{box-sizing:border-box}body{font-family:-apple-system,Helvetica,sans-serif;margin:0;padding:24px;color:#111;font-size:13px;line-height:1.5}h1{font-size:20px;margin:0 0 4px;font-weight:700}h2{font-size:14px;font-weight:600;margin:0 0 16px;color:#555}.meta{color:#666;margin:0 0 20px;font-size:12px}.notes{background:#f9f6f0;border-radius:6px;padding:12px 16px;margin-bottom:20px;border:1px solid #e8e0d4}.notes p{margin:6px 0 0}.phase{border:1px solid #ddd;border-radius:8px;padding:12px 16px;margin-bottom:10px}.phase-header{font-size:14px;font-weight:600;margin-bottom:6px}.phase-status{display:inline-block;width:16px}.dur{color:#777;font-weight:400;font-size:12px;margin-left:6px}.vol{margin:4px 0;color:#666;font-size:12px}table.readings{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px}th{text-align:left;color:#888;border-bottom:1px solid #eee;padding:3px 6px;font-weight:500}td{padding:3px 6px;border-bottom:1px solid #f5f5f5}.footer{margin-top:24px;color:#aaa;font-size:11px;text-align:center}.recipe-info{margin:6px 0 8px}.recipe-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#999;display:block;margin-bottom:3px}.recipe-text{margin:0;white-space:pre-wrap;color:#555}@media print{body{padding:16px}.phase{break-inside:avoid}}</style></head><body><h1>${bake.recipeName}</h1><p class="meta">${date} · ${completedCount}/${bake.phases.length} phases${totalDur > 0 ? " · Total active time: " + formatDone(totalDur) : ""}</p>${notesHtml}<h2>Phases</h2>${phasesHtml}<p class="footer">Bread Lab · ${new Date().toLocaleDateString()}</p></body></html>`;
+    : "";
+    return `<!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>${bake.recipeName} — ${date}</title>
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+          body {
+            font-family: -apple-system, Helvetica, sans-serif;
+            margin: 0;
+            padding: 24px;
+            color: #111;
+            font-size: 13px;
+            line-height: 1.5;
+          }
+          h1 {
+            font-size: 20px;
+            margin: 0 0 4px;
+            font-weight: 700;
+          }
+          h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 0 0 16px;
+            color: #555;
+          }
+          .meta {
+            color: #666;
+            margin: 0 0 20px;
+            font-size: 12px;
+          }
+          .overview {
+            color:#444;
+            font-size:13px;
+            margin:0 0 20px;
+            line-height:1.6;
+            font-style:italic;
+          }
+          .notes {
+            background: #f9f6f0;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            border: 1px solid #e8e0d4;
+          }
+          .notes p {
+            margin: 6px 0 0;
+          }
+          .phase {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+          }
+          .phase-header {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 6px;
+          }
+          .phase-status {
+            display: inline-block;
+            width: 16px;
+          }
+          .dur {
+            color: #777;
+            font-weight: 400;
+            font-size: 12px;
+            margin-left: 6px;
+          }
+          .vol {
+            margin: 4px 0;
+            color: #666;
+            font-size: 12px;
+          }
+          table.readings {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 11px;
+          }
+          th {
+            text-align: left;
+            color: #888;
+            border-bottom: 1px solid #eee;
+            padding: 3px 6px;
+            font-weight: 500;
+          }
+          td {
+            padding: 3px 6px;
+            border-bottom: 1px solid #f5f5f5;
+          }
+          .footer {
+            margin-top: 24px;
+            color: #aaa;
+            font-size: 11px;
+            text-align: center;
+          }
+          .recipe-info {
+            margin: 6px 0 8px;
+          }
+          .recipe-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: #999;
+            display: block;
+            margin-bottom: 3px;
+          }
+          .recipe-text {
+            margin: 0;
+            white-space: pre-wrap;
+            color: #555;
+          }
+          @media print {
+            body {
+              padding: 16px;
+            }
+            .phase {
+              break-inside: avoid;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>${bake.recipeName}</h1>
+        <p class="meta">
+          ${date} · ${completedCount}/${bake.phases.length} phases${totalDur > 0 ? " · Total active time: " + formatDone(totalDur) : ""}
+        </p>
+        ${notesHtml}
+        <h2>Phases</h2>
+        ${phasesHtml}
+        <p class="footer">Bread Lab · ${new Date().toLocaleDateString()}</p>
+      </body>
+    </html>`;
+
 }
 
 // ─── Print / Share actions ────────────────────────────────────────────────────

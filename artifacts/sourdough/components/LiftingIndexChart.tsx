@@ -39,10 +39,12 @@ const SCROLL_THRESHOLD = 20;
 const MIN_SLOT_PX = 28;
 
 interface Props {
-  data: LiftingPoint[];
+  data:              LiftingPoint[];
+  selectedFeedNum?:  number | null;
+  onSelectFeedNum?:  (n: number | null) => void;
 }
 
-export default function LiftingIndexChart({ data }: Props) {
+export default function LiftingIndexChart({ data, selectedFeedNum, onSelectFeedNum }: Props) {
   const colors = useColors();
   const [containerW, setContainerW] = useState(320);
   const scrollRef = useRef<ScrollView>(null);
@@ -108,6 +110,40 @@ export default function LiftingIndexChart({ data }: Props) {
         style={[s.box, { borderColor: colors.border, backgroundColor: colors.card }]}
         onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}
       >
+        {/* Legend */}
+        <View style={[s.footer, {zIndex: 10, elevation: 10 }]}>
+          <View style={[s.legendRow, {justifyContent: "center"}]}>
+            <View style={s.li}>
+              <View style={[s.barSwatch, { backgroundColor: colors.primary, opacity: 0.65 }]} />
+              <Text style={[s.lt, { color: colors.mutedForeground }]}>Standard</Text>
+            </View>
+            <View style={s.li}>
+              <View style={[s.barSwatchBordered, { borderColor: colors.primary }]}>
+                <View style={[s.hatchLine, { backgroundColor: colors.primary, transform: [{ rotate: "-45deg" }] }]} />
+              </View>
+              <Text style={[s.lt, { color: colors.mutedForeground }]}>Sugar</Text>
+            </View>
+            <View style={s.li}>
+              <View style={[s.barSwatchBordered, { borderColor: colors.primary }]}>
+                <View style={[s.hatchLine, { backgroundColor: colors.primary, transform: [{ rotate: "45deg" }] }]} />
+                <View style={[s.hatchLine, { backgroundColor: colors.primary, transform: [{ rotate: "-45deg" }], position: "absolute" }]} />
+              </View>
+              <Text style={[s.lt, { color: colors.mutedForeground }]}>Whole Wheat</Text>
+            </View>
+            <View style={s.li}>
+              <Svg width={10} height={10} viewBox="0 0 10 10">
+                <Polygon
+                  points="5,1 0,9 10,9"
+                  fill={colors.card}
+                  stroke={colors.accent}
+                  strokeWidth={1.5}
+                />
+              </Svg>
+              <Text style={[s.lt, { color: colors.mutedForeground }]}>Rise %</Text>
+            </View>
+          </View>
+        </View>
+        <View style={{ position: "relative", zIndex: 1 }}>
         {/* Sticky left y-axis overlay (hours) */}
         {isScrollMode && (
           <View style={[s.axisOverlayLeft, { backgroundColor: colors.card }]}>
@@ -232,7 +268,6 @@ export default function LiftingIndexChart({ data }: Props) {
                       : d.starterType === "ww"
                       ? "url(#wwHatch)"
                       : undefined;
-
                   const triCy = syRight(d.peakRisePct);
                   const triSize = 5;
                   const triPts = [
@@ -240,16 +275,24 @@ export default function LiftingIndexChart({ data }: Props) {
                     `${cx(i) - triSize},${triCy + triSize}`,
                     `${cx(i) + triSize},${triCy + triSize}`,
                   ].join(" ");
-
+                  // ── Selection state ────────────────────────────────────────────────
+                  const isSelected  = d.feedNum === selectedFeedNum;
+                  const isAnySelected = selectedFeedNum != null;
+                  const isDimmed    = isAnySelected && !isSelected;
                   return (
-                    <G key={i}>
-                      {/* Bar */}
+                    <G
+                      key={i}
+                      opacity={isDimmed ? 0.35 : 1}
+                      // onPress on <G> covers the bar, triangle, and label as one tap target
+                      onPress={() => onSelectFeedNum?.(isSelected ? null : d.feedNum)}
+                    >
+                      {/* Bar — accent stroke when selected */}
                       <Rect
                         x={barX} y={barY} width={barW} height={barH}
                         fill={fillAttr ?? barColor}
                         fillOpacity={fillAttr ? 1 : 0.65}
-                        stroke={barColor}
-                        strokeWidth={1}
+                        stroke={isSelected ? colors.accent : barColor}
+                        strokeWidth={isSelected ? 2 : 1}
                       />
                       {/* Triangle marker */}
                       <Polygon
@@ -284,50 +327,7 @@ export default function LiftingIndexChart({ data }: Props) {
             </G>
           </Svg>
         </ScrollView>
-      </View>
-
-      {/* Legend + axis labels */}
-      <View style={s.footer}>
-        <View style={s.legendRow}>
-          <View style={s.li}>
-            <View style={[s.barSwatch, { backgroundColor: colors.primary, opacity: 0.65 }]} />
-            <Text style={[s.lt, { color: colors.mutedForeground }]}>Standard</Text>
-          </View>
-          <View style={s.li}>
-            <View style={[s.barSwatchBordered, { borderColor: colors.primary }]}>
-              <View style={[s.hatchLine, { backgroundColor: colors.primary, transform: [{ rotate: "-45deg" }] }]} />
-            </View>
-            <Text style={[s.lt, { color: colors.mutedForeground }]}>Sugar</Text>
-          </View>
-          <View style={s.li}>
-            <View style={[s.barSwatchBordered, { borderColor: colors.primary }]}>
-              <View style={[s.hatchLine, { backgroundColor: colors.primary, transform: [{ rotate: "45deg" }] }]} />
-              <View style={[s.hatchLine, { backgroundColor: colors.primary, transform: [{ rotate: "-45deg" }], position: "absolute" }]} />
-            </View>
-            <Text style={[s.lt, { color: colors.mutedForeground }]}>Whole Wheat</Text>
-          </View>
-          <View style={s.li}>
-            <Svg width={10} height={10} viewBox="0 0 10 10">
-              <Polygon
-                points="5,1 0,9 10,9"
-                fill={colors.card}
-                stroke={colors.accent}
-                strokeWidth={1.5}
-              />
-            </Svg>
-            <Text style={[s.lt, { color: colors.mutedForeground }]}>Rise %</Text>
-          </View>
         </View>
-        <View style={s.axisRow}>
-          <Text style={[s.axisLabel, { color: colors.mutedForeground }]}>Hours (4h = baseline)</Text>
-          <Text style={[s.axisLabel, { color: colors.mutedForeground }]}>Feed #</Text>
-          <Text style={[s.axisLabel, { color: colors.accent }]}>Rise % (100% = baseline)</Text>
-        </View>
-        {isScrollMode && (
-          <Text style={[s.scrollHint, { color: colors.mutedForeground }]}>
-            ← swipe for older bakes
-          </Text>
-        )}
       </View>
     </View>
   );
@@ -397,7 +397,7 @@ const s = StyleSheet.create({
   },
   scrollHint: {
     fontSize: 10,
-    fontFamily: font.sans,
+    fontFamily: fonts.sans,
     opacity: 0.5,
     textAlign: "center",
     marginTop: 2,

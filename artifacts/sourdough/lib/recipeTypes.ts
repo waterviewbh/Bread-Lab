@@ -74,6 +74,8 @@ export interface BulkFermentState {
   targetReachedAt?: number | null;
   /* True once the countdown has transitioned to the passive overtime counter */
   inOvertime?: boolean;
+  /** The inoculation column tier (10%, 20%, or 30%) computed or parsed for this session */
+  activeInoculationPercent?: 10 | 20 | 30;
   /* Timestamp when the baker confirmed "Complete" during/after overtime */
   completedAt?: number | null;
 }
@@ -90,6 +92,7 @@ export interface RecipePhaseConfig {
 export interface SavedRecipe {
   id: string;
   name: string;
+  overview?: string;            // to store short blog-like comments about a recipe
   createdAt: number;
   updatedAt?: number;
   phases: RecipePhaseConfig[];
@@ -219,3 +222,30 @@ export const BULK_MIN_DERIVATIVE_GAP_MS = 20 * 60 * 1000; // 20 minutes
 /** Cap on the negative derivative swing (ml/ms) to absorb degassing events.
  *  A fold-induced dip steeper than this is damped to zero. */
 export const BULK_NEGATIVE_DERIVATIVE_CAP = -0.0005; // ≈ −0.5 ml/s
+
+// Add this to the bottom of lib/recipeTypes.ts
+
+export interface DoughlabPriorRow {
+  maxTempF: number;
+  /** Expected total bulk duration in hours indexed by starter percentage */
+  hoursByInoculation: {
+    10: number; // 10% inoculation, used in DOUGHLAB_PRIOR_TABLE below.
+    20: number; // 20% inoculation. The actual hours value is an output of that table.
+    30: number; // 30% inoculation
+  };
+}
+
+/* Expected bulk fermentation time ranges mapped to their midpoints.
+ * Source: Doughlab Sourdough Bulk Fermentation Time by Temperature Chart dough-lab.com (2026).
+ */
+export const DOUGHLAB_PRIOR_TABLE: DoughlabPriorRow[] = [
+  { maxTempF: 65, hoursByInoculation: { 10: 14,   20: 9,   30: 7   } }, // 12-16hr, 8-10hr, 6-8hr
+  { maxTempF: 68, hoursByInoculation: { 10: 12,   20: 8,   30: 6   } }, // 10-14hr, 7-9hr,  5-7hr
+  { maxTempF: 70, hoursByInoculation: { 10: 10.5, 20: 7,   30: 5.5 } }, // 9-12hr,  6-8hr,  5-6hr
+  { maxTempF: 72, hoursByInoculation: { 10: 9,    20: 6,   30: 4.5 } }, // 8-10hr,  5-7hr,  4-5hr
+  { maxTempF: 75, hoursByInoculation: { 10: 7,    20: 4.5, 30: 3.5 } }, // 6-8hr,   4-5hr,  3-4hr
+  { maxTempF: 78, hoursByInoculation: { 10: 5.5,  20: 3.5, 30: 2.75} }, // 5-6hr,   3-4hr,  2.5-3hr
+  { maxTempF: 80, hoursByInoculation: { 10: 4.5,  20: 3.5, 30: 2.5 } }, // 4-5hr,   3-4hr,  2-3hr
+  { maxTempF: 82, hoursByInoculation: { 10: 4.5,  20: 3,   30: 2.25} }, // 4-5hr,   2.5-3.5hr, 2-2.5hr
+  { maxTempF: 85, hoursByInoculation: { 10: 3.5,  20: 2.5, 30: 1.75} }, // 3-4hr,   2-3hr,  1.5-2hr
+];
