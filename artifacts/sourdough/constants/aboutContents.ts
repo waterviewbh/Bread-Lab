@@ -160,17 +160,18 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Changed", content: "We're now publicly findable in the Google Play Store! Thanks to all of the early supporters to help make this happen!" },
         { type: "Added", content: "On demand, you can take a tour of the app to see or be reminded of the many different ways that the Sourdough Bread Lab app can help turn bakers into scientists, and back again. Start your tour by clicking the Tour button in the About tab." },
       ],
-    },
+    },*/
     {
-      version: "v1.0.15", / -- published 202607XX -- /
+      version: "v1.0.15", /* -- published 20260711 -- */
       changes: [
         { type: "Fixed", content: "Lingering visual fixes." },
         { type: "Changed", content: "Increased the accuracy of the Bulk Ferment completion estimate. We now calculate your recipe's inoculation percent and use it as either 10%, 20%, or 30% to build a better timeframe." },
         { type: "Added", content: "A new graph on the Graph tab, Metabolic Map, tracks the stiffness of your feeds over time. If you feed or build levains other than 1:1:1, this will be an especially useful tool." },
         { type: "Changed", content: "Updated the Plan a Feed page to allow for predicting rise times of those stiffer or slacker refreshes and levains." },
         { type: "Added", content: "The app's privacy policy has been added as a clickable link in the About & Legal section of the About tab." },
+        { type: "Added", content: "Small banners showing items we use in the kitchen are now at the bottom of the Feed tab and the Recipe Runner. As an Amazon Affiliate, we believe in these products and use them when we bake." },
       ],
-    },*/
+    },
     {
       version: "v1.0.14", /* -- published 20260703 -- */
       changes: [
