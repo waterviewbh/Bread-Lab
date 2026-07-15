@@ -32,10 +32,10 @@ export const TOUR_CHAPTERS: TourChapter[] = [
   steps: [
 
 	// BEGINNING STEP (Shown in both states)
-	{ name: 'app-name', text: `Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by logging your starter's feeds.`, order: 1 },
+	{ name: 'app-name', text: `Welcome to the Bread Lab! This app helps turn bakers into scientists, and back again. Start here by either tracking or planning your starter's feeds.`, order: 1 },
 
 	// SETUP STEPS (Shown only if no active session. Note: the highlight holes will go up to the top of the screen then back down on this tour.)
-    { name: 'feed-pages', text: `Track live refreshes or calculate weights to time a peak.`, order: 2 },
+    //{ name: 'feed-pages', text: `Track live refreshes or calculate weights to time a peak.`, order: 2 }, red-tagged for 1.0.17, remove 3 revs after 1.1.0
 
     // ACTIVE SESSION STEP (Shown only if active session)
     { name: 'active-timer', text: `Track how long your starter has been fermenting.`, order: 3 },

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Alert,
   Image,
@@ -20,6 +20,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
+import { useTour } from '@/contexts/TourContext';
 
 import { useColors } from "@/hooks/useColors";
 import FlourSlider from "@/components/FlourSlider";
@@ -75,6 +76,12 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
   const [initialVolume, setInitialVolume] = useState("");
   const [fedPhoto, setFedPhoto] = useState<string | null>(null);
 
+  const { registerScrollView } = useTour();
+  // Ref passed to copilot so it can autoscroll to below-fold tour steps (e.g. photo, start button)
+  const tourScrollViewRef = useRef<ScrollView>(null);useEffect(() => {
+    registerScrollView(tourScrollViewRef.current);
+    return () => registerScrollView(null); // clean up on unmount
+  }, [registerScrollView]);
 
   // --- Derived ---
   const sw = parseFloat(starterWeight);
@@ -170,7 +177,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
         ]}
       >
       {/* ── Top section toggle — one step highlights both buttons ── */}
-      <TourStep order={2} name="feed-pages">
+      <TourStep order={1} name="app-name">
         <CopilotView>
           <View style={[styles.sectionToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             {(["track", "plan"] as const).map((sec) => (
@@ -203,6 +210,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
           style={{ flex: 1 }}
         >
           <ScrollView
+            ref={tourScrollViewRef}
             contentContainerStyle={{
               paddingTop: 16,
               paddingBottom: insets.bottom + tabBarPad + 24,
@@ -212,12 +220,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
             showsVerticalScrollIndicator={false}
           >
             <Animated.View entering={FadeIn.duration(400)} style={styles.appHeader}>
-              <TourStep order={1} name="app-name">
-                <CopilotView>
-                 <Text style={[styles.appTitle, { color: colors.foreground }]}>Bread Lab</Text>
-                 <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>log a feed</Text>
-               </CopilotView>
-              </TourStep>
+             <Text style={[styles.appTitle, { color: colors.foreground }]}>Bread Lab</Text>
+             <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>log a feed</Text>
             </Animated.View>
 
             {/* Feed Amounts */}
@@ -317,9 +321,9 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
 
             {/* Initial Readings */}
             <Animated.View entering={FadeInDown.delay(160).duration(400)} style={{ marginTop: 20 }}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Initial Readings</Text>
               <TourStep order={5} name="live-data-log">
                 <CopilotView>
-                  <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Initial Readings</Text>
                   <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <View style={[styles.inputRow, { gap: 12 }]}>
                       <View style={{ flex: 1 }}>

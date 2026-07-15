@@ -2,15 +2,19 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { CopilotProvider, useCopilot, TooltipProps } from 'react-native-copilot';
 import { useRouter, usePathname } from 'expo-router';
 import { IS_TOUR_ENABLED, TOUR_CHAPTERS } from '../constants/TourConfig';
-import { Platform, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform, View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface TourContextType {
   startChapter: (chapterId: string) => void;
   stopTour: () => void;
   isTourRunning: boolean;
+  registerScrollView: (ref: ScrollView | null) => void; // NEW: screens register their scroll view for autoscroll
 }
 
 const TourContext = createContext<TourContextType | undefined>(undefined);
+// Key written to AsyncStorage once the user has seen (or skipped) the tour
+const TOUR_SEEN_KEY = 'bread_lab_tour_seen_v1';
 
 // v3.3.3: TooltipProps is only { labels }. All step state and navigation
 // must come from useCopilot() — not from props.
@@ -55,6 +59,26 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
   // being listed as effect dependencies (avoids effect re-registration on
   // every render).
   const isTransitioningRef = useRef(false);
+  // Prevents double-triggering on rapid re-renders during initial mount
+  const hasAutoStartedRef = useRef(false);
+
+  // Holds the active screen's ScrollView ref so copilot can autoscroll to off-screen steps
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const registerScrollView = useCallback((ref: ScrollView | null) => {
+    scrollViewRef.current = ref;
+  }, []);
+
+  // Auto-start the tour for first-time users
+  useEffect(() => {
+    if (!IS_TOUR_ENABLED || hasAutoStartedRef.current)
+    return;
+    AsyncStorage.getItem(TOUR_SEEN_KEY).then((seen) => {
+      if (seen || hasAutoStartedRef.current) return;
+      hasAutoStartedRef.current = true;
+      // Delay long enough for the tab layout and all CopilotSteps to mount
+      setTimeout(() => startChapter('feed'), 2000);
+    }).catch(() => {});
+  }, [startChapter]);
   // ── Diagnostic overlay (DEV only) ──────────────────────────────────────────
   const [debugLog, setDebugLog] = useState<string[]>([]);
   const addLog = useCallback((msg: string) => {
@@ -67,22 +91,28 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }, []);
   // Diagnostic element. The commented-out version may not come back if it's part of the problem
   const startChapter = useCallback(async (chapterId: string) => {
-    addLog(`startChapter("${chapterId}") visible=${visible} path=${pathname}`);  if (!IS_TOUR_ENABLED) {
+    addLog(`startChapter("${chapterId}") visible=${visible} path=${pathname}`);
+    if (!IS_TOUR_ENABLED) {
       addLog('BLOCKED: IS_TOUR_ENABLED is false');
       return;
-    }  const chapter = TOUR_CHAPTERS.find(c => c.id === chapterId);
+    }
+    const chapter = TOUR_CHAPTERS.find(c => c.id === chapterId);
     if (!chapter) {
       addLog(`BLOCKED: chapter "${chapterId}" not found`);
       return;
-    }  if (visible) {
+    }
+    if (visible) {
       isTransitioningRef.current = true;
       addLog('stopping existing tour');
       stop();
     } else {
       isTransitioningRef.current = true;
-    }  setCurrentChapterId(chapterId);  const firstStepName = chapter.steps[0].name;
+    }
+    setCurrentChapterId(chapterId);
+    const firstStepName = chapter.steps[0].name;
     const normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/$/, '');
-    const normalizedTarget = chapter.tab === '/' ? '/' : chapter.tab.replace(/\/$/, '');  if (normalizedPath !== normalizedTarget) {
+    const normalizedTarget = chapter.tab === '/' ? '/' : chapter.tab.replace(/\/$/, '');
+    if (normalizedPath !== normalizedTarget) {
       addLog(`navigating ${normalizedPath} → ${normalizedTarget}`);
       router.push(chapter.tab as any);
       setTimeout(() => {
@@ -98,42 +128,22 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
       }, 500);
     }
   }, [stop, start, pathname, router, visible, addLog]);
-  {/*const startChapter = useCallback(async (chapterId: string) => {
-    if (!IS_TOUR_ENABLED) return;
-    const chapter = TOUR_CHAPTERS.find(c => c.id === chapterId);
-    if (!chapter) return;
-    // Only stop an already-running tour — calling stop() cold resets
-    // copilot's internal state and can prevent the subsequent start() from firing.
-    if (visible) {
-      isTransitioningRef.current = true;
-      stop();
-    } else {
-      isTransitioningRef.current = true;
-    }
-    setCurrentChapterId(chapterId);
-    const firstStepName = chapter.steps[0].name;
-    const normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/$/, '');
-    const normalizedTarget = chapter.tab === '/' ? '/' : chapter.tab.replace(/\/$/, '');
-    if (normalizedPath !== normalizedTarget) {
-      router.push(chapter.tab as any);
-      // Allow time for the new tab to mount and register its CopilotSteps
-      // before we call start(). 2 s has proven necessary on slower devices.
-      setTimeout(() => {
-        isTransitioningRef.current = false;
-        start(firstStepName);
-      }, 2000);
-    } else {
-      // Same tab — just a short yield for any conditional renders to settle.
-      setTimeout(() => {
-        isTransitioningRef.current = false;
-        start(firstStepName);
-      }, 500);
-    }
-  }, [stop, start, pathname, router, visible]); */}
   useEffect(() => {
     const handleStepChange = (step: any) => {
       if (!step || isTransitioningRef.current) return;
       addLog(`stepChange: "${step.name}"`);  // diagnostic element
+      // Manual autoscroll — animated:false ensures native scrolls before copilot measures.
+      // Copilot's built-in measureLayout-based scroll was removed (walkthroughable refs
+      // don't satisfy the native-component requirement for measureLayout).
+      if (scrollViewRef.current) {
+        const SCROLL_END_STEPS = new Set(['just-fed-photo', 'start-feed-btn', 'next-chapter-is-graph']);
+        const SCROLL_TOP_STEPS = new Set(['app-name', 'active-timer', 'feed-ratios-input', 'live-data-log', 'feed-trends', 'mark-as-peak']);
+        if (SCROLL_END_STEPS.has(step.name)) {
+          scrollViewRef.current.scrollToEnd({ animated: false });
+        } else if (SCROLL_TOP_STEPS.has(step.name)) {
+          scrollViewRef.current.scrollTo({ y: 0, animated: false });
+        }
+      }
       // Transition trigger: step name encodes the target chapter id.
       if (step.name.startsWith('next-chapter-is-')) {
         const targetId = step.name.replace('next-chapter-is-', '');
@@ -158,6 +168,8 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
       // Only clear state if we're not mid-transition to a new chapter.
       if (!isTransitioningRef.current) {
         setCurrentChapterId(null);
+        // Mark as seen so it doesn't auto-trigger again
+        AsyncStorage.setItem(TOUR_SEEN_KEY, '1').catch(() => {});
       }
     };
     copilotEvents.on('stepChange', handleStepChange);
@@ -176,7 +188,7 @@ const TourController: React.FC<{ children: React.ReactNode }> = ({ children }) =
     setCurrentChapterId(null);
   }, [stop]);
   return (
-    <TourContext.Provider value={{ startChapter, stopTour, isTourRunning: visible }}>
+    <TourContext.Provider value={{ startChapter, stopTour, isTourRunning: visible, registerScrollView }}>
       {children}
       {/* diagnostic element */}
       {__DEV__ && (

@@ -162,6 +162,12 @@ export const CHANGELOG: ChangelogVersion[] = [
       ],
     },*/
     {
+      version: "v1.0.16", /* -- published 20260714 -- */
+      changes: [
+        { type: "Fixed", content: "The Metabolic Map wasn't showing individual data points correctly - a constant was called in the wrong spot." },
+      ],
+    },
+     {
       version: "v1.0.15", /* -- published 20260711 -- */
       changes: [
         { type: "Fixed", content: "Lingering visual fixes." },

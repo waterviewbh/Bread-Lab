@@ -30,6 +30,7 @@ interface Props {
   onRefresh: () => void;
 }
 import { fonts, spacing, radius, typography } from "@/constants/theme";
+import { TourStep, CopilotView } from "@/components/TourStep";
 
 export function RecipeBuilderListView({
   recipes,
@@ -235,6 +236,13 @@ export function RecipeBuilderListView({
             ))}
           </View>
         )}
+       {/* Tour transition anchor — zero-height, sits just above tab bar.
+           Only the tooltip matters; no highlight hole needed here. */}
+       <TourStep order={16} name="next-chapter-is-history">
+         <CopilotView>
+           <View style={{ height: 0 }} />
+         </CopilotView>
+       </TourStep>
       </Animated.View>
     </ScrollView>
   );

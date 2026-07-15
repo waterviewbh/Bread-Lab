@@ -29,7 +29,6 @@ import FCSScatterPlot from "@/components/FCSScatterPlot";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const STORAGE_KEY = "sourdough_feed_session_v1";
-const [selectedFeedNum, setSelectedFeedNum] = useState<number | null>(null);
 
 /** Attempt to compute a single acidification velocity for the live active session.
  *  Returns null when the session lacks sufficient data for a meaningful calculation. */
@@ -197,6 +196,7 @@ export default function GraphScreen() {
   const webTop = Platform.OS === "web" ? 67 : 0;
   const tabBarPad = Platform.OS === "web" ? 84 : 49;
 
+  const [selectedFeedNum, setSelectedFeedNum] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntryForSeries[]>([]);
   const [activeSession, setActiveSession] = useState<HistoryEntryForSeries | null>(null);
 
