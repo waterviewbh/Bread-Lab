@@ -14,13 +14,10 @@ import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { useFontSize } from "@/contexts/FontSizeContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
-import { useTour } from "@/contexts/TourContext";
-//import { CopilotStep, walkthroughable } from "react-native-copilot"; red-tagged at web-0.1 to avoid crashes. removed after 3 revs
-// const CopilotView = walkthroughable(View); red-tagged at web-0.1 to avoid crashes. removed after 3 revs
+import { useTourSlideshow } from "@/contexts/TourSlideshowContext";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 
-// import appConfig from "../../app.json";  red tagged 1.0.10-candidate remove 3 revs after tour reintroduced
 import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA } from "../../constants/aboutContents";
 
 const SUPPORT_EMAIL = "waterviewbakehouse@gmail.com";
@@ -282,7 +279,7 @@ function ChangelogAccordion({ entries, colors }: { entries: ChangelogVersion[]; 
 export default function AboutScreen() {
   const colors = useColors();
   const { fullFontSize, setFullFontSize } = useFontSize();
-  const { startChapter } = useTour();
+  const { showTour } = useTourSlideshow();
   const { tempUnit, setTempUnit, weightUnit, setWeightUnit, timeFormat, setTimeFormat } = usePreferences();
 
   const handleEmail = () => {
@@ -389,18 +386,16 @@ export default function AboutScreen() {
             Help
           </Text>
           <Pressable
-            onPress={() => startChapter('feed')}
-            disabled={false}  // disables the new user tour, set to false to enable tour
+            onPress={showTour}
             style={({ pressed }) => ({
-              backgroundColor: colors.background,  // when disabled=false colors.primaryForeground here
+              backgroundColor: colors.primary,
               paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 12,
               opacity: pressed ? 0.7 : 1
             })}
           >
-            {/* Change color to colors.primaryForeground when tour is active */}
-            <Text style={{ color: colors.background, fontSize: 12, fontFamily: fonts.semiSansBold }}>
+            <Text style={{ color: colors.primaryForeground, fontSize: 12, fontFamily: fonts.semiSansBold }}>
               Take the Tour
             </Text>
           </Pressable>
@@ -452,7 +447,8 @@ export default function AboutScreen() {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacing.containerPadding,
-  },  logoWrap: {
+  },
+  logoWrap: {
     alignItems: "center",
     marginBottom: 36,
   },

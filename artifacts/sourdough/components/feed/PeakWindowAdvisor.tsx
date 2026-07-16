@@ -17,6 +17,11 @@ import {
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import LevainSlider from "./LevainSlider";
 
+// Biological rails for the levain hydration slider.
+// 44% ≈ 1:25:11 — stiffest workable dough (true floor is ~40%, buffered by 10%).
+// 180% ≈ 1:5:9  — slackest pourable levain (true ceiling is ~200%, buffered by 10%).
+const MIN_LEVAIN_HYDRATION = 44;
+const MAX_LEVAIN_HYDRATION = 180;
 
 interface Props {
   history: FeedSession[];
@@ -35,10 +40,9 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
   const [targetHours, setTargetHours] = useState(6); // Default 6 hour plan
 
    // ── Levain hydration slider state ──────────────────────────────────────────
-   // 0 = stiffest (all added flour, no water beyond starter)
-   // 50 = standard equal-parts 1:2:2 feed
-   // 100 = slackest (all added water, no extra flour)
-   const [levainHydration, setLevainHydration] = useState(50);
+  // Actual baker's hydration % of the levain's feed portion.
+  // 44 = stiffest rail (≈ 1:25:11), 100 = standard equal-parts, 180 = slackest rail (≈ 1:5:9)
+  const [levainHydration, setLevainHydration] = useState(100);
 
   // --- Logic ---
   const model = useMemo(() => trainModel(history), [history]);
@@ -52,43 +56,49 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
       t = (t * 9/5) + 32;
     }
 
-    return solveForRecipe(targetHours, mass, t, 100, model);
+    return solveForRecipe(targetHours, mass, t, levainHydration, model);
   }, [totalMass, temp, targetHours, model, tempUnit]);
 
      // ── Levain breakdown — depends on currentPlan, must follow it ──────────────
      // addedStarter is timing-driven (duration stepper → inoculation ratio via solveForRecipe).
      // The remaining feed portion is split flour/water by the stiffness slider.
-     const levainBreakdown = useMemo(() => {
-       const totalEffective = currentPlan.starter + currentPlan.flour + currentPlan.water;
-       const addedStarter = currentPlan.starter;
-       const feedPortion = totalEffective - addedStarter;    // Enforce minimums of 10g each for flour and water by clamping the slider range
-       const minHydration = feedPortion > 20
-         ? Math.ceil((10 / feedPortion) * 100)
-         : 50;
-       const maxHydration = feedPortion > 20
-         ? Math.floor(((feedPortion - 10) / feedPortion) * 100)
-         : 50;
-       const clampedHydration = Math.max(minHydration, Math.min(maxHydration, levainHydration));    const addedWaterRatio = clampedHydration / 100;
-       const addedFlourRatio = 1 - addedWaterRatio;
-       const addedFlour  = Math.round(feedPortion * addedFlourRatio * 10) / 10;
-       const addedWater  = Math.round(feedPortion * addedWaterRatio * 10) / 10;    // 1:X:Y where 1 = starter, X = flour multiple, Y = water multiple
-       const ratioFlour = addedStarter > 0 ? (addedFlour / addedStarter).toFixed(1) : "—";
-       const ratioWater = addedStarter > 0 ? (addedWater / addedStarter).toFixed(1) : "—";    return {
-         addedStarter,
-         addedFlour,
-         addedWater,
-         ratioStr: `1 : ${ratioFlour} : ${ratioWater}`,
-         clampedHydration,
-         minHydration,
-         maxHydration,
-       };
-     }, [currentPlan, levainHydration]);
+    const levainBreakdown = useMemo(() => {
+    const totalEffective = currentPlan.starter + currentPlan.flour + currentPlan.water;
+    const addedStarter = currentPlan.starter;
+    const feedPortion = totalEffective - addedStarter;  // Weight-based constraints: enforce a minimum of 10g each for flour and water.
+    // Derived from: flour = feedPortion / (1 + h/100), water = feedPortion - flour
+    //   flour >= 10g  →  h <= (feedPortion/10 - 1) * 100
+    //   water >= 10g  →  h >= 1000 / (feedPortion - 10)
+    const constraintMin = feedPortion > 20
+      ? Math.ceil(1000 / (feedPortion - 10))
+      : MIN_LEVAIN_HYDRATION;
+    const constraintMax = feedPortion > 20
+      ? Math.floor((feedPortion / 10 - 1) * 100)
+      : MIN_LEVAIN_HYDRATION;  // Clamp to the tighter of weight constraints and biological rails.
+    const minHydration = Math.max(MIN_LEVAIN_HYDRATION, constraintMin);
+    const maxHydration = Math.min(MAX_LEVAIN_HYDRATION, constraintMax);
+    const clampedHydration = Math.max(minHydration, Math.min(maxHydration, levainHydration));  // Split feedPortion into flour and water using actual baker's hydration %.
+    // flour + water = feedPortion, water/flour = clampedHydration/100
+    const addedFlour = Math.round((feedPortion / (1 + clampedHydration / 100)) * 10) / 10;
+    const addedWater = Math.round((feedPortion - addedFlour) * 10) / 10;  // 1:X:Y where X = flour multiple, Y = water multiple relative to starter
+    const ratioFlour = addedStarter > 0 ? (addedFlour / addedStarter).toFixed(1) : "—";
+    const ratioWater = addedStarter > 0 ? (addedWater / addedStarter).toFixed(1) : "—";
+    return {
+      addedStarter,
+      addedFlour,
+      addedWater,
+      ratioStr: `1 : ${ratioFlour} : ${ratioWater}`,
+      clampedHydration,
+      minHydration,
+      maxHydration,
+    };
+  }, [currentPlan, levainHydration]);
 
   // Use targetHours here as it's the direct input to the nudge calculation
   const nudges = useMemo(() => {
     const mass = parseFloat(totalMass) || 200;
     const t = parseFloat(temp) || 74;
-    return getPeakWindowNudges(targetHours, mass, t, 100, model);
+    return getPeakWindowNudges(targetHours, mass, t, levainHydration, model);
   }, [targetHours, totalMass, temp, model]);
 
   const isInSleepWindow = useMemo(() => isInDeadZone(currentPlan.peakTime), [currentPlan.peakTime]);
@@ -195,9 +205,22 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
         </View>
         {/* ── Levain Builder — stiffness slider + output tiles ─────────────── */}
         <View style={[styles.levainSection, { borderTopColor: colors.border + "40" }]}>
+        <View style={styles.levainLabelRow}>
           <Text style={[styles.levainSectionLabel, { color: colors.mutedForeground }]}>
             Levain Hydration
           </Text>
+          {/* Quick-reset to 100% hydration — standard 1:1:1 (equal flour and water) */}
+          <Pressable
+            onPress={() => {
+              setLevainHydration(100);
+              Haptics.selectionAsync();
+            }}
+            style={styles.resetBtn}
+          >
+            <Feather name="rotate-ccw" size={11} color={colors.mutedForeground} />
+            <Text style={[styles.resetBtnText, { color: colors.mutedForeground }]}>Reset 1:1</Text>
+          </Pressable>
+        </View>
           <LevainSlider
             value={levainBreakdown.clampedHydration}
             onChange={setLevainHydration}
@@ -225,7 +248,8 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
         >
           <Text style={[styles.applyBtnText, { color: colors.primaryForeground }]}>Build this Levain</Text>
           <Feather name="arrow-right" size={16} color={colors.primaryForeground} />
-        </Pressable>      </Animated.View>
+        </Pressable>
+      </Animated.View>
 
       {/* --- Smart Nudges --- */}
       {nudges.length > 0 && (
@@ -458,10 +482,27 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg - 4,              // 20 — breathing room below "Build this Levain" button
     paddingTop: spacing.md,                 // 16
   },
-  levainSectionLabel: {
-    ...typography.sectionLabel,             // HankenGrotesk_600SemiBold, uppercase, 11px
-    marginBottom: spacing.sm,              // 8
-  },
+ levainSectionLabel: {
+   ...typography.sectionLabel,             // HankenGrotesk_600SemiBold, uppercase, 11px
+   // marginBottom moved to levainLabelRow
+ },
+ levainLabelRow: {
+   flexDirection: "row",
+   alignItems: "center",
+   justifyContent: "space-between",
+   marginBottom: spacing.sm,              // 8 — was on levainSectionLabel
+ },
+ resetBtn: {
+   flexDirection: "row",
+   alignItems: "center",
+   gap: 4,
+ },
+ resetBtnText: {
+   fontFamily: fonts.sansSemiBold,        // HankenGrotesk_600SemiBold — matches label weight
+   fontSize: 11,
+   textTransform: "uppercase",
+   letterSpacing: 0.5,
+ },
   breakdownRow: {
     flexDirection: "row",
     gap: spacing.sm,                        // 8

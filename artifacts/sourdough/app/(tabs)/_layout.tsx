@@ -6,8 +6,8 @@ import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
-import { TourProvider } from "@/contexts/TourContext";
-//import { CopilotStep, walkthroughable } from "react-native-copilot"; red-tagged for web-0.1 rmv after 3 revs
+import { TourSlideshowProvider } from "@/contexts/TourSlideshowContext";
+import { TourSlideshow } from "@/components/TourSlideshow";
 import { TourStep, CopilotView } from "@/components/TourStep";
 
 // const CopilotView = walkthroughable(View); red-tagged for web-0.1 rmv after 3 revs
@@ -170,11 +170,12 @@ export default function TabLayout() {
   );
 */
   const content = <ClassicTabLayout />
-
-  // 2. Wrap it in the TourProvider so all tabs can see it
+  // 2. Wrap in the slideshow provider so all tabs can trigger the tour.
+  //    TourSlideshow renders as a Modal — it overlays everything when visible.
   return (
-    <TourProvider>
+    <TourSlideshowProvider>
       {content}
-    </TourProvider>
+      <TourSlideshow />
+    </TourSlideshowProvider>
   );
 }

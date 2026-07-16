@@ -1,19 +1,14 @@
-import React, { createContext } from "react";
+import React from "react";
 import { Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
+import { TourSlideshowProvider } from "@/contexts/TourSlideshowContext";
+import { TourSlideshow } from "@/components/TourSlideshow";
 
-// 1. We create an explicit empty dummy context object to satisfy child hooks
-export const DummyTourContext = createContext({
-  currentChapter: null,
-  startTour: () => {},
-  stopTour: () => {},
-  isTourActive: false,
-});
+// DummyTourContext removed — TourContext.tsx is now a no-op stub on all platforms.
 
 function WebTabs() {
   const colors = useColors();
-
   return (
     <Tabs
       screenOptions={{
@@ -68,11 +63,13 @@ function WebTabs() {
   );
 }
 
-// 2. Wrap your web screens inside the fake provider instead of importing your mobile tour files
 export default function WebTabLayout() {
+  // TourSlideshowProvider supplies the context that About's "Take the Tour"
+  // button needs; TourSlideshow renders as a Modal overlay when visible.
   return (
-    <DummyTourContext.Provider value={{ currentChapter: null, startTour: () => {}, stopTour: () => {}, isTourActive: false }}>
+    <TourSlideshowProvider>
       <WebTabs />
-    </DummyTourContext.Provider>
+      <TourSlideshow />
+    </TourSlideshowProvider>
   );
 }

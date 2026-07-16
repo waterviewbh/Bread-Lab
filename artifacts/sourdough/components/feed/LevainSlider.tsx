@@ -14,32 +14,36 @@ interface LevainSliderProps {
   minValue?: number;   // default 0
   maxValue?: number;   // default 100
 }
-export default function LevainSlider({ value, onChange, ratioStr }: LevainSliderProps) {
+export default function LevainSlider({
+  value,
+  onChange,
+  ratioStr,
+  minValue = 0,   // destructured here so snapVal can see them
+  maxValue = 100,
+}: LevainSliderProps) {
   const colors = useColors();
   const sliderWidth = useRef(0);
   const pageXOffset = useRef(0);
-  const trackRef = useRef<View>(null);
-  // Keep onChange stable inside PanResponder without recreating it
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-  // Snap and clamp within the valid hydration range
+  const trackRef = useRef<View>(null);  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;  // Clamp and snap to nearest step within the biological rails.
   const snapVal = (raw: number, step: number) =>
-    Math.round(Math.max(minValue, Math.min(maxValue, raw)) / step) * step;
-  // Track last emitted value — only fire onChange + haptics on real changes
-  const lastVal = useRef(-1);  const panResponder = useRef(
+    Math.round(Math.max(minValue, Math.min(maxValue, raw)) / step) * step;  // Visual position of thumb and fill — relative to the min–max range, not absolute.
+  // e.g. value=100, min=44, max=180 → (100-44)/(180-44)*100 ≈ 41%
+  const relativePos = maxValue > minValue
+    ? ((value - minValue) / (maxValue - minValue)) * 100
+    : 50;  const lastVal = useRef(-1);  const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
         lastVal.current = -1;
         if (sliderWidth.current === 0) return;
-        // Re-measure on each touch in case layout shifted (e.g. inside ScrollView)
         trackRef.current?.measure((_x, _y, _w, _h, px) => {
           pageXOffset.current = px;
         });
         const x = evt.nativeEvent.pageX - pageXOffset.current;
-        // Tap always resolves to 1% precision
-        const val = snapVal((x / sliderWidth.current) * 100, 1);
+        // Map touch x (0→sliderWidth) to value (minValue→maxValue), 1-unit precision on tap.
+        const val = snapVal(minValue + (x / sliderWidth.current) * (maxValue - minValue), 1);
         onChangeRef.current(val);
         lastVal.current = val;
         Haptics.selectionAsync();
@@ -47,9 +51,8 @@ export default function LevainSlider({ value, onChange, ratioStr }: LevainSlider
       onPanResponderMove: (_evt, gestureState) => {
         if (sliderWidth.current === 0) return;
         const x = gestureState.moveX - pageXOffset.current;
-        // Fast drag → coarse 5% jumps; slow drag → 1% fine control
         const step = Math.abs(gestureState.vx) > 0.1 ? 5 : 1;
-        const val = snapVal((x / sliderWidth.current) * 100, step);
+        const val = snapVal(minValue + (x / sliderWidth.current) * (maxValue - minValue), step);
         if (val !== lastVal.current) {
           onChangeRef.current(val);
           lastVal.current = val;
@@ -60,16 +63,13 @@ export default function LevainSlider({ value, onChange, ratioStr }: LevainSlider
   ).current;  const TRACK_HEIGHT = 6;
   const THUMB_SIZE = 26;  return (
     <View>
-      {/* ── Label row: Stiff · ratio badge · Slack ── */}
       <View style={styles.labelRow}>
         <Text style={[styles.poleLabel, { color: colors.mutedForeground }]}>Stiff</Text>
-        {/* Live ratio badge in the center */}
         <View style={[styles.ratioBadge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           <Text style={[styles.ratioBadgeText, { color: colors.foreground }]}>{ratioStr}</Text>
         </View>
         <Text style={[styles.poleLabel, { color: colors.mutedForeground }]}>Slack</Text>
       </View>
-      {/* ── Track + Thumb ── */}
       <View
         ref={trackRef}
         style={[styles.trackContainer, { height: THUMB_SIZE + 12 }]}
@@ -87,13 +87,13 @@ export default function LevainSlider({ value, onChange, ratioStr }: LevainSlider
             { height: TRACK_HEIGHT, backgroundColor: colors.muted, borderRadius: TRACK_HEIGHT / 2 },
           ]}
         >
-          {/* Fill grows left-to-right as value increases (stiff→slack) */}
-          {value > 0 && (
+          {/* Fill grows left-to-right as hydration increases (stiff → slack) */}
+          {relativePos > 0 && (
             <View
               style={[
                 styles.trackFill,
                 {
-                  width: `${value}%`,
+                  width: `${relativePos}%`,
                   backgroundColor: colors.primary + "80",
                   borderRadius: TRACK_HEIGHT / 2,
                 },
@@ -101,7 +101,6 @@ export default function LevainSlider({ value, onChange, ratioStr }: LevainSlider
             />
           )}
         </View>
-        {/* Thumb */}
         <View
           style={[
             styles.thumb,
@@ -111,7 +110,7 @@ export default function LevainSlider({ value, onChange, ratioStr }: LevainSlider
               borderRadius: THUMB_SIZE / 2,
               backgroundColor: colors.card,
               borderColor: colors.primary,
-              left: `${value}%` as any,
+              left: `${relativePos}%` as any,
               marginLeft: -(THUMB_SIZE / 2),
             },
           ]}
@@ -120,6 +119,7 @@ export default function LevainSlider({ value, onChange, ratioStr }: LevainSlider
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   labelRow: {
     flexDirection: "row",
