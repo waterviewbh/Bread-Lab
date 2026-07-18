@@ -1,14 +1,29 @@
 const { getDefaultConfig } = require('expo/metro-config');
-const path = require('path');const config = getDefaultConfig(__dirname);
+const path = require('path');
 
-// Deduplicate React across workspace packages to prevent hook conflicts on web.
-// Only applied during web export builds (EXPO_TARGET=web set in vercel.json buildCommand).
-// Never runs during EAS native builds — avoids Windows absolute-path/ESM-URL conflict.
+// Project root = artifacts/sourdough; workspace root = Bread-Lab/
+const projectRoot = __dirname;
+const workspaceRoot = path.resolve(projectRoot, '../..');
+const config = getDefaultConfig(projectRoot);
+
+// Allow Metro to traverse into workspace packages (e.g. lib/api-client-react)
+config.watchFolders = [workspaceRoot];
+
+// Let Metro find node_modules from both the project and workspace root
+config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(workspaceRoot, 'node_modules'),
+];
+
+// Deduplicate React for web builds.
+// require.resolve() returns the canonical physical path (past pnpm symlinks),
+// which is the exact key Metro uses in its module registry — guaranteeing
+// every package shares one React instance and useState is never null.
 if (process.env.EXPO_TARGET === 'web') {
   config.resolver.alias = {
     ...config.resolver.alias,
-    'react': path.resolve(__dirname, 'node_modules/react'),
-    'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
-    '@types/react': path.resolve(__dirname, 'node_modules/@types/react'),
+    'react': require.resolve('react'),
+    'react-dom': require.resolve('react-dom'),
   };
-}module.exports = config;
+}
+module.exports = config;
