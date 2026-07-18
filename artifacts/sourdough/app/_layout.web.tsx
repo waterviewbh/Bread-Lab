@@ -34,7 +34,11 @@ import { MigrationToastProvider } from "@/contexts/MigrationToastContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
   const queryClient = new QueryClient();
+
   export default function WebRootLayout() {
+    // 2. PLACE LOG HERE (Inside the component function, before hooks)
+    console.log("=== [PHASE 2] WebRootLayout function execution started ===");
+
     const [fontsLoaded, fontError] = useFonts({
     LibreCaslonText_400Regular,
     LibreCaslonText_700Bold,
@@ -42,17 +46,27 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
     HankenGrotesk_500Medium,
     HankenGrotesk_600SemiBold,
     JetBrainsMono_500Medium,
-  });  // Fallback: proceed after 4 seconds if fonts never resolve
+  });
+
+  // Fallback: proceed after 4 seconds if fonts never resolve
   const [fontTimedOut, setFontTimedOut] = useState(false);
   useEffect(() => {
+    // 3. PLACE LOG HERE (Inside the mounted effect)
+    console.log("=== [PHASE 3] WebRootLayout fully mounted to DOM ===");
     const t = setTimeout(() => setFontTimedOut(true), 4000);
     return () => clearTimeout(t);
-  }, []);  const appReady = fontsLoaded || !!fontError || fontTimedOut;
+  }, []);
+
+  const appReady = fontsLoaded || !!fontError || fontTimedOut;
+
   useEffect(() => {
     if (appReady) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [appReady]);  if (!appReady) return null;
+  }, [appReady]);
+
+  if (!appReady) return null;
+
     return (
     <ErrorBoundary
       onError={(error, stack) =>
