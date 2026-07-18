@@ -1,4 +1,12 @@
 // app/_layout.web.tsx
+
+console.log("=== [PHASE 1] _layout.web.tsx file evaluated by bundler ===");
+if (typeof React === 'undefined') {
+  console.log("!!! ALERT: React is undefined at module evaluation time !!!");
+} else {
+  console.log("React object exists:", Object.keys(React).slice(0, 5));
+}
+
 import {
   LibreCaslonText_400Regular,
   LibreCaslonText_700Bold,
