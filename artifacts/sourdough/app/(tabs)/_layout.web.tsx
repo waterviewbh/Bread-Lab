@@ -7,7 +7,7 @@ import { TourSlideshow } from "@/components/TourSlideshow";
 
 // DummyTourContext removed — TourContext.tsx is now a no-op stub on all platforms.
 
-console.log("WEB LAYOUT LOADED")
+console.log("LAYOUT.WEB LOADED")
 
 function WebTabs() {
   const colors = useColors();

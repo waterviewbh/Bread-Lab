@@ -10,6 +10,8 @@ import { TourSlideshowProvider } from "@/contexts/TourSlideshowContext";
 import { TourSlideshow } from "@/components/TourSlideshow";
 import { TourStep, CopilotView } from "@/components/TourStep";
 
+console.log("LAYOUT LOADED")
+
 function NativeTabLayout() {
   return (
     <NativeTabs>
