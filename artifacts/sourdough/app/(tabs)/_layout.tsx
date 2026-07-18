@@ -10,8 +10,6 @@ import { TourSlideshowProvider } from "@/contexts/TourSlideshowContext";
 import { TourSlideshow } from "@/components/TourSlideshow";
 import { TourStep, CopilotView } from "@/components/TourStep";
 
-// const CopilotView = walkthroughable(View); red-tagged for web-0.1 rmv after 3 revs
-
 function NativeTabLayout() {
   return (
     <NativeTabs>
