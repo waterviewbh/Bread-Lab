@@ -23,7 +23,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { KeyboardProvider } from "react-native-keyboard-controller";
+import { KeyboardProviderCompat } from "@/components/KeyboardProviderCompat";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FontSizeProvider } from "@/contexts/FontSizeContext";
@@ -73,7 +73,7 @@ return (
         <FontSizeProvider>
           <QueryClientProvider client={queryClient}>
             <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
+              <KeyboardProviderCompat>
                 <SyncProvider>
                   <MigrationToastProvider>
                     <Stack screenOptions={{ headerShown: false }}>
@@ -81,7 +81,7 @@ return (
                     </Stack>
                   </MigrationToastProvider>
                 </SyncProvider>
-              </KeyboardProvider>
+              </KeyboardProviderCompat>
             </GestureHandlerRootView>
           </QueryClientProvider>
         </FontSizeProvider>

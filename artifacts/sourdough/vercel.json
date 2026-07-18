@@ -1,7 +1,12 @@
 {
+  "buildCommand": "pnpm exec expo export --platform web",
+  "outputDirectory": "dist",
   "cleanUrls": true,
   "framework": null,
   "rewrites": [
-    { "source": "/:path*", "destination": "/index.html" }
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
+    }
   ]
 }
