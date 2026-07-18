@@ -1,5 +1,6 @@
 {
-  "buildCommand": "pnpm exec expo export --platform web",
+  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "EXPO_TARGET=web pnpm exec expo export --platform web",
   "outputDirectory": "dist",
   "cleanUrls": true,
   "framework": null,
