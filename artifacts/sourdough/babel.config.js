@@ -6,10 +6,9 @@ module.exports = function (api) {
         "babel-preset-expo",
         {
           unstable_transformImportMeta: true,
-          // Force the compiler to run ONLY on native mobile devices.
-          // This guarantees it turns off during Vercel web bundle compilation.
-          reactCompiler: {
-            target: "native"
+          // Use the preset's native web-override structure to disable the compiler
+          web: {
+            "react-compiler": false
           }
         }
       ]
