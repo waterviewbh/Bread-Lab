@@ -41,7 +41,31 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 
   // Fallback: proceed after 4 seconds if fonts never resolve
-  const [fontTimedOut, setFontTimedOut] = useState(false);
+  //const [fontTimedOut, setFontTimedOut] = useState(false); commented out to insert diagnostics
+  // Replace the useState line with this:
+  let fontTimedOut = false;
+  let setFontTimedOut = (_val: boolean) => {};
+
+  try {
+      // If this throws, React itself is null in this module's closure.
+      // Log what React actually is at call time — not at module-eval time.
+      console.log(
+          "=== [PHASE 2a] React at hook call time:",
+          typeof React,
+          (React as any)?.version ?? "no version"
+      );
+
+      [fontTimedOut, setFontTimedOut] = useState(false) as [boolean, (v: boolean) => void];
+      console.log("=== [PHASE 2b] useState succeeded ===");
+  } catch (e: any) {
+      console.error(
+          "=== [PHASE 2a] useState CRASHED. React was:",
+          React,
+          "Error:",
+          e?.message
+      );
+  }
+
   useEffect(() => {
     // 3. PLACE LOG HERE (Inside the mounted effect)
     console.log("=== [PHASE 3] WebRootLayout fully mounted to DOM ===");
