@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View, ScrollView, TextInput } from "react-native";
+import { Pressable, StyleSheet, Text, View, ScrollView, TextInput, Platform } from "react-native";
 import Animated, { FadeIn, FadeInDown, Layout } from "react-native-reanimated";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -30,6 +30,7 @@ interface Props {
 }
 
 export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp }: Props) {
+  const isWeb = Platform.OS === 'web';
   const colors = useColors();
   const { tempUnit } = usePreferences(); // Get the global unit
 
@@ -113,7 +114,7 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
-      <Animated.View entering={FadeIn.duration(400)}>
+      <Animated.View entering={isWeb ? undefined : FadeIn.duration(400)} layout={isWeb ? undefined : Layout}>
         <Text style={[styles.title, { color: colors.foreground }]}>Peak Window Advisor</Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
           {model.isHeuristic
@@ -165,8 +166,9 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
             </View>
 
       {/* --- The Current Plan --- */}
-      <Animated.View layout={Layout} style={[styles.planCard, {
-          backgroundColor: colors.primary + "08", borderColor: colors.primary + "20" }]}>
+      <Animated.View style={[styles.planCard, {
+          backgroundColor: colors.primary + "08", borderColor: colors.primary + "20" }]}
+          layout={isWeb ? undefined : Layout}>
         {/* Sleep zone / target peak header */}
         <View style={styles.planHeader}>
           <MaterialCommunityIcons
@@ -253,7 +255,7 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
 
       {/* --- Smart Nudges --- */}
       {nudges.length > 0 && (
-        <Animated.View entering={FadeInDown.delay(200)} style={styles.nudgeSection}>
+        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(200)} style={styles.nudgeSection} layout={isWeb ? undefined : Layout}>
           <View style={styles.nudgeHeader}>
             <Ionicons name="bulb-outline" size={16} color={colors.mutedForeground} />
             <Text style={[styles.nudgeHeaderText, { color: colors.mutedForeground }]}>Better Option(s):</Text>

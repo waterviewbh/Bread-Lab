@@ -79,16 +79,16 @@ export async function loadAll(): Promise<{
         name: r.name,
         overview: r.overview ?? undefined,
         createdAt: new Date(r.createdAt).getTime(),
+        // yieldValue lives on the recipe root, not per-phase
+        yieldValue: (r.yield_value && r.yield_value > 0) ? r.yield_value.toString() : "",
         phases: r.phases.map((p) => ({
           key: p.key,
           name: p.name,
           ingredients: p.ingredients ?? "",
           instructions: p.instructions ?? "",
-          // yieldValue lives on the recipe root, not per-phase — kept for
-          // backward-compat with older stored shapes that had it here.
-          yieldValue: (r.yield_value && r.yield_value > 0) ? r.yield_value.toString() : "",
         })),
-      }));    if (token || apiRecipes.length > 0) {
+      }));
+    if (token || apiRecipes.length > 0) {
       recipes = mapped;
       await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(mapped));
     }    if (!localBakeFound && activeBake) {
@@ -171,6 +171,7 @@ export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
         userId: userId ?? undefined,
         name: recipe.name,
         overview: recipe.overview,
+        yield_value: recipe.yieldValue ? parseInt(recipe.yieldValue, 10) : 0,
         phases: recipe.phases.map((p) => ({
           key: p.key,
           name: p.name,
