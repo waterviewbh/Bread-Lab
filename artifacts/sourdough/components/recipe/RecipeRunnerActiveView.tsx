@@ -1,5 +1,5 @@
 // components/recipe/RecipeRunnerActiveView.tsx
-import React, { RefObject } from "react";
+import React, { RefObject, useState } from "react"; // ADDED useState
 import {
   Modal,
   Platform,
@@ -15,8 +15,9 @@ import AffiliateCarousel from "@/components/AffiliateCarousel";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import * as Haptics from "expo-haptics"; // ADDED Haptics
 import { SegmentBar } from "@/components/recipe/SegmentBar";
-import SegmentedNotepad from "@/components/SegmentedNotepad"; // erased the naming {} around SegmentedNotepad
+import SegmentedNotepad from "@/components/SegmentedNotepad";
 import {
   PendingPhaseCard,
   DonePhaseCard,
@@ -24,25 +25,22 @@ import {
 } from "@/components/recipe/PhaseCard";
 import { formatTimer } from "@/lib/recipeUtils";
 import type { ActiveBake, BakePhase } from "@/lib/recipeTypes";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
+
 interface Props {
   bake: ActiveBake;
-  // Elapsed ms per phase key — from useActiveBakeTimer
   elapsed: Record<string, number>;
   scaleMultiplier: number;
   refreshing: boolean;
   bakeNotes: string;
   overlayDraft: string;
   showNotesOverlay: boolean;
-  // Derived values computed in recipe.tsx
   activePhase: BakePhase | undefined;
   allDone: boolean;
   completedCount: number;
   recipeStale: boolean;
-  // Key of the phase that should show the inoculation% badge (computed in recipe.tsx)
   inoculationAnchorKey: string | null;
-  // Calculated inoculation tier (10/20/30%), available even before first bulk reading
   inoculationPercent: 10 | 20 | 30 | null;
-  // Per-phase UI state
   expandedDone: Set<string>;
   expandedRecipeInfo: Set<string>;
   expandedPending: Set<string>;
@@ -50,13 +48,9 @@ interface Props {
   nextHighlightKey: string | null;
   copiedIngredientsKey: string | null;
   phaseStartVolumes: Record<string, string>;
-  // ScrollView ref — owned by recipe.tsx, passed down for auto-scroll
   scrollRef: RefObject<ScrollView>;
-  // Layout offset refs — written by onLayout callbacks in this view,
-  // read by completePhase in recipe.tsx for auto-scroll targeting
   phaseCardYOffsets: React.MutableRefObject<Record<string, number>>;
   phasesContainerY: React.MutableRefObject<number>;
-  // Callbacks
   onScaleChange: (m: number) => void;
   onStartPhase: (key: string) => void;
   onCompletePhase: (key: string) => void;
@@ -78,8 +72,9 @@ interface Props {
   onCloseNotesOverlay: () => void;
   onOverlayDraftChange: (text: string) => void;
   onRefresh: () => void;
+  sessionChecks: Record<string, boolean>;
+  onToggleLineCheck: (id: string) => void;
 }
-import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 export function RecipeRunnerActiveView({
   bake,
@@ -126,10 +121,13 @@ export function RecipeRunnerActiveView({
   onCloseNotesOverlay,
   onOverlayDraftChange,
   onRefresh,
+  sessionChecks,
+  onToggleLineCheck,
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const tabBarPad = Platform.OS === "web" ? 84 : 49;
+
   return (
     <>
       {/* ── Active bake ScrollView ──────────────────────────────────────── */}
@@ -271,6 +269,8 @@ export function RecipeRunnerActiveView({
                   onStart={() => onStartPhase(phase.key)}
                   onLayout={(y) => { phaseCardYOffsets.current[phase.key] = y; }}
                   scaleMultiplier={scaleMultiplier}
+                  sessionChecks={sessionChecks}
+                  onToggleLineCheck={onToggleLineCheck}
                 />
               );
             }
@@ -287,6 +287,8 @@ export function RecipeRunnerActiveView({
                   onDeleteReading={(readingId) => onDeleteReading(phase.key, readingId)}
                   onLayout={(y) => { phaseCardYOffsets.current[phase.key] = y; }}
                   scaleMultiplier={scaleMultiplier}
+                  sessionChecks={sessionChecks}
+                  onToggleLineCheck={onToggleLineCheck}
                 />
               );
             }
@@ -295,7 +297,7 @@ export function RecipeRunnerActiveView({
               phase.key === inoculationAnchorKey ? inoculationPercent : null;
             // Active phase
             return (
-              // this is the <ActivePhaseCard> JSX; not sure what a JSX is....
+              // this is the <ActivePhaseCard> JSX; not sure what a JSX is...these are also called props I guess
               <ActivePhaseCard
                 key={`${phase.key}-active`}
                 phase={phase}
@@ -315,6 +317,8 @@ export function RecipeRunnerActiveView({
                 onShareSpec={() => onShareSpec(phase)}
                 onLayout={(y) => { phaseCardYOffsets.current[phase.key] = y; }}
                 inoculationPercent={phaseInoculationPercent}
+                sessionChecks={sessionChecks}
+                onToggleLineCheck={onToggleLineCheck}
               />
           );
           })}

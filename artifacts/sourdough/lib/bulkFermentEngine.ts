@@ -11,6 +11,7 @@ import {
   BULK_NEGATIVE_DERIVATIVE_CAP,
   DOUGHLAB_PRIOR_TABLE,
 } from "@/lib/recipeTypes";
+import { calculateRecipeMetrics } from "./recipeUtils";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,16 +118,15 @@ export function calculateInoculationFromText(ingredientsText: string): number {
 }
 
 /**
- * Resolves the inoculation percentage and maps it to a discrete
- * Doughlab chart matrix column bucket (10%, 20%, or 30%).
+ * Resolves the inoculation percentage using the unified parser and maps it
+ * to a discrete Doughlab chart matrix column bucket (10%, 20%, or 30%).
  */
-export function estimateInoculationPercent(phases: { ingredients: string }[] = []): 10 | 20 | 30 {
-  const combinedText = phases.map((p) => p.ingredients || "").join("\n");
-  const rawPercent = calculateInoculationFromText(combinedText);
-  // Route calculation output into the closest column tier
-  if (rawPercent <= 15) return 10;
-  if (rawPercent >= 25) return 30;
-  return 20; // 16% to 24% maps safely to the 20% baseline
+export function estimateInoculationPercent(phases: { ingredients: any }[] = []): 10 | 20 | 30 {
+  const { inoculationPct } = calculateRecipeMetrics(phases);
+
+  if (inoculationPct <= 15) return 10;
+  if (inoculationPct >= 25) return 30;
+  return 20;  // 16% to 24% maps safely to the 20% baseline
 }
 
 // ─── Main engine function ─────────────────────────────────────────────────────

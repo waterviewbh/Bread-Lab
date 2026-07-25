@@ -69,7 +69,6 @@ import {
 } from "@/lib/recipeHtml";
 import { SegmentBar } from "@/components/recipe/SegmentBar";
 import { KeycapKey } from "@/components/recipe/KeycapKey";
-//import { ReadingRow } from "@/components/recipe/ReadingRow";   Added earlier in this refactor so eliminating is curious
 import {
   PendingPhaseCard,
   DonePhaseCard,
@@ -87,6 +86,8 @@ import { TourStep, CopilotView } from "@/components/TourStep";
 import { computeBulkFermentState } from "@/lib/bulkFermentEngine";
 import { fonts, spacing, radius } from "@/constants/theme";
 import { estimateInoculationPercent } from "@/lib/bulkFermentEngine";
+import { migrateToUniversalCard } from "@/lib/recipeMigration";
+import { CheckableLine } from "@/types/recipe";
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,15 @@ export default function RecipeScreen() {
   const [showPhasePicker, setShowPhasePicker] = useState(false);
   // A–Z index filter; null = show all
   const [letterFilter, setLetterFilter] = useState<string | null>(null);
+
+  // ── Item IDs, so that the system knows about each element ────────────────────
+  const [sessionChecks, setSessionChecks] = useState<Record<string, boolean>>({});
+
+  const toggleLineCheck = (lineId: string) => {
+    setSessionChecks(prev => ({ ...prev, [lineId]: !prev[lineId] }));
+    Haptics.selectionAsync();
+  };
+
 
   // Letters that have at least one recipe (only populated letters are shown as chips).
   const populatedLetters = useMemo(() => {
@@ -213,7 +223,24 @@ const elapsed = useActiveBakeTimer(bake);
 
 const loadAll = async () => {
   const { recipes: loadedRecipes, bake: loadedBake } = await loadAllData();
-  if (loadedRecipes.length > 0) setRecipes(loadedRecipes);
+
+  // Backward compatibility: Migrate any legacy recipes on load
+      const migratedRecipes = loadedRecipes.map(r => {
+        const isLegacy = typeof r.phases[0]?.ingredients === 'string';
+        if (isLegacy) {
+          return {
+            ...r,
+            phases: r.phases.map(p => ({
+              ...p,
+              ingredients: textToCheckableLines(p.ingredients as any, 'ing'), // <── 'ing' prefix
+              instructions: textToCheckableLines(p.instructions as any, 'ins'), // <── 'ins' prefix
+            }))
+          };
+        }
+        return r;
+      });
+
+  if (migratedRecipes.length > 0) setRecipes(migratedRecipes);
   if (loadedBake) setBake(loadedBake);
 };
 
@@ -277,7 +304,12 @@ const saveBakeToHistory = async (b: ActiveBake) => {
         .filter((key) => !existingKeys.has(key))
         .map((key) => {
           const def = PHASE_DEFINITIONS.find((p) => p.key === key)!;
-          return { key, name: def.name, ingredients: "", instructions: "" } as RecipePhaseConfig;
+          return {
+            key,
+            name: def.name,
+            ingredients: [{ id: Math.random().toString(36).substr(2, 9), text: '', is_checked: false, sort_order: 0 }],
+            instructions: [{ id: Math.random().toString(36).substr(2, 9), text: '', is_checked: false, sort_order: 0 }]
+          } as RecipePhaseConfig;
         });
       const sorted = [...prev.phases, ...newPhases].sort(
         (a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999)
@@ -301,7 +333,7 @@ const saveBakeToHistory = async (b: ActiveBake) => {
   const updatePhaseField = (
     key: string,
     field: "ingredients" | "instructions",
-    value: string
+    value: CheckableLine[] // Changed from string
   ) =>
     setEditingRecipe((prev) =>
       prev
@@ -452,16 +484,24 @@ const saveBakeToHistory = async (b: ActiveBake) => {
 
   const startPhase = async (key: string) => {
     if (!bake) return;
+
+    // 1. Update phase timestamps
     const phases = bake.phases.map((p) => {
       if (p.key === key) return { ...p, startedAt: Date.now() };
       if (p.startedAt && !p.completedAt) return { ...p, completedAt: Date.now() };
       return p;
     });
+
     await persistBake({ ...bake, phases });
+
+    // 2. Auto-expand the "Phase Specs" panel if there is content to show
     const startedPhase = bake.phases.find((p) => p.key === key);
-    if (startedPhase && (startedPhase.ingredients?.trim() || startedPhase.instructions?.trim())) {
+    const hasContent = (field: any) => Array.isArray(field) ? field.length > 0 : !!field?.trim();
+
+    if (startedPhase && (hasContent(startedPhase.ingredients) || hasContent(startedPhase.instructions))) {
       setExpandedRecipeInfo((prev) => new Set([...prev, key]));
     }
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -657,6 +697,30 @@ const inoculationPercent: 10 | 20 | 30 | null = bake
   ? estimateInoculationPercent(bake.phases)
   : null;
 
+// Helper for local migration (can be moved to recipeUtils later)
+function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
+   const lines = (!text || typeof text !== 'string')
+      ? []
+      : text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+
+  // Always return at least one empty line if input was empty
+  if (lines.length === 0) {
+    return [{
+      id: `${prefix}-empty`,
+      text: '',
+      is_checked: false,
+      sort_order: 0,
+    }];
+  }
+
+  return lines.map((line, idx) => ({
+    id: `${prefix}-${idx}`,
+    text: line,
+    is_checked: false,
+    sort_order: idx,
+  }));
+}
+
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════
@@ -800,7 +864,10 @@ const inoculationPercent: 10 | 20 | 30 | null = bake
             onCopyIngredients={async (key) => {
               const phase = bake.phases.find((p) => p.key === key);
               if (!phase) return;
-              const text = scalePhaseText(phase.ingredients!, scaleMultiplier);
+              const ingredientsText = Array.isArray(phase.ingredients)
+                ? phase.ingredients.map(i => i.text).join("\n")
+                : phase.ingredients || "";
+              const text = scalePhaseText(ingredientsText, scaleMultiplier);
               await Clipboard.setStringAsync(text);
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setCopiedIngredientsKey(key);
@@ -815,6 +882,8 @@ const inoculationPercent: 10 | 20 | 30 | null = bake
             onCloseNotesOverlay={() => setShowNotesOverlay(false)}
             onOverlayDraftChange={setOverlayDraft}
             onRefresh={refresh}
+            sessionChecks={sessionChecks}
+            onToggleLineCheck={toggleLineCheck}
           />
         )}
 

@@ -27,23 +27,27 @@ export function buildRecipeHtml(recipe: SavedRecipe): string {
            </div>`
         : "";      // Split ingredients on newlines; render each non-empty line as a checkbox row
       const ingLines = (p.ingredients ?? "").split("\n").filter((l) => l.trim());
-      const ingHtml = ingLines.length > 0
+      const ingHtml = p.ingredients.length > 0
         ? `<div class="recipe-info">
              <span class="recipe-label">Ingredients</span>
              <ul class="checklist">
-               ${ingLines.map((line) => `<li><span class="checkbox"></span><span class="check-text">${line}</span></li>`).join("")}
+               ${p.ingredients.map((line) => `<li><span class="checkbox"></span><span class="check-text">${line.text}</span></li>`).join("")}
              </ul>
            </div>`
-        : "";      // Split instructions on newlines; render each non-empty line as a numbered checkbox row
+        : "";
+
+      // Split instructions on newlines; render each non-empty line as a numbered checkbox row
       const insLines = (p.instructions ?? "").split("\n").filter((l) => l.trim());
-      const insHtml = insLines.length > 0
+      const insHtml = p.instructions.length > 0
         ? `<div class="recipe-info">
              <span class="recipe-label">Instructions</span>
              <ol class="checklist">
-               ${insLines.map((line) => `<li><span class="checkbox"></span><span class="check-text">${line}</span></li>`).join("")}
+               ${p.instructions.map((line) => `<li><span class="checkbox"></span><span class="check-text">${line.text}</span></li>`).join("")}
              </ol>
            </div>`
-        : "";      const empty = !p.ingredients && !p.instructions
+        : "";
+
+        const empty = !p.ingredients && !p.instructions
         ? `<p class="recipe-empty">No ingredients or instructions added.</p>`
         : "";      return `<div class="phase"><div class="phase-header">Phase ${i + 1}: ${p.name}</div>${foldHtml}${ingHtml}${insHtml}${empty}</div>`;
     })
@@ -216,12 +220,20 @@ export function buildBakeHtml(
             )
             .join("")}</tbody></table>`
         : "";
-      const ingHtml = p.ingredients
-        ? `<div class="recipe-info"><span class="recipe-label">Ingredients</span><p class="recipe-text">${p.ingredients.replace(/\n/g, "<br>")}</p></div>`
+      const ingHtml = p.ingredients.length > 0
+        ? `<div class="recipe-info">
+             <span class="recipe-label">Ingredients</span>
+             <p class="recipe-text">${p.ingredients.map(l => l.text).join("<br>")}</p>
+           </div>`
         : "";
-      const insHtml = p.instructions
-        ? `<div class="recipe-info"><span class="recipe-label">Instructions</span><p class="recipe-text">${p.instructions.replace(/\n/g, "<br>")}</p></div>`
+
+      const insHtml = p.instructions.length > 0
+        ? `<div class="recipe-info">
+             <span class="recipe-label">Instructions</span>
+             <p class="recipe-text">${p.instructions.map(l => l.text).join("<br>")}</p>
+           </div>`
         : "";
+
       // Fold circles — filled circles for completed folds in the bake summary
       const foldHtml = p.key === "stretching_folding"
         ? (() => {

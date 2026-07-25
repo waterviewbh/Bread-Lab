@@ -12,6 +12,22 @@ import {
 } from "./analytics";
 import type { SessionForAnalytics, StarterAnalytics } from "./analytics";
 
+/**
+ * flattenPhasesForLegacy — Converts rich CheckableLine arrays back into
+ * newline-separated strings so older app versions don't crash.
+ */
+function flattenPhasesForLegacy(phases: any[]): any[] {
+  return phases.map(p => ({
+    ...p,
+    ingredients: Array.isArray(p.ingredients)
+      ? p.ingredients.map(i => i.text).join('\n')
+      : p.ingredients,
+    instructions: Array.isArray(p.instructions)
+      ? p.instructions.map(i => i.text).join('\n')
+      : p.instructions,
+  }));
+}
+
 // ── Unauthorized handler registry (kept for backward compat; never fires) ────
 
 type UnauthorizedHandler = () => void;
@@ -27,8 +43,8 @@ export function onUnauthorized(fn: UnauthorizedHandler): () => void {
 export type ApiRecipePhase = {
   key: string;
   name: string;
-  ingredients?: string;
-  instructions?: string;
+  ingredients?: string | any[];   // Allow both for migration safety
+  instructions?: string | any[];  // Allow both for migration safety
 };
 
 export type ApiRecipe = {
@@ -40,6 +56,8 @@ export type ApiRecipe = {
   createdAt: string;
   updatedAt: string;
   yield_value: number;
+  total_flour_g?: number;
+  hydration_pct?: number;
 };
 
 export type ApiFeedSession = {
@@ -66,8 +84,8 @@ export type ApiBakePhaseReading = {
 export type ApiBakePhase = {
   key: string;
   name: string;
-  ingredients?: string;
-  instructions?: string;
+  ingredients?: string | any[];
+  instructions?: string | any[];
   startedAt?: number | null;
   completedAt?: number | null;
   readings?: ApiBakePhaseReading[];
@@ -110,6 +128,9 @@ interface RecipeRow {
   created_at: string;
   updated_at: string | null;
   yield_value: number;
+  recipe_data?: any; // Add this
+  total_flour_g?: number;
+  hydration_pct?: number;
 }
 
 interface FeedSessionRow {
@@ -158,15 +179,20 @@ interface StarterAnalyticsRow {
 // ── Row mappers ───────────────────────────────────────────────────────────────
 
 function rowToApiRecipe(r: RecipeRow): ApiRecipe {
+  // ── Define richPhases from the recipe_data column ──
+  const richPhases = r.recipe_data?.phases;
+
   return {
     id: r.id,
     deviceId: r.device_id,
     name: r.name,
     overview: r.overview ?? undefined,
-    phases: r.phases ?? [],
+    phases: richPhases ?? r.phases ?? [],
     createdAt: r.created_at,
     updatedAt: r.updated_at ?? r.created_at,
     yield_value: r.yield_value,
+    total_flour_g: r.total_flour_g,
+    hydration_pct: r.hydration_pct,
   };
 }
 
@@ -434,6 +460,8 @@ if (!authData.user) throw new Error("Authentication failed");
       overview?: string;
       yield_value: number;
       phases: ApiRecipePhase[];
+      total_flour_g?: number;
+      hydration_pct?: number;
     }): Promise<ApiRecipe> => {
       if (!supabase) throw new Error("Supabase not configured");
       const { data, error } = await supabase
@@ -445,8 +473,11 @@ if (!authData.user) throw new Error("Authentication failed");
           name: body.name,
           overview: body.overview ?? null,
           yield_value: body.yield_value,
-          phases: body.phases,
+          phases: flattenPhasesForLegacy(body.phases), // <── Legacy-safe text here
+          recipe_data: body,                           // <── Full rich JSON here
           updated_at: new Date().toISOString(),
+          total_flour_g: body.total_flour_g,
+          hydration_pct: body.hydration_pct,
         })
         .select()
         .returns<RecipeRow[]>()
@@ -464,7 +495,8 @@ if (!authData.user) throw new Error("Authentication failed");
         .from("recipes")
         .update({
           name: body.name,
-          phases: body.phases,
+          phases: flattenPhasesForLegacy(body.phases), // <── Legacy-safe text
+          recipe_data: body,                           // <── Full rich JSON
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
@@ -651,7 +683,7 @@ if (!authData.user) throw new Error("Authentication failed");
             yield_value: body.yield_value,
             saved_at: body.savedAt,
             started_at: body.startedAt,
-            phases: body.phases,
+            phases: flattenPhasesForLegacy(body.phases), // <── Legacy-safe text
             in_progress: body.inProgress ?? true,
           })
           .select()

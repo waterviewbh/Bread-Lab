@@ -15,6 +15,8 @@ export const recipesTable = pgTable("recipes", {
   }>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  totalFlourG: integer("total_flour_g"),
+  hydrationPct: integer("hydration_pct"),
 });
 
 export const insertRecipeSchema = createInsertSchema(recipesTable);

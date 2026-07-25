@@ -84,8 +84,8 @@ export async function loadAll(): Promise<{
         phases: r.phases.map((p) => ({
           key: p.key,
           name: p.name,
-          ingredients: p.ingredients ?? "",
-          instructions: p.instructions ?? "",
+          ingredients: p.ingredients ?? [],
+          instructions: p.instructions ?? [],
         })),
       }));
     if (token || apiRecipes.length > 0) {
@@ -103,8 +103,8 @@ export async function loadAll(): Promise<{
         phases: activeBake.phases.map((p) => ({
           key: p.key,
           name: p.name,
-          ingredients: p.ingredients ?? "",
-          instructions: p.instructions ?? "",
+          ingredients: p.ingredients ?? [],
+          instructions: p.instructions ?? [],
           startedAt: p.startedAt ?? null,
           completedAt: p.completedAt ?? null,
           readings: p.readings ?? [],
@@ -147,8 +147,8 @@ export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
         phases: bake.phases.map((p) => ({
           key: p.key,
           name: p.name,
-          ingredients: p.ingredients,
-          instructions: p.instructions,
+          ingredients: p.ingredients ?? [],
+          instructions: p.instructions ?? [],
           startedAt: p.startedAt,
           completedAt: p.completedAt,
           readings: p.readings,
@@ -201,8 +201,8 @@ export async function saveBakeToHistory(
   const phases = bake.phases.map((p) => ({
     key: p.key,
     name: p.name,
-    ingredients: p.ingredients,
-    instructions: p.instructions,
+    ingredients: p.ingredients ?? [],
+    instructions: p.instructions ?? [],
     yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
     startedAt: p.startedAt,
     completedAt: p.completedAt,

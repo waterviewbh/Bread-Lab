@@ -1,0 +1,5 @@
+- [x] Detect OS in `build.gradle`
+- [x] Conditionally apply Windows path redirects (`C:/b`, `C:/x`)
+- [x] Wrap junction creation logic in `isWindows` check
+- [x] Replace hardcoded paths in `patchAutolinkingCmake` task
+- [x] Verify changes

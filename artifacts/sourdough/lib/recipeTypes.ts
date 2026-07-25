@@ -4,6 +4,8 @@
 // Imported by recipe.tsx today; will be shared with the Universal Card
 // schema (types/recipe.ts) in a later phase without naming collision.
 
+import { CheckableLine } from '../types/recipe';
+
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 export const RECIPES_KEY            = "bread_lab_recipes_v1";
 export const BAKE_KEY               = "bread_lab_bake_v2";
@@ -84,8 +86,8 @@ export interface BulkFermentState {
 export interface RecipePhaseConfig {
   key: string;
   name: string;
-  ingredients: string;
-  instructions: string;
+  ingredients: CheckableLine[];
+  instructions: CheckableLine[];
 }
 
 // ─── Saved recipe (persisted shape) ──────────────────────────────────────────
@@ -97,6 +99,8 @@ export interface SavedRecipe {
   updatedAt?: number;
   phases: RecipePhaseConfig[];
   yieldValue?: string;
+  totalFlourG?: number;
+  hydrationPct?: number;
 }
 
 // ─── Active bake phase (runner shape, extends builder config) ─────────────────

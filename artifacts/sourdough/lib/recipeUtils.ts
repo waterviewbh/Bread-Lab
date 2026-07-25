@@ -18,6 +18,20 @@
  * Fast-paths: returns the original string unchanged when multiplier === 1
  * or when text is empty/falsy.
  */
+
+import { CheckableLine } from '../types/recipe';
+import { RecipePhaseConfig } from './recipeTypes';
+
+export function scaleCheckableLines(lines: CheckableLine[], multiplier: number): CheckableLine[] {
+  if (multiplier === 1 || !lines) return lines;
+
+  return lines.map(line => ({
+    ...line,
+    // We reuse the existing logic by scaling the text property of each line
+    text: scalePhaseText(line.text, multiplier)
+  }));
+}
+
 export function scalePhaseText(text: string, multiplier: number): string {
   if (multiplier === 1 || !text) return text;  // Case-insensitive so "G", "KG", "ML" etc. are matched.
   const MASS_VOLUME_RE = /\b(\d+(?:\.\d+)?)(?:(\s+)?)(g|kg|ml|l|oz|lbs)\b/gi;  return text.replace(
@@ -61,4 +75,60 @@ export function formatTime(ts: number): string {
 /** "Jan 5" — used for recipe creation date display */
 export function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/**
+ * parseIngredientsForMetrics — Unified parser for Flour, Water, Starter, and Yeast.
+ * Supports both legacy strings and new CheckableLine arrays.
+ */
+export function parseIngredientsForMetrics(phases: { ingredients: any }[]) {
+  let totals = { flour: 0, water: 0, starter: 0, yeast: 0, yeastType: "unknown" as "instant" | "dry" | "unknown" };
+  const weightRegex = /(\d+(?:\.\d+)?)\s*(?:g|gram|grams|kg|ml|l)/i;
+
+  phases.forEach(p => {
+    const lines: string[] = Array.isArray(p.ingredients)
+      ? p.ingredients.map(i => i.text.toLowerCase())
+      : (typeof p.ingredients === 'string' ? p.ingredients.toLowerCase().split('\n') : []);
+
+    lines.forEach(line => {
+      const match = line.match(weightRegex);
+      if (!match) return;
+
+      let weight = parseFloat(match[1]);
+      const unit = line.match(/(?:kg|l)/i) ? 1000 : 1;
+      weight *= unit;
+
+      if (line.includes("flour")) totals.flour += weight;
+      else if (line.includes("water") || line.includes("liquid")) totals.water += weight;
+      else if (line.includes("starter") || line.includes("levain")) totals.starter += weight;
+      else if (line.includes("yeast")) {
+        totals.yeast += weight;
+        if (line.includes("instant") || line.includes("saf")) totals.yeastType = "instant";
+        else if (line.includes("dry") || line.includes("active")) totals.yeastType = "dry";
+      }
+    });
+  });
+
+  // Convert Yeast to Starter Equivalent
+  const yeastEquiv = totals.yeast * (totals.yeastType === "instant" ? 28.5 : 22.8);
+  const effectiveStarter = totals.starter + yeastEquiv;
+
+  return { ...totals, effectiveStarter };
+}
+
+/**
+ * calculateRecipeMetrics — Returns total flour and hydration pct for Supabase.
+ */
+export function calculateRecipeMetrics(phases: { ingredients: any }[]) {
+  const { flour, water, starter, effectiveStarter } = parseIngredientsForMetrics(phases);
+
+  // Recipe totals include starter components (assume 50/50)
+  const totalFlour = flour + (starter / 2);
+  const totalWater = water + (starter / 2);
+
+  return {
+    totalFlourG: Math.round(totalFlour),
+    hydrationPct: totalFlour > 0 ? Math.round((totalWater / totalFlour) * 100) : 0,
+    inoculationPct: totalFlour > 0 ? (effectiveStarter / totalFlour) * 100 : 20
+  };
 }

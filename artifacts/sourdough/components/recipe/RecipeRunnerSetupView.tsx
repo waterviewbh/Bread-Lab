@@ -159,7 +159,9 @@ export function RecipeRunnerSetupView({
                         style={[s.confirmPhaseSub, { color: colors.mutedForeground }]}
                         numberOfLines={1}
                       >
-                        {phase.ingredients}
+                        {Array.isArray(phase.ingredients)
+                          ? phase.ingredients.map(i => i.text).join(", ")
+                          : phase.ingredients}
                       </Text>
                     )}
                   </View>

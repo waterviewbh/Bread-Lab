@@ -18,6 +18,8 @@ import { useColors } from "@/hooks/useColors";
 import { YieldPill } from "@/components/YieldPill";
 import type { SavedRecipe, RecipePhaseConfig } from "@/lib/recipeTypes";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
+import { ContinuousListInput } from "./ContinuousListInput";
+import { CheckableLine } from "@/types/recipe";
 
 interface Props {
   editingRecipe: SavedRecipe;
@@ -27,7 +29,7 @@ interface Props {
   onChangeName: (name: string) => void;
   onChangeOverview: (overview: string) => void;
   onChangeYield: (value: string) => void;
-  onUpdatePhaseField: (key: string, field: "ingredients" | "instructions", value: string) => void;
+  onUpdatePhaseField: (key: string, field: "ingredients" | "instructions", value: CheckableLine[]) => void;
   onRemovePhase: (key: string) => void;
   onOpenPhasePicker: () => void;
   onSave: () => void;
@@ -54,7 +56,7 @@ export function RecipeBuilderEditView({
   const tabBarPad = Platform.OS === "web" ? 84 : 49;
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ flex: 1 }}
     >
       <ScrollView
@@ -200,47 +202,20 @@ export function RecipeBuilderEditView({
                 <Text style={[s.subFieldLabel, { color: colors.mutedForeground }]}>
                   Ingredients
                 </Text>
-                <TextInput
-                  style={[
-                    s.phaseTextarea,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                      fontFamily: fonts.sans,
-                    },
-                  ]}
-                  placeholder="e.g., 500 g bread flour, 350 g water, 100 g levain…"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={phase.ingredients}
-                  onChangeText={(v) => onUpdatePhaseField(phase.key, "ingredients", v)}
-                  multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
-                  scrollEnabled={true} // Allow internal scroll once content exceeds maxHeight
+                <ContinuousListInput
+                  lines={phase.ingredients}
+                  onUpdateLines={(lines) => onUpdatePhaseField(phase.key, "ingredients", lines)}
+                  placeholder={`e.g., 500 g bread flour ↵
+        20 g salt  ↵`}
                 />
                 {/* Instructions textarea */}
                 <Text style={[s.subFieldLabel, { color: colors.mutedForeground, marginTop: 10 }]}>
                   Instructions
                 </Text>
-                <TextInput
-                  style={[
-                    s.phaseTextarea,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                      fontFamily: fonts.sans,
-                    },
-                  ]}
-                  placeholder="e.g., Mix until shaggy, autolyse 30 min, then add salt…"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={phase.instructions}
-                  onChangeText={(v) => onUpdatePhaseField(phase.key, "instructions", v)}
-                  multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
-                  scrollEnabled={true} // Allow internal scroll once content exceeds maxHeight
+                <ContinuousListInput
+                  lines={phase.instructions}
+                  onUpdateLines={(lines) => onUpdatePhaseField(phase.key, "instructions", lines)}
+                  placeholder="e.g., Mix until shaggy, autolyse 30 min..."
                 />
               </Animated.View>
             ))}
