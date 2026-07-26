@@ -111,7 +111,7 @@ _Located in artifacts/sourdough/hooks:_
 ### Data & Infrastructure Libraries
 
 _Located in artifacts/sourdough/lib:_
-- `api.ts: The Supabase-backed data layer. It manages the user's stable "Shadow Account" and provides typed methods for listing, upserting, and deleting recipes, feeds, and bake sessions.
+- `api.ts`: The Supabase-backed data layer. It manages the user's stable "Shadow Account" and provides typed methods for listing, upserting, and deleting recipes, feeds, and bake sessions.
 - `supabase.ts`: Configures the Supabase client, including auto-refreshing authentication tokens and persistent sessions using AsyncStorage.
 - `auth.ts`: Manages the local storage of the user's identity token and profile metadata (First Name, Starter Name).
 - `migrate.ts`: Orchestrates the "local-to-cloud" migration process, ensuring that sessions created while offline or before "naming" are safely uploaded to the user's permanent account.
