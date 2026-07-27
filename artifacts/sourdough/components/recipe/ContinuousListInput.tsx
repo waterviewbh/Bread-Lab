@@ -27,17 +27,26 @@ export function ContinuousListInput({ lines, onUpdateLines, placeholder }: Props
   const selectionRefs = useRef<Record<string, { start: number; end: number }>>({});
   const lastLinesLength = useRef(lines.length);
   // 2. A state to track one-time "forced" selections, e.g., splitting or merging lines
-  const [targetSelection, setTargetSelection] = useState<{ id: string; start: number; end: number } | null>(null);
+  const [targetSelection, setTargetSelection] = useState<{
+    id: string;
+    start: number;
+    end: number
+  } | null>(null);
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
 
   // Releases the cursor after a very short delay
   useEffect(() => {
-    if (targetSelection) {
+    if (targetSelection || pendingFocusId) {
+      if (pendingFocusId) {
+        inputRefs.current[pendingFocusId]?.focus();
+        setPendingFocusId(null);
+      }
       const timer = setTimeout(() => {
         setTargetSelection(null);
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [targetSelection]);
+  }, [targetSelection, pendingFocusId]);
 
   // Auto-focus the first line if we just transitioned from an empty state
   useEffect(() => {
@@ -82,20 +91,20 @@ export function ContinuousListInput({ lines, onUpdateLines, placeholder }: Props
     };
 
   const handleEnterKeyPress = (id: string, index: number) => {
-    // NEW: Smart split logic
     const selection = selectionRefs.current[id] || { start: 0, end: 0 };
     const currentText = lines[index].text;
 
-    const stayingText = currentText.substring(0, selection.start);
-    const movingText = currentText.substring(selection.end);
+    // If selection happened on a version of text that ALREADY had the \n (native side),
+    // we need to cap the split point to the current state's length.
+    const splitPoint = Math.min(selection.start, currentText.length);
+
+    const stayingText = currentText.substring(0, splitPoint);
+    const movingText = currentText.substring(splitPoint);
 
     const newId = randomUUID();
     const updatedList = [...lines];
 
-    // Update current line with the first half
     updatedList[index] = { ...updatedList[index], text: stayingText };
-
-    // Insert new line with the second half
     updatedList.splice(index + 1, 0, {
       id: newId,
       text: movingText,
@@ -103,18 +112,12 @@ export function ContinuousListInput({ lines, onUpdateLines, placeholder }: Props
       sort_order: index + 1
     });
 
-    // Pre-emptively set the internal state for the NEXT line
     selectionRefs.current[newId] = { start: 0, end: 0 };
-
-    // Force the visual cursor jump
     setTargetSelection({ id: newId, start: 0, end: 0 });
-
-    // Force cursor to the START of the new line
-    setTargetSelection({ id: newId, start: 0, end: 0 });
+    setPendingFocusId(newId);
 
     onUpdateLines(updatedList);
     Haptics.selectionAsync();
-    InteractionManager.runAfterInteractions(() => inputRefs.current[newId]?.focus());
   };
 
   const handleKeyPress = (id: string, index: number, key: string) => {
@@ -138,17 +141,14 @@ export function ContinuousListInput({ lines, onUpdateLines, placeholder }: Props
       // Pre-emptively set the internal state for the line we are merging into
       selectionRefs.current[prevLine.id] = { start: mergePoint, end: mergePoint };
 
-      setTargetSelection({ id: prevLine.id, start: mergePoint, end: mergePoint });
-
       // Force cursor to the MERGE POINT on the previous line
       setTargetSelection({ id: prevLine.id, start: mergePoint, end: mergePoint });
+
+      setPendingFocusId(prevLine.id);
 
       onUpdateLines(updatedList);
       Haptics.selectionAsync();
 
-      InteractionManager.runAfterInteractions(() => {
-        inputRefs.current[prevLine.id]?.focus();
-      });
       delete inputRefs.current[id];
       delete selectionRefs.current[id];
     }

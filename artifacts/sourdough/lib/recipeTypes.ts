@@ -66,6 +66,8 @@ export interface BulkFermentReading extends Reading {
 export interface BulkFermentState {
   /* Container volume at phase start (the enforced baseline, ml) */
   startVolume_ml?: number;
+  /* Tracks the highest reached volume */
+  maxVolume_ml?: number;
   /* Target rise percentage (0.0–1.0) resolved from the temp-lookup table */
   targetRiseFraction?: number;
   /* Absolute target volume in ml: startVolume_ml * (1 + targetRiseFraction) */

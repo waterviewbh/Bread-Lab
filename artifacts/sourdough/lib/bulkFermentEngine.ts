@@ -150,7 +150,9 @@ export function estimateInoculationPercent(phases: { ingredients: any }[] = []):
 export function computeBulkFermentState(
   readings: BulkFermentReading[],
   existing: BulkFermentState,
-  allRecipePhases: { ingredients: string }[] = []
+  allRecipePhases: { ingredients: string }[] = [],
+  phaseStartedAt?: number | null,
+  manualStartVolume?: string
 ): BulkFermentState {
   // Work with a shallow copy — we never mutate the caller's state
   const state: BulkFermentState = { ...existing };
@@ -166,97 +168,94 @@ const volReadings = readings
   )
   .sort((a, b) => a.loggedAt - b.loggedAt);
 
-  if (volReadings.length === 0) {
-    return state;
+  const manualVol = manualStartVolume ? parseFloat(manualStartVolume) : NaN;
+  const hasManualVol = !isNaN(manualVol) && manualVol > 0;
+
+  if (!volReadings.length && !hasManualVol) return state;
+
+  // ── 1. Establish Baseline Volume ────────────────────────────────────────
+  if (hasManualVol) {
+    state.startVolume_ml = manualVol;
+  } else if (volReadings.length > 0) {
+    state.startVolume_ml = volReadings[0].volume_ml;
   }
+  const startVol = state.startVolume_ml || 0;
 
-// ── 1. Start Volume ───────────────────────────────────────────────────────
-  const startVol = volReadings[0].volume!;
-  state.startVolume_ml = startVol;
+  // ── 2. Track Current Volume incl. Damping From Folds, etc. ────────────────
+  const currentVol = volReadings.length > 0 ? volReadings[volReadings.length - 1].volume_ml : startVol;
+  state.maxVolume_ml = Math.max(state.maxVolume_ml || 0, currentVol);
 
-// ── 2. Resolve Active Temperature ─────────────────────────────────────────
-  const lastWithTemp = [...readings]
-    .reverse()
-    .find((r) => typeof r.doughTemp === "number" && isFinite(r.doughTemp));
+  // ── 3. Resolve Temperature & Target Rise ──────────────────────────────────
+  const lastWithTemp = [...readings].reverse().find((r) => typeof r.doughTemp === "number");
+  let currentTempF = lastWithTemp?.doughTemp ? toF(lastWithTemp.doughTemp, lastWithTemp.tempUnit) : 76;
 
-  let currentTempF = 76; // Safe default mid-point room temp fallback
-  if (lastWithTemp && lastWithTemp.doughTemp !== undefined) {
-    currentTempF = toF(lastWithTemp.doughTemp, lastWithTemp.tempUnit);
-  }
-
-  // ── 3. Target Rise Target Allocation ──────────────────────────────────────
+  // ── 3. Calculate Target Rise ───────────────────────────────────────────────
   const targetFraction = lookupTargetFraction(currentTempF);
   state.targetVolume_ml = startVol * (1 + targetFraction);
 
-  // ── 4. Calculate Current Volume Node ──────────────────────────────────────
-  const currentVol = volReadings[volReadings.length - 1].volume!;
-
-  // ── 5. Real-time Empirical Derivative Velocity ────────────────────────────
+  // ── 4. Calculate Velocity (Derivative) ────────────────────────────
   let velocity: number | null = null;
-
-  if (volReadings.length >= 2) {
+  if (volReadings.length > 0) {
     const curr = volReadings[volReadings.length - 1];
-    const prev = volReadings[volReadings.length - 2];
-    const dt = curr.loggedAt - prev.loggedAt;
+    let prev: { volume_ml: number; loggedAt: number } | null = null;
 
-    if (dt >= BULK_MIN_DERIVATIVE_GAP_MS) {
-      const dVol = curr.volume_ml - prev.volume!;
-      let raw = dVol / dt;
+    // Synthesize reading at t=0 if we have a manual start volume
+        if (hasManualVol && phaseStartedAt && curr.loggedAt > phaseStartedAt) {
+          prev = { volume_ml: manualVol, loggedAt: phaseStartedAt };
+        } else if (volReadings.length >= 2) {
+          prev = volReadings[volReadings.length - 2];
+        }
 
-      // Handle structural deflations safely
-      if (curr.postIntervention && raw < 0) {
-        raw = 0;
-      } else if (raw < BULK_NEGATIVE_DERIVATIVE_CAP) {
-        raw = BULK_NEGATIVE_DERIVATIVE_CAP;
+        if (prev) {
+          const dt = curr.loggedAt - prev.loggedAt;
+          if (dt >= BULK_MIN_DERIVATIVE_GAP_MS) {
+            const dVol = curr.volume_ml - prev.volume_ml;
+            // Including Velocity=0 due to recent fold (while it recovers)
+            velocity = curr.postIntervention && dVol < 0 ? 0 : Math.max(dVol / dt, BULK_NEGATIVE_DERIVATIVE_CAP);
+          }
+        }
       }
-      velocity = raw;
+
+    // ── 5. Projection (Using Doughlab data) ─────────────────────────────────────────────
+    const remaining = state.targetVolume_ml - currentVol;
+    if (remaining > 0) {
+      const firstReading = hasManualVol && phaseStartedAt ? { volume_ml: manualVol, loggedAt: phaseStartedAt } : volReadings[0];
+      const lastReading = volReadings.length > 0 ? volReadings[volReadings.length - 1] : firstReading;
+
+      // A. Look up biological prior duration from the Doughlab matrix
+      if (firstReading && lastReading) {
+        const elapsedMs = lastReading.loggedAt - firstReading.loggedAt;
+        const totalExpectedDurationMs = lookupExpectedDuration(currentTempF, inoculationPercent);
+        const baselineVelocity = (state.targetVolume_ml - startVol) / totalExpectedDurationMs;
+
+        // B. Blend calculations using a dynamic time-weighted complementary model
+        let blendedVelocity = baselineVelocity;
+        if (velocity !== null && velocity > 0) {
+          const alpha = Math.min(1, elapsedMs / totalExpectedDurationMs);
+          blendedVelocity = alpha * velocity + (1 - alpha) * baselineVelocity;
+        }
+
+        // C. Extrapolate final baseline timeline parameters
+        if (blendedVelocity > 0) {
+          state.projectedTargetAt = lastReading.loggedAt + (remaining / blendedVelocity);
+        }
+      }
+    } else {
+      state.projectedTargetAt = null;
     }
+
+    // ── 6. Target Reached Check ──────────────────────────────────────────────────
+    if (!state.targetReachedAt && currentVol >= state.targetVolume_ml && volReadings.length > 0) {
+      state.targetReachedAt = volReadings[volReadings.length - 1].loggedAt;
+      state.inOvertime = true;
+      state.projectedTargetAt = null;
+    }
+
+    return state;
   }
 
-  // ── 6. Projection (Upgraded with Doughlab Prior-Blending) ─────────────────
-  const remaining = state.targetVolume_ml - currentVol;
 
-  // Compute and record active baseline details into the state payload
-  if (remaining > 0) {
-    const firstReading = volReadings[0];
-    const lastReading = volReadings[volReadings.length - 1];
-    const elapsedMs = lastReading.loggedAt - firstReading.loggedAt;
-
-    // A. Look up biological prior duration from the Doughlab matrix
-    const totalExpectedDurationMs = lookupExpectedDuration(currentTempF, inoculationPercent);
-    const totalTargetRise = state.targetVolume_ml - state.startVolume_ml;
-    const baselineVelocity = totalTargetRise / totalExpectedDurationMs; // ml per millisecond
-
-    // B. Blend calculations using a dynamic time-weighted complementary model
-    let blendedVelocity = baselineVelocity;
-
-    if (velocity !== null && velocity > 0) {
-      // Trust empirical math completely (1.0) once elapsed time approaches expectations
-      const alpha = Math.min(1, elapsedMs / totalExpectedDurationMs);
-      blendedVelocity = alpha * velocity + (1 - alpha) * baselineVelocity;
-    }
-
-    // C. Extrapolate final baseline timeline parameters
-    if (blendedVelocity > 0) {
-      const msToTarget = remaining / blendedVelocity;
-      state.projectedTargetAt = lastReading.loggedAt + msToTarget;
-    }
-  } else if (remaining <= 0) {
-    // Volume target has been met or exceeded
-    state.projectedTargetAt = null;
-  }
-
-  // ── 7. Target Reached Detection & Overtime Entry ──────────────────────────
-  if (!state.targetReachedAt && currentVol >= state.targetVolume_ml) {
-    state.targetReachedAt = volReadings[volReadings.length - 1].loggedAt;
-    state.inOvertime = true;
-    state.projectedTargetAt = null;
-  }
-
-  return state;
-}
-
-  /* Filter to readings that actually have a numeric volume_ml   // this Cluade code was replaced
+  /* Filter to readings that actually have a numeric volume_ml   // this Claude code was replaced
   const volReadings = readings.filter(                           // by Gemini in 1.0.14-candidate
     (r): r is BulkFermentReading & { volume_ml: number } =>      // remove in 3 after function is
       typeof r.volume_ml === "number" && isFinite(r.volume_ml)   // released to Play Store

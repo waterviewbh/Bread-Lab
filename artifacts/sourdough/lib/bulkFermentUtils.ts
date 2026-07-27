@@ -57,18 +57,26 @@ function pad(n: number): string {
  */
 export function getBulkTargetLabel(state: BulkFermentState | undefined): string | null {
   if (!state?.targetVolume_ml) return null;
-  return `Target: ${Math.round(state.targetVolume_ml).toLocaleString()} ml`;
+  return `Target: ${Math.round(state.targetVolume_ml).toLocaleString()} mL`;
 }
 
 /**
  * Returns the current rise percentage as a 0–100 integer, or null if not
  * enough data is available. Used to drive a simple progress indicator.
  */
-export function getBulkRisePercent(state: BulkFermentState | undefined, currentVolumeMl: number | undefined): number | null {
-  if (!state?.startVolume_ml || !state?.targetVolume_ml || currentVolumeMl == null)
-    return null;
+export function getBulkRisePercent(
+  state: BulkFermentState | undefined,
+  currentVolumeMl: number | undefined
+): number | null {
+  if (!state?.startVolume_ml || !state?.targetVolume_ml) return null;
+
+  // Use the max volume reached if available, otherwise fallback to current
+  const effectiveVol = state.maxVolume_ml || currentVolumeMl;
+  if (effectiveVol == null) return null;
+
   const range = state.targetVolume_ml - state.startVolume_ml;
   if (range <= 0) return null;
-  const progress = currentVolumeMl - state.startVolume_ml;
+
+  const progress = effectiveVol - state.startVolume_ml;
   return Math.min(100, Math.max(0, Math.round((progress / range) * 100)));
 }

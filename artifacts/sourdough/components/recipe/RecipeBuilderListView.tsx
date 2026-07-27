@@ -195,12 +195,19 @@ export function RecipeBuilderListView({
                     </View>
                   </View>
                   <View style={s.recipeCardMeta}>
-                    <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
-                      {r.phases.length} {r.phases.length === 1 ? "phase" : "phases"}
-                    </Text>
-                    <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
-                      · {formatDate(r.createdAt)}
-                    </Text>
+                    <View style={{ flexDirection: "row", gap: 2 }}>
+                      <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
+                        {r.phases.length} {r.phases.length === 1 ? "phase" : "phases"}
+                      </Text>
+                      <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
+                        · {formatDate(r.createdAt)}
+                      </Text>
+                    </View>
+                    {!!r.yieldValue && (
+                      <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
+                        Yield: {r.yieldValue}
+                      </Text>
+                    )}
                   </View>
                   {/* Overview preview — only shown if the recipe has one */}
                   {!!r.overview && (
@@ -289,7 +296,8 @@ const s = StyleSheet.create({
   },
   recipeCardMeta: {
     flexDirection: "row",
-    gap: 2,
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   recipeMeta: {
     fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — phase count + date

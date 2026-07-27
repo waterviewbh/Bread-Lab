@@ -558,31 +558,28 @@ const saveBakeToHistory = async (b: ActiveBake) => {
     setShowReadingModal(true);
   };
 
-const handleSaveReading = async (reading: Reading) => {
-  if (!bake || !readingPhaseKey)
-    return;
-  const phases = bake.phases.map((p) => {
-    if (p.key !== readingPhaseKey)
-      return p;
-    const updatedReadings = [...p.readings, reading];
-      // ── Bulk ferment: run PD engine after every new reading ──────────────
-    if (p.key === "bulk_fermenting") {
-      // Cast readings to BulkFermentReading — the UI ensures the extra fields
-      // are present when the modal is in bulk mode; safe to cast here.
-      const bulkReadings = updatedReadings as import("@/lib/recipeTypes").BulkFermentReading[];
-      const updatedState = computeBulkFermentState(
-        bulkReadings,
-        p.bulkFermentState ?? {},
-        bake.phases
-      );
-      return { ...p, readings: updatedReadings, bulkFermentState: updatedState };
-    }
-  return { ...p, readings: updatedReadings };
-  });
-  await persistBake({ ...bake, phases });
-  setShowReadingModal(false);
-  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-};
+  const handleSaveReading = async (reading: Reading) => {
+    if (!bake || !readingPhaseKey) return;
+    const phases = bake.phases.map((p) => {
+      if (p.key !== readingPhaseKey) return p;
+      const updatedReadings = [...p.readings, reading];
+      if (p.key === "bulk_fermenting") {
+        const bulkReadings = updatedReadings as import("@/lib/recipeTypes").BulkFermentReading[];
+        const updatedState = computeBulkFermentState(
+          bulkReadings,
+          p.bulkFermentState ?? {},
+          bake.phases,
+          p.startedAt,      // Pass start time
+          p.startVolume     // Pass manual start volume
+        );
+        return { ...p, readings: updatedReadings, bulkFermentState: updatedState };
+      }
+      return { ...p, readings: updatedReadings };
+    });
+    await persistBake({ ...bake, phases });
+    setShowReadingModal(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
 
   const deleteReading = (phaseKey: string, readingId: string) => {
     const doDelete = async () => {
@@ -623,9 +620,21 @@ const handleSaveReading = async (reading: Reading) => {
 
   const updatePhaseStartVolume = async (key: string, value: string) => {
     if (!bake) return;
-    const phases = bake.phases.map((p) =>
-      p.key === key ? { ...p, startVolume: value } : p
-    );
+    const phases = bake.phases.map((p) => {
+      if (p.key !== key) return p;
+      let nextP = { ...p, startVolume: value };
+      if (p.key === "bulk_fermenting") {
+        const bulkReadings = p.readings as import("@/lib/recipeTypes").BulkFermentReading[];
+        nextP.bulkFermentState = computeBulkFermentState(
+          bulkReadings,
+          p.bulkFermentState ?? {},
+          bake.phases,
+          p.startedAt,
+          value // Pass the NEW value directly
+        );
+      }
+      return nextP;
+    });
     await persistBake({ ...bake, phases });
   };
 

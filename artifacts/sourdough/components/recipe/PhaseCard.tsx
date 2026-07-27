@@ -12,9 +12,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { type BakePhase, type BulkFermentReading, VOLUME_TRACKING_PHASE_KEYS } from "@/lib/recipeTypes";
 import { formatDone, formatTimer, scalePhaseText } from "@/lib/recipeUtils";
@@ -259,62 +260,120 @@ export function ActivePhaseCard({
     const isBulk = phase.key === "bulk_fermenting";
     const bulkTimer = useBulkFermentTimer(isBulk ? phase.bulkFermentState : undefined);
     const bulkTargetLabel = getBulkTargetLabel(phase.bulkFermentState);
+
   return (
     <View style={[s.activeCard, { backgroundColor: colors.card, borderColor: colors.accent }]} onLayout={(e) => onLayout(e.nativeEvent.layout.y)}>
       <View style={[s.activeStrip, { backgroundColor: colors.accent }]} />
-        <View style={s.activeHeader}>
-          <View style={s.compactRow}>
-            <Ionicons name="radio-button-on" size={18} color={colors.accent} />
-            <View style={{ flex: 1 }}>
-              <Text style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansSemiBold }]}>{phase.name}</Text>
-              {isBulk && bulkTimer.label && (
-                <Text style={[s.bulkTimerSub, { color: bulkTimer.mode === "overtime" ? "#C8862A" : colors.accent }]}>
-                  {bulkTimer.mode === "countdown" ? `Est. ${bulkTimer.label} remaining` : `${bulkTimer.label} past target`}
-                </Text>
-              )}
+
+      <View style={s.activeHeader}>
+        <View style={s.compactRow}>
+          <Ionicons name="radio-button-on" size={18} color={colors.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansSemiBold }]}>{phase.name}</Text>
+          </View>
+          {!isBulk && <Text style={[s.timerLarge, { color: colors.accent }]}>{formatTimer(elapsedMs)}</Text>}
+        </View>
+      </View>
+
+      {isBulk && (
+        <View style={s.bulkDashboard}>
+          {/* Hero Timer & Target */}
+          <View style={s.heroTimerSection}>
+            <Text style={[s.heroTimerLabel, { color: colors.mutedForeground }]}>
+              {bulkTimer.mode === "countdown" ? "EST. REMAINING" : bulkTimer.mode === "overtime" ? "PAST TARGET" : "TIME IN BULK"}
+            </Text>
+            <Text style={[s.heroTimerText, { color: bulkTimer.mode === "overtime" ? "#C8862A" : colors.foreground }]}>
+              {bulkTimer.label || formatTimer(elapsedMs)}
+            </Text>
+            {bulkTargetLabel && <Text style={[s.heroTargetText, { color: colors.foreground }]}>{bulkTargetLabel}</Text>}
+          </View>
+
+          <View style={s.dashboardGrid}>
+            {/* Start Volume Column */}
+            <View style={s.dashboardCol}>
+              <Text style={s.colLabel}>STARTING VOLUME{"\n"}(ML)</Text>
+              <TextInput
+                style={[s.dashboardInput, { color: colors.foreground, borderColor: colors.border }]}
+                value={startVolumeInput}
+                onChangeText={onStartVolumeChange}
+                onBlur={() => onStartVolumeCommit(startVolumeInput)}
+                placeholder="—"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="numeric"
+              />
             </View>
-            <Text style={[s.timerLarge, { color: colors.accent }]}>{formatTimer(elapsedMs)}</Text>
+
+            <View style={[s.vDivider, { backgroundColor: colors.border }]} />
+
+            {/* Rise Progress Column */}
+            <View style={s.dashboardCol}>
+              <Text style={s.colLabel}>RISE</Text>
+              <View style={s.riseDisplayCenter}>
+                <Text style={[s.riseValueHero, { color: colors.accent }]}>
+                  {(() => {
+                    const lastReading = phase.readings.filter(r => (r as any).volume_ml).at(-1) as any;
+                    const pct = getBulkRisePercent(phase.bulkFermentState, lastReading?.volume_ml);
+                    return pct !== null ? `${pct}%` : "0%";
+                  })()}
+                </Text>
+                <Text style={[s.riseLabelSmall, { color: colors.mutedForeground }]}>of target</Text>
+              </View>
+            </View>
           </View>
-        </View>
-        {hasRecipeInfo && (
-          <Pressable onPress={onToggleSpec} style={s.recipeInfoToggle}>
-            <Feather name="book-open" size={12} color={isSpecExpanded ? colors.accent : colors.mutedForeground} />
-            <Text style={[s.recipeInfoToggleText, { color: isSpecExpanded ? colors.accent : colors.mutedForeground }]}>Phase specs</Text>
-            <Feather name={isSpecExpanded ? "chevron-up" : "chevron-down"} size={12} color={colors.mutedForeground} />
+
+          <Pressable onPress={onLogReading} style={({ pressed }) => [s.bulkActionBtn, { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 }]}>
+            <MaterialCommunityIcons name="timer-cog-outline" size={20} color="#fff" />
+            <Text style={s.bulkActionBtnText}>Bulk Check-In</Text>
           </Pressable>
-        )}
-        {isSpecExpanded && (
-          <View style={[s.recipeInfoSection, { borderTopColor: colors.border }]}>
-            {phase.ingredients.length > 0 && (
-              <>
-                <View style={s.ingredientsLabelRow}>
-                  <Text style={s.recipeInfoLabel}>Ingredients</Text>
-                  <Pressable onPress={onCopyIngredients} style={s.copyBtn}>
-                    <Feather name={copiedIngredientsKey === phase.key ? "check" : "copy"} size={11} color={colors.mutedForeground} />
-                    <Text style={s.copyBtnText}>{copiedIngredientsKey === phase.key ? "Copied ✓" : "Copy"}</Text>
-                  </Pressable>
-                </View>
-                {phase.ingredients.map(line => (
-                  <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
-                ))}
-              </>
-            )}
-            {phase.instructions.length > 0 && (
-              <>
-                <Text style={[s.recipeInfoLabel, { marginTop: 12 }]}>Instructions</Text>
-                {phase.instructions.map(line => (
-                  <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
-                ))}
-              </>
-            )}
-          </View>
-        )}
-        <View style={s.activeActions}>
-          <Pressable onPress={onComplete} style={[s.actionBtn, { borderColor: colors.primary + "50", backgroundColor: colors.primary + "12", flex: 1 }]}>
-            <Ionicons name="checkmark" size={13} color={colors.primary} />
-            <Text style={[s.actionBtnText, { color: colors.primary }]}>Complete Phase</Text>
-          </Pressable>
+
+          {!phase.readings.some(r => (r as any).volume_ml) && (
+            <Text style={s.bulkHint}>Log your first volume reading to start the estimator.</Text>
+          )}
         </View>
+      )}
+
+      {/* Existing Phase Specs & Actions */}
+      {hasRecipeInfo && (
+        <Pressable onPress={onToggleSpec} style={s.recipeInfoToggle}>
+          <Feather name="book-open" size={12} color={isSpecExpanded ? colors.accent : colors.mutedForeground} />
+          <Text style={[s.recipeInfoToggleText, { color: isSpecExpanded ? colors.accent : colors.mutedForeground }]}>Phase specs</Text>
+          <Feather name={isSpecExpanded ? "chevron-up" : "chevron-down"} size={12} color={colors.mutedForeground} />
+        </Pressable>
+      )}
+
+      {isSpecExpanded && (
+        <View style={[s.recipeInfoSection, { borderTopColor: colors.border }]}>
+          {phase.ingredients.length > 0 && (
+            <>
+              <View style={s.ingredientsLabelRow}>
+                <Text style={s.recipeInfoLabel}>Ingredients</Text>
+                <Pressable onPress={onCopyIngredients} style={s.copyBtn}>
+                  <Feather name={copiedIngredientsKey === phase.key ? "check" : "copy"} size={11} color={colors.mutedForeground} />
+                  <Text style={s.copyBtnText}>{copiedIngredientsKey === phase.key ? "Copied ✓" : "Copy"}</Text>
+                </Pressable>
+              </View>
+              {phase.ingredients.map(line => (
+                <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
+              ))}
+            </>
+          )}
+          {phase.instructions.length > 0 && (
+            <>
+              <Text style={[s.recipeInfoLabel, { marginTop: 12 }]}>Instructions</Text>
+              {phase.instructions.map(line => (
+                <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
+              ))}
+            </>
+          )}
+        </View>
+      )}
+
+      <View style={s.activeActions}>
+        <Pressable onPress={onComplete} style={[s.actionBtn, { borderColor: colors.primary + "50", backgroundColor: colors.primary + "12", flex: 1 }]}>
+          <Ionicons name="checkmark" size={13} color={colors.primary} />
+          <Text style={[s.actionBtnText, { color: colors.primary }]}>Complete Phase</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -351,4 +410,175 @@ const s = StyleSheet.create({
   actionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.sm, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1 },
   actionBtnText: { fontFamily: fonts.sansSemiBold, fontSize: 13 },
   bulkTimerSub: { fontFamily: fonts.sansMedium, fontSize: 11, marginTop: 1 },
+  bulkDashboard: {
+    paddingHorizontal: 17,
+    paddingVertical: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(0,0,0,0.05)",
+    gap: 12,
+  },
+  heroTimerSection: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  heroTimerLabel: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  heroTimerText: {
+    fontFamily: fonts.serifBold, // Editorial Serif like the Feed Tab
+    fontSize: 48,
+    letterSpacing: -1,
+  },
+  heroTargetText: {
+      fontFamily: fonts.serif,
+      fontSize: 18,
+      marginTop: 8,
+  },
+  dashboardGrid: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  dashboardCol: {
+    flex: 1,
+    alignItems: "center",
+  },
+  colLabel: {
+    ...typography.sectionLabel,
+    fontSize: 10,
+    textAlign: "center",
+    lineHeight: 14,
+    marginBottom: 10,
+    height: 28,
+  },
+  dashboardInput: {
+    width: 80,
+    height: 44,
+    borderWidth: 1,
+    borderRadius: 10,
+    textAlign: "center",
+    fontFamily: fonts.mono,
+    fontSize: 18,
+    backgroundColor: "rgba(0,0,0,0.02)",
+  },
+  vDivider: {
+    width: 1,
+    height: 60,
+    opacity: 0.3,
+  },
+  riseDisplayCenter: {
+    alignItems: "center",
+  },
+  riseValueHero: {
+    fontFamily: fonts.mono,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -1,
+  },
+  riseLabelSmall: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    marginTop: -2,
+  },
+  bulkActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 48,
+    borderRadius: 12,
+    gap: 10,
+  },
+  bulkActionBtnText: {
+    fontFamily: fonts.sansSemiBold,
+    color: "#fff",
+    fontSize: 16,
+  },
+  bulkHint: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: "#999",
+    textAlign: "center",
+    marginTop: 12,
+    fontStyle: "italic",
+  },
+  bulkMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  inocPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  inocPillText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 10,
+    textTransform: "uppercase",
+  },
+  bulkTargetText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 11,
+  },
+  bulkProgressRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 10,
+  },
+  volInputWrap: {
+    flex: 1,
+  },
+  volInputLabel: {
+    ...typography.sectionLabel,
+    fontSize: 9,
+    marginBottom: 4,
+    opacity: 0.8,
+  },
+  volInput: {
+    height: 38,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    backgroundColor: "rgba(0,0,0,0.02)",
+  },
+  riseProgressWrap: {
+    flex: 1.2,
+    justifyContent: "center",
+  },
+  riseDisplay: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 4,
+    paddingTop: 4,
+  },
+  riseValue: {
+    fontFamily: fonts.mono,
+    fontSize: 26,
+    letterSpacing: -1,
+  },
+  riseLabel: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+  },
+  bulkCheckInBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 44,
+    borderRadius: 10,
+    gap: 8,
+    marginTop: 4,
+  },
+  bulkCheckInBtnText: {
+    fontFamily: fonts.sansSemiBold,
+    color: "#fff",
+    fontSize: 15,
+  },
 });
