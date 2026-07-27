@@ -130,20 +130,9 @@ export default function WebRootLayout() {
               <GestureHandlerRootView style={{ flex: 1 }}>
                 <SyncProvider>
                   <MigrationToastProvider>
-                    <div style={{
-                      flex: 1,
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      height: '100vh',
-                      backgroundColor: '#fff3cd'
-                    }}>
-                      <div style={{ textAlign: 'center', fontFamily: 'sans-serif' }}>
-                        <h1 style={{ color: '#856404' }}>✓ Phase 4: Final Infrastructure Stable</h1>
-                        <p>All providers (including Sync/Migration/Gesture) are healthy.</p>
-                        <p style={{ color: '#666' }}>Next: The final boss — the expo-router Stack.</p>
-                      </div>
-                    </div>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    </Stack>
                   </MigrationToastProvider>
                 </SyncProvider>
               </GestureHandlerRootView>
