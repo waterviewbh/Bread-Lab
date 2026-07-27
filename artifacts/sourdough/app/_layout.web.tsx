@@ -11,6 +11,7 @@ import { FontSizeProvider } from "@/contexts/FontSizeContext";
 import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { MigrationToastProvider } from "@/contexts/MigrationToastContext";
+import { Stack } from "expo-router";
 
 // IMPORT THE FEED DIRECTLY (Bypassing the Router)
 import FeedScreen from "./(tabs)/index";
@@ -28,21 +29,23 @@ export default function WebRootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <PreferencesProvider>
-        <FontSizeProvider>
-          <QueryClientProvider client={queryClient}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <SyncProvider>
-                <MigrationToastProvider>
-                  {/* NO ROUTER - JUST THE PAGE */}
-                  <FeedScreen />
-                </MigrationToastProvider>
-              </SyncProvider>
-            </GestureHandlerRootView>
-          </QueryClientProvider>
-        </FontSizeProvider>
-      </PreferencesProvider>
-    </SafeAreaProvider>
-  );
-}
+      <SafeAreaProvider>
+        <PreferencesProvider>
+          <FontSizeProvider>
+            <QueryClientProvider client={queryClient}>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <SyncProvider>
+                  <MigrationToastProvider>
+                    {/* Bypassing the direct FeedScreen and returning to the Stack */}
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    </Stack>
+                  </MigrationToastProvider>
+                </SyncProvider>
+              </GestureHandlerRootView>
+            </QueryClientProvider>
+          </FontSizeProvider>
+        </PreferencesProvider>
+      </SafeAreaProvider>
+    );
+  }
