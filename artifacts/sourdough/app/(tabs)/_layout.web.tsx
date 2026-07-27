@@ -1,32 +1,30 @@
-import { Tabs, Slot } from "expo-router";
+// app/(tabs)/_layout.web.tsx
+import { Tabs } from "expo-router";
 import React from "react";
 import { useColors } from "@/hooks/useColors";
 
 export default function WebTabLayout() {
   const colors = useColors();
+  console.log("=== [PHASE 4] WebTabLayout (Tabs) executing ===");
 
   return (
-    <ErrorBoundary
-      onError={(error, stack) =>
-        console.error("[WebRootLayout ErrorBoundary]", error.message, stack)
-      }
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarStyle: {
+          backgroundColor: colors.background,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          height: 84,
+        },
+      }}
     >
-      <SafeAreaProvider>
-        <PreferencesProvider>
-          <FontSizeProvider>
-            <QueryClientProvider client={queryClient}>
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <SyncProvider>
-                  <MigrationToastProvider>
-                    {/* Bypassing the Stack entirely to see if ANY routing works */}
-                    <Slot />
-                  </MigrationToastProvider>
-                </SyncProvider>
-              </GestureHandlerRootView>
-            </QueryClientProvider>
-          </FontSizeProvider>
-        </PreferencesProvider>
-      </SafeAreaProvider>
-    </ErrorBoundary>
+      <Tabs.Screen name="index" options={{ title: "Feed" }} />
+      <Tabs.Screen name="graph" options={{ title: "Graph" }} />
+      <Tabs.Screen name="recipe" options={{ title: "Recipe" }} />
+      <Tabs.Screen name="history" options={{ title: "Calendar" }} />
+      <Tabs.Screen name="about" options={{ title: "About" }} />
+    </Tabs>
   );
 }
