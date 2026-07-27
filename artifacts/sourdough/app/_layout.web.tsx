@@ -1,7 +1,17 @@
 // app/_layout.web.tsx
-import "@expo-google-fonts/libre-caslon-text";
-import "@expo-google-fonts/hanken-grotesk";
-import "@expo-google-fonts/jetbrains-mono";
+import {
+  LibreCaslonText_400Regular,
+  LibreCaslonText_700Bold,
+} from "@expo-google-fonts/libre-caslon-text";
+import {
+  HankenGrotesk_400Regular,
+  HankenGrotesk_500Medium,
+  HankenGrotesk_600SemiBold,
+} from "@expo-google-fonts/hanken-grotesk";
+import {
+  JetBrainsMono_500Medium,
+} from "@expo-google-fonts/jetbrains-mono";
+import { useFonts } from "expo-font";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
@@ -19,7 +29,16 @@ import FeedScreen from "./(tabs)/index";
 const queryClient = new QueryClient();
 
 export default function WebRootLayout() {
-  console.log("=== [PHASE 10] Direct Render Test started ===");
+  console.log("=== [PHASE 2] WebRootLayout (Root) started ===");
+
+  const [fontsLoaded, fontError] = useFonts({
+    LibreCaslonText_400Regular,
+    LibreCaslonText_700Bold,
+    HankenGrotesk_400Regular,
+    HankenGrotesk_500Medium,
+    HankenGrotesk_600SemiBold,
+    JetBrainsMono_500Medium,
+  });
 
   const [fontTimedOut, setFontTimedOut] = useState(false);
 
