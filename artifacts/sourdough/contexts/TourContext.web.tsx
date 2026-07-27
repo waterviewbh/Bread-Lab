@@ -1,9 +1,11 @@
 import React, { createContext, useContext } from 'react';
+import { ScrollView } from 'react-native';
 
 interface TourContextType {
   startChapter: (chapterId: string) => void;
   stopTour: () => void;
   isTourRunning: boolean;
+  registerScrollView: (ref: ScrollView | null) => void;
 }
 
 const TourContext = createContext<TourContextType | undefined>(undefined);
@@ -13,14 +15,12 @@ const TourContext = createContext<TourContextType | undefined>(undefined);
  * This prevents crashes on the web by avoiding any 'react-native-copilot' imports.
  */
 export const TourProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const startChapter = (chapterId: string) => {
-    console.log('[Tour] Tour is disabled on web. Requested chapter:', chapterId);
-  };
-
+  const startChapter = (chapterId: string) => {}
   const stopTour = () => {};
+  const registerScrollView = (ref: ScrollView | null) => {};
 
   return (
-    <TourContext.Provider value={{ startChapter, stopTour, isTourRunning: false }}>
+    <TourContext.Provider value={{ startChapter, stopTour, isTourRunning: false, registerScrollView }}>
       {children}
     </TourContext.Provider>
   );
@@ -33,6 +33,7 @@ export const useTour = () => {
       startChapter: () => {},
       stopTour: () => {},
       isTourRunning: false,
+      registerScrollView: () => {},
     };
   }
   return context;
