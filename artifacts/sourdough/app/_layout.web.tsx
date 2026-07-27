@@ -30,15 +30,19 @@ import { MigrationToastProvider } from "@/contexts/MigrationToastContext";
 SplashScreen.preventAutoHideAsync().catch(() => {});
   const queryClient = new QueryClient();
 
-  export default function WebRootLayout() {
-    // 2. PLACE LOG HERE (Inside the component function, before hooks)
-    console.log("=== [PHASE 2] WebRootLayout function execution started ===");
+export default function WebRootLayout() {
+  // 2. PLACE LOG HERE (Inside the component function, before hooks)
+  console.log("=== [PHASE 2] WebRootLayout function execution started ===");
 
+  // Restore standard hook declaration (No try-catch, no let re-assignment)
+  const [fontTimedOut, setFontTimedOut] = useState(false);
+  console.log("=== [PHASE 2b] useState succeeded ===");
+
+  /* ---- red-tagged for web 0.3.4-candidate; remove when rev works ----
   // AFTER — fonts load via injected CSS on web; useFonts is native-only.
   // Skipping it removes the null-React crash that prevents any render committing.
   const fontsLoaded = true;
   const fontError = null;
-
 
   // Fallback: proceed after 4 seconds if fonts never resolve
   //const [fontTimedOut, setFontTimedOut] = useState(false); commented out to insert diagnostics
@@ -64,11 +68,11 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
           "Error:",
           e?.message
       );
-  }
+  } */
 
   useEffect(() => {
     // 3. PLACE LOG HERE (Inside the mounted effect)
-    console.log("=== [PHASE 3] WebRootLayout fully mounted to DOM ===");
+    console.log("=== [PHASE 3] WebRootLayout mounted ===");
     const t = setTimeout(() => setFontTimedOut(true), 4000);
     return () => clearTimeout(t);
   }, []);
