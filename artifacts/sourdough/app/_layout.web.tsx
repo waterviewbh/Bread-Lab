@@ -38,12 +38,13 @@ export default function WebRootLayout() {
   const [fontTimedOut, setFontTimedOut] = useState(false);
   console.log("=== [PHASE 2b] useState succeeded ===");
 
-  /* ---- red-tagged for web 0.3.4-candidate; remove when rev works ----
+
   // AFTER — fonts load via injected CSS on web; useFonts is native-only.
   // Skipping it removes the null-React crash that prevents any render committing.
   const fontsLoaded = true;
   const fontError = null;
 
+  /* ---- red-tagged for web 0.3.4-candidate; remove when rev works ----
   // Fallback: proceed after 4 seconds if fonts never resolve
   //const [fontTimedOut, setFontTimedOut] = useState(false); commented out to insert diagnostics
   // Replace the useState line with this:
