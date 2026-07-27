@@ -166,11 +166,12 @@ export const CHANGELOG: ChangelogVersion[] = [
     {
       version: "v1.1.0", /* -- published 20260725 -- */
       changes: [
-        { type: "Changed", content: "We're now publicly findable in the Google Play Store! Thanks to all of the early supporters to help make this happen!" },
+//        { type: "Changed", content: "We're now publicly findable in the Google Play Store! Thanks to all of the early supporters to help make this happen!" },
         { type: "Added", content: "On demand, you can take a tour of the app to see or be reminded of the many different ways that the Sourdough Bread Lab app can help turn bakers into scientists, and back again. Start your tour by clicking the Tour button in the About tab." },
+        { type: "Changed", content: "Recipe cards are now structured differently, increasing their functionality. Both ingredients and instructions have checkboxes so that you always know where you are. This change, and the tour, are big enough to justify the rev jump to 1.1." },
         { type: "Changed", content: "Tweaked the Stiffness slider of the Plan a Feed page. The extreme limits are now more reasonable and a reset button has been added." },
         { type: "Fixed", content: "The yield value in Recipe Builder wasn't being written to the database so the wrong info was being pulled by the Recipe Runner." },
-        { type: "Changed", content: "Recipe cards are now structured differently, increasing their functionality. Both ingredients and instructions have checkboxes so that you always know where you are." },
+        { type: "Added", content: "Recipe yield is now visible on a recipe card summary." },
       ],
     },
     {
