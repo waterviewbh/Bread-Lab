@@ -117,20 +117,34 @@ export default function WebRootLayout() {
 
   // --- GEMBA ISOLATION TEST: STEP 1 ---
   // If this works, the problem is inside one of the providers or the Stack.
-  return (
-    <div style={{
-      flex: 1,
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      height: '100vh',
-      backgroundColor: '#f8f9fa'
-    }}>
-      <div style={{ textAlign: 'center', fontFamily: 'sans-serif' }}>
-        <h1 style={{ color: '#28a745' }}>✓ WebRootLayout Stable</h1>
-        <p>If you see this, Phase 2 (Hooks) is healthy.</p>
-        <p style={{ color: '#666' }}>Next: We add providers back one-by-one to find the crash.</p>
-      </div>
-    </div>
-  );
+    return (
+      <ErrorBoundary
+        onError={(error, stack) =>
+          console.error("[WebRootLayout ErrorBoundary]", error.message, stack)
+        }
+      >
+        <SafeAreaProvider>
+          <PreferencesProvider>
+            <FontSizeProvider>
+              <QueryClientProvider client={queryClient}>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  height: '100vh',
+                  backgroundColor: '#e9ecef'
+                }}>
+                  <div style={{ textAlign: 'center', fontFamily: 'sans-serif' }}>
+                    <h1 style={{ color: '#007bff' }}>✓ Phase 3: Infrastructure Stable</h1>
+                    <p>Providers (Safe/Prefs/Size/Query) are healthy.</p>
+                    <p style={{ color: '#666' }}>Next: We add the Sync/Migration providers and the Stack.</p>
+                  </div>
+                </div>
+              </QueryClientProvider>
+            </FontSizeProvider>
+          </PreferencesProvider>
+        </SafeAreaProvider>
+      </ErrorBoundary>
+    );
 }
