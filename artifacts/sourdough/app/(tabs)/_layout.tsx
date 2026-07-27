@@ -1,4 +1,3 @@
-/* ---- Diagnosing what in here crashes the webapp ----
 import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
@@ -83,7 +82,7 @@ function ClassicTabLayout() {
               options={{
                 title: "Feed",
                 tabBarIcon: ({ color }) => (
-                  /* We add the style here for consistent sizing even though there is no tour step yet /
+                  /* We add the style here for consistent sizing even though there is no tour step yet */
                   <CopilotView style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
                     {isIOS ? (
                       <SymbolView name="timer" tintColor={color} size={24} />
@@ -169,7 +168,7 @@ export default function TabLayout() {
   ) : (
     <ClassicTabLayout />
   );
-/
+*/
   const content = <ClassicTabLayout />
   // 2. Wrap in the slideshow provider so all tabs can trigger the tour.
   //    TourSlideshow renders as a Modal — it overlays everything when visible.
@@ -178,16 +177,5 @@ export default function TabLayout() {
       {content}
       <TourSlideshow />
     </TourSlideshowProvider>
-  );
-} */
-
-import { Tabs } from "expo-router";
-
-export default function TabLayout() {
-  return (
-    <Tabs screenOptions={{ headerShown: false }}>
-      <Tabs.Screen name="index" options={{ title: "Feed" }} />
-      <Tabs.Screen name="about" options={{ title: "About" }} />
-    </Tabs>
   );
 }
