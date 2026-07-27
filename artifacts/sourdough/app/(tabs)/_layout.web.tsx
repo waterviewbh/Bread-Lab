@@ -2,12 +2,14 @@
 import { Tabs } from "expo-router";
 import React from "react";
 import { useColors } from "@/hooks/useColors";
+import { TourSlideshowProvider } from "@/contexts/TourSlideshowContext";
+import { TourSlideshow } from "@/components/TourSlideshow";
 
 export default function WebTabLayout() {
   const colors = useColors();
   console.log("=== [PHASE 4] WebTabLayout (Tabs) executing ===");
 
-  return (
+  const content = (
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -26,5 +28,12 @@ export default function WebTabLayout() {
       <Tabs.Screen name="history" options={{ title: "Calendar" }} />
       <Tabs.Screen name="about" options={{ title: "About" }} />
     </Tabs>
+  );
+
+  return (
+    <TourSlideshowProvider>
+      {content}
+      <TourSlideshow />
+    </TourSlideshowProvider>
   );
 }
