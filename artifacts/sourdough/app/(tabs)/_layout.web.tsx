@@ -1,4 +1,4 @@
-import { Tabs } from "expo-router";
+import { Tabs, Slot } from "expo-router";
 import React from "react";
 import { useColors } from "@/hooks/useColors";
 
@@ -6,23 +6,27 @@ export default function WebTabLayout() {
   const colors = useColors();
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          height: 84,
-        },
-      }}
+    <ErrorBoundary
+      onError={(error, stack) =>
+        console.error("[WebRootLayout ErrorBoundary]", error.message, stack)
+      }
     >
-      <Tabs.Screen name="index" options={{ title: "Feed" }} />
-      <Tabs.Screen name="graph" options={{ title: "Graph" }} />
-      <Tabs.Screen name="recipe" options={{ title: "Recipe" }} />
-      <Tabs.Screen name="history" options={{ title: "Calendar" }} />
-      <Tabs.Screen name="about" options={{ title: "About" }} />
-    </Tabs>
+      <SafeAreaProvider>
+        <PreferencesProvider>
+          <FontSizeProvider>
+            <QueryClientProvider client={queryClient}>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <SyncProvider>
+                  <MigrationToastProvider>
+                    {/* Bypassing the Stack entirely to see if ANY routing works */}
+                    <Slot />
+                  </MigrationToastProvider>
+                </SyncProvider>
+              </GestureHandlerRootView>
+            </QueryClientProvider>
+          </FontSizeProvider>
+        </PreferencesProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
