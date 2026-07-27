@@ -4,8 +4,6 @@ import "@expo-google-fonts/hanken-grotesk";
 import "@expo-google-fonts/jetbrains-mono";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Slot } from "expo-router"; // Using Slot instead of Stack
-import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -14,31 +12,20 @@ import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { MigrationToastProvider } from "@/contexts/MigrationToastContext";
 
-SplashScreen.preventAutoHideAsync().catch(() => {});
+// IMPORT THE FEED DIRECTLY (Bypassing the Router)
+import FeedScreen from "./(tabs)/index";
+
 const queryClient = new QueryClient();
 
 export default function WebRootLayout() {
-  console.log("=== [PHASE 2] WebRootLayout (Root) started ===");
+  console.log("=== [PHASE 10] Direct Render Test started ===");
 
   const [fontTimedOut, setFontTimedOut] = useState(false);
-  const fontsLoaded = true;
-  const fontError = null;
 
   useEffect(() => {
-    console.log("=== [PHASE 3] WebRootLayout (Root) mounted ===");
     const t = setTimeout(() => setFontTimedOut(true), 4000);
     return () => clearTimeout(t);
   }, []);
-
-  const appReady = fontsLoaded || !!fontError || fontTimedOut;
-
-  useEffect(() => {
-    if (appReady) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [appReady]);
-
-  if (!appReady) return null;
 
   return (
     <SafeAreaProvider>
@@ -48,8 +35,8 @@ export default function WebRootLayout() {
             <GestureHandlerRootView style={{ flex: 1 }}>
               <SyncProvider>
                 <MigrationToastProvider>
-                  {/* Slot reaches into (tabs) and renders the next layout */}
-                  <Slot />
+                  {/* NO ROUTER - JUST THE PAGE */}
+                  <FeedScreen />
                 </MigrationToastProvider>
               </SyncProvider>
             </GestureHandlerRootView>
