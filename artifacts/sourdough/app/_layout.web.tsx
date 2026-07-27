@@ -117,34 +117,40 @@ export default function WebRootLayout() {
 
   // --- GEMBA ISOLATION TEST: STEP 1 ---
   // If this works, the problem is inside one of the providers or the Stack.
-    return (
-      <ErrorBoundary
-        onError={(error, stack) =>
-          console.error("[WebRootLayout ErrorBoundary]", error.message, stack)
-        }
-      >
-        <SafeAreaProvider>
-          <PreferencesProvider>
-            <FontSizeProvider>
-              <QueryClientProvider client={queryClient}>
-                <div style={{
-                  flex: 1,
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  height: '100vh',
-                  backgroundColor: '#e9ecef'
-                }}>
-                  <div style={{ textAlign: 'center', fontFamily: 'sans-serif' }}>
-                    <h1 style={{ color: '#007bff' }}>✓ Phase 3: Infrastructure Stable</h1>
-                    <p>Providers (Safe/Prefs/Size/Query) are healthy.</p>
-                    <p style={{ color: '#666' }}>Next: We add the Sync/Migration providers and the Stack.</p>
-                  </div>
-                </div>
-              </QueryClientProvider>
-            </FontSizeProvider>
-          </PreferencesProvider>
-        </SafeAreaProvider>
-      </ErrorBoundary>
-    );
+  return (
+    <ErrorBoundary
+      onError={(error, stack) =>
+        console.error("[WebRootLayout ErrorBoundary]", error.message, stack)
+      }
+    >
+      <SafeAreaProvider>
+        <PreferencesProvider>
+          <FontSizeProvider>
+            <QueryClientProvider client={queryClient}>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <SyncProvider>
+                  <MigrationToastProvider>
+                    <div style={{
+                      flex: 1,
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      height: '100vh',
+                      backgroundColor: '#fff3cd'
+                    }}>
+                      <div style={{ textAlign: 'center', fontFamily: 'sans-serif' }}>
+                        <h1 style={{ color: '#856404' }}>✓ Phase 4: Final Infrastructure Stable</h1>
+                        <p>All providers (including Sync/Migration/Gesture) are healthy.</p>
+                        <p style={{ color: '#666' }}>Next: The final boss — the expo-router Stack.</p>
+                      </div>
+                    </div>
+                  </MigrationToastProvider>
+                </SyncProvider>
+              </GestureHandlerRootView>
+            </QueryClientProvider>
+          </FontSizeProvider>
+        </PreferencesProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
+  );
 }
