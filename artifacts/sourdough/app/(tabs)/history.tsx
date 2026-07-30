@@ -1,3 +1,4 @@
+// app/(tabs)/history.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
@@ -30,10 +31,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
 import { computeSessionAcidVelocity } from "@/lib/analytics";
-import { TourStep, CopilotView } from "@/components/TourStep"; // red-tagged for webapp-0.1 rmv in 3 revs
+import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
-
-// const CopilotView = walkthroughable(View); red-tagged for webapp-0.1 rmv in 3 revs
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
@@ -67,6 +66,14 @@ async function removeFromTombstone(key: string, id: string): Promise<void> {
   } catch {}
 }
 
+function ensureString(val: string | any[] | undefined): string {
+  if (!val) return "";
+  if (Array.isArray(val)) {
+    return val.map(line => typeof line === 'string' ? line : line.text).join('\n');
+  }
+  return val;
+}
+
 /** Per-reading shape stored inside a bake phase (mirrors recipe.tsx Reading). */
 interface BakePhaseReading {
   id: string;
@@ -84,18 +91,16 @@ interface BakeHistoryEntry {
   recipeName: string;
   savedAt: number;
   startedAt: number;
-  /** Bake-level notes stored at save time. */
   notes?: string;
   phases: {
     key: string;
     name: string;
-    ingredients?: string;
-    instructions?: string;
+    // Updated to support arrays from v1.2.0 migration
+    ingredients?: string | any[];
+    instructions?: string | any[];
     startedAt: number | null;
     completedAt: number | null;
-    /** pH/temp/volume readings logged during this phase. */
     readings?: BakePhaseReading[];
-    /** Volume recorded at phase activation. */
     startVolume?: string;
     foldCount?: number;
   }[];
@@ -309,28 +314,36 @@ export default function HistoryScreen() {
     if (migrationInFlightRef.current) return;
     migrationInFlightRef.current = true;
     try {
+      // 1. Get the local token
       const token = await getStoredToken().catch(() => null);
       if (!token) return;
+
+      // 2. CHECK: Does Supabase actually have a session?
+      // This is the missing piece causing the RLS error.
+      const { data: { session } } = await api.auth.getSession();
+      if (!session) {
+        console.log("[SYNC] No active Supabase session. Waiting for user to re-identify.");
+        return;
+      }
+
       const pending = await hasPendingMigration();
       if (!pending) return;
+
+      console.log("[SYNC] Session valid. Starting backup...");
       startMigration();
-      const result = await migrateLocalDataToAccount(token).catch(() => null);
+
+      const result = await migrateLocalDataToAccount(token).catch((err) => {
+        console.error("[SYNC] Migration failed:", err);
+        return null;
+      });
+
       finishMigration(result);
+    } catch (e) {
+      console.error("[SYNC] Migration logic error:", e);
     } finally {
       migrationInFlightRef.current = false;
     }
   }, [startMigration, finishMigration]);
-
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState: AppStateStatus) => {
-      if (appStateRef.current !== "active" && nextState === "active") {
-        loadHistory();
-        retryPendingMigration();
-      }
-      appStateRef.current = nextState;
-    });
-    return () => sub.remove();
-  }, [retryPendingMigration]);
 
   useFocusEffect(
     useCallback(() => {
@@ -538,8 +551,8 @@ export default function HistoryScreen() {
           : p.startedAt ? "In progress" : "—";
 
         const fallback = recipePhaseMap[p.key] ?? {};
-        const ingredients = p.ingredients || fallback.ingredients;
-        const instructions = p.instructions || fallback.instructions;
+        const ingredients = ensureString(p.ingredients || fallback.ingredients);
+        const instructions = ensureString(p.instructions || fallback.instructions);
 
         // Build readings table if they exist
         const readingsHtml = (p.readings ?? []).length > 0
@@ -1896,11 +1909,11 @@ export default function HistoryScreen() {
               {/* Ingredients summary across all phases */}
               {(() => {
                 const ingredientLines = selectedBakeDetail.phases
-                  .map((p) => {
-                    const ing = p.ingredients || bakeRecipeMap[p.key]?.ingredients;
-                    return ing ? { phaseName: p.name, ingredients: ing } : null;
-                  })
-                  .filter((item): item is { phaseName: string; ingredients: string } => item !== null);
+                .map((p) => {
+                  const ing = p.ingredients || bakeRecipeMap[p.key]?.ingredients;
+                  return ing ? { phaseName: p.name, ingredients: ensureString(ing) } : null;
+                })
+                .filter((item): item is { phaseName: string; ingredients: string } => item !== null);
                 if (ingredientLines.length === 0) return null;
                 return (
                   <>

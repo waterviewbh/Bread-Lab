@@ -154,17 +154,15 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
 
-    {
-      version: "v1.2.0", /* -- published 202607XX -- */
+    /*{
+      version: "v1.1.1", /* -- published 202607XX -- /
       changes: [
-//        { type: "Added", content: "On demand, you can take a tour of the app to see or be reminded of the many different ways that the Sourdough Bread Lab app can help turn bakers into scientists, and back again. Start your tour by clicking the Tour button in the About tab." },
-//        { type: "Changed", content: "Tweaked the Stiffness slider of the Plan a Feed page. The extreme limits are now more reasonable and a reset button has been added." },
-//        { type: "Fixed", content: "The yield value in Recipe Builder wasn't being written to the database so the wrong info was being pulled by the Recipe Runner." },
-
+        { type: "Fixed", content: "The print feature works again, including with checkboxes." },
+        { type: "Fixed", content: "Some bakers had difficulty accessing or changing their name+name login. That has been resolved." },
       ],
-    },
+    },*/
     {
-      version: "v1.1.0", /* -- published 20260725 -- */
+      version: "v1.1.0", /* -- published 20260727 -- */
       changes: [
 //        { type: "Changed", content: "We're now publicly findable in the Google Play Store! Thanks to all of the early supporters to help make this happen!" },
         { type: "Added", content: "On demand, you can take a tour of the app to see or be reminded of the many different ways that the Sourdough Bread Lab app can help turn bakers into scientists, and back again. Start your tour by clicking the Tour button in the About tab." },

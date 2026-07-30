@@ -1,4 +1,4 @@
-// api.ts — Supabase-backed data layer.
+// artifacts/sourdough/lib/api.ts — Supabase-backed data layer.
 // The "token" stored in AsyncStorage is the user's row ID from the `users`
 // table. It is used as a stable cross-device identity: any device that
 // identifies with the same first_name + starter_name gets the same userId,
@@ -280,6 +280,7 @@ export const api = {
      * This uses Supabase Auth internally (Shadow Account) to satisfy RLS
      * requirements while keeping the "no-login" UX.
      */
+    getSession: () => supabase.auth.getSession(),
     identify: async (body: {
       firstName: string;
       starterName: string;
@@ -672,6 +673,14 @@ if (!authData.user) throw new Error("Authentication failed");
         inProgress?: boolean;
       }): Promise<ApiBakeSession> => {
         if (!supabase) throw new Error("Supabase not configured");
+
+        // ADD THIS CHECK: If we have a userId but no session, we need to skip sync
+        // rather than crashing with an RLS error.
+        const { data: { session } } = await supabase.auth.getSession();
+        if (body.userId && !session) {
+           console.warn("[SYNC] Token exists but Supabase session is missing. Skipping sync until user re-identifies.");
+           throw new Error("No active Supabase session");
+        }
         const { data, error } = await supabase
           .from("bake_sessions")
           .upsert({
@@ -683,13 +692,18 @@ if (!authData.user) throw new Error("Authentication failed");
             yield_value: body.yield_value,
             saved_at: body.savedAt,
             started_at: body.startedAt,
-            phases: flattenPhasesForLegacy(body.phases), // <── Legacy-safe text
+            phases: flattenPhasesForLegacy(body.phases),
             in_progress: body.inProgress ?? true,
           })
           .select()
           .returns<BakeSessionRow[]>()
           .single();
-        if (error) throw error;
+
+        // ── UPDATED LOGGING ──
+        if (error) {
+          console.error("[SUPABASE ERROR] Bake Upsert Failed:", error.message, error.details);
+          throw error;
+        }
         return rowToApiBakeSession(data);
       },
 

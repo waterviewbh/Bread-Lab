@@ -1,3 +1,4 @@
+// artifacts/sourdough/contexts/MigrationToastContext.tsx
 import React, {
   createContext,
   useCallback,
@@ -193,7 +194,7 @@ function MigrationToast({
 
   return (
     <Animated.View
-      {...panResponder.panHandlers}
+      pointerEvents="box-none"
       style={[
         styles.toastContainer,
         {
@@ -204,6 +205,7 @@ function MigrationToast({
       ]}
     >
       <Pressable
+        {...panResponder.panHandlers}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         onPress={handlePress}

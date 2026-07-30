@@ -1,3 +1,4 @@
+// artifacts/sourdough/lib/migrate.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "./api";
 import { getDeviceId } from "./deviceId";
@@ -26,22 +27,31 @@ interface LocalBakeSession {
   recipeName: string;
   savedAt: number;
   startedAt: number;
+  yieldValue?: string;
+  notes?: string;
   phases: {
     key: string;
     name: string;
+    ingredients?: any;
+    instructions?: any;
     startedAt?: number | null;
     completedAt?: number | null;
+    readings?: any[];
+    startVolume?: string;
+    foldCount?: number;
   }[];
 }
 
 interface LocalRecipe {
   id: string;
   name: string;
+  overview?: string;
+  yieldValue?: string;
   phases: {
     key: string;
     name: string;
-    ingredients?: string;
-    instructions?: string;
+    ingredients?: any;
+    instructions?: any;
   }[];
 }
 
@@ -90,7 +100,11 @@ export async function hasPendingMigration(): Promise<boolean> {
   }
 }
 
-export async function migrateLocalDataToAccount(): Promise<MigrationResult> {
+/**
+ * migrateLocalDataToAccount
+ * Promotion utility: takes local data and syncs it to the Supabase account identified by 'token'.
+ */
+export async function migrateLocalDataToAccount(token: string): Promise<MigrationResult> {
   const empty = { ok: 0, failed: 0 };
   let deviceId: string;
   try {
@@ -110,35 +124,49 @@ export async function migrateLocalDataToAccount(): Promise<MigrationResult> {
       api.history.feed.upsert({
         id: s.id,
         deviceId,
-        userId,
+        userId: token, // Used 'token' here (was undefined userId)
         savedAt: s.savedAt,
         startedAt: null,
         data: s as Record<string, unknown>,
       })
     ),
-    upsertBatch(bakeSessions, (b) =>
-      api.history.bakes.upsert({
+    upsertBatch(bakeSessions, (b) => {
+      const parsedYield = parseInt(b.yieldValue || "0", 10);
+      const safeYield = isNaN(parsedYield) ? 0 : parsedYield;
+
+      return api.history.bakes.upsert({
         id: b.id,
         deviceId,
-        userId,
+        userId: token, // Used 'token' here
         recipeId: b.recipeId ?? null,
         recipeName: b.recipeName,
+        yield_value: safeYield,
         savedAt: b.savedAt,
         startedAt: b.startedAt,
         phases: b.phases.map((p) => ({
           key: p.key,
           name: p.name,
+          ingredients: p.ingredients,
+          instructions: p.instructions,
           startedAt: p.startedAt ?? null,
           completedAt: p.completedAt ?? null,
+          readings: p.readings,
+          startVolume: p.startVolume,
+          foldCount: p.foldCount,
         })),
       })
-    ),
-    upsertBatch(recipes, (r) =>
-      api.recipes.upsert({
+    }),
+    upsertBatch(recipes, (r) => {
+      const parsedYield = parseInt(b.yieldValue || "0", 10);
+      const safeYield = isNaN(parsedYield) ? 0 : parsedYield;
+
+      return api.recipes.upsert({
         id: r.id,
         deviceId,
-        userId,
+        userId: token, // Used 'token' here
         name: r.name,
+        overview: r.overview,
+        yield_value: safeYield,
         phases: r.phases.map((p) => ({
           key: p.key,
           name: p.name,
@@ -146,7 +174,7 @@ export async function migrateLocalDataToAccount(): Promise<MigrationResult> {
           instructions: p.instructions,
         })),
       })
-    ),
+    }),
   ]);
 
   const result: MigrationResult = { feed, bakes, recipes: recipesResult };
