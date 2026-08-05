@@ -22,6 +22,23 @@
 import { CheckableLine } from '../types/recipe';
 import { RecipePhaseConfig } from './recipeTypes';
 
+export function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
+  const lines = (!text || typeof text !== 'string')
+    ? []
+    : text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+
+  if (lines.length === 0) {
+    return [{ id: `${prefix}-empty`, text: '', is_checked: false, sort_order: 0 }];
+  }
+
+  return lines.map((line, idx) => ({
+    id: `${prefix}-${idx}`,
+    text: line,
+    is_checked: false,
+    sort_order: idx,
+  }));
+}
+
 export function scaleCheckableLines(lines: CheckableLine[], multiplier: number): CheckableLine[] {
   if (multiplier === 1 || !lines) return lines;
 
@@ -81,7 +98,7 @@ export function formatDate(ts: number): string {
  * parseIngredientsForMetrics — Unified parser for Flour, Water, Starter, and Yeast.
  * Supports both legacy strings and new CheckableLine arrays.
  */
-export function parseIngredientsForMetrics(phases: { ingredients: any }[]) {
+export function parseIngredientsForMetrics(phases: { ingredients: string | any[] }[]) {
   let totals = { flour: 0, water: 0, starter: 0, yeast: 0, yeastType: "unknown" as "instant" | "dry" | "unknown" };
   const weightRegex = /(\d+(?:\.\d+)?)\s*(?:g|gram|grams|kg|ml|l)/i;
 
@@ -119,7 +136,7 @@ export function parseIngredientsForMetrics(phases: { ingredients: any }[]) {
 /**
  * calculateRecipeMetrics — Returns total flour and hydration pct for Supabase.
  */
-export function calculateRecipeMetrics(phases: { ingredients: any }[]) {
+export function calculateRecipeMetrics(phases: any[]) {
   const { flour, water, starter, effectiveStarter } = parseIngredientsForMetrics(phases);
 
   // Recipe totals include starter components (assume 50/50)

@@ -157,7 +157,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
       })
     }),
     upsertBatch(recipes, (r) => {
-      const parsedYield = parseInt(b.yieldValue || "0", 10);
+      const parsedYield = parseInt(r.yieldValue || "0", 10);
       const safeYield = isNaN(parsedYield) ? 0 : parsedYield;
 
       return api.recipes.upsert({

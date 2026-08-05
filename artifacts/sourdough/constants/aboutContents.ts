@@ -1,3 +1,4 @@
+// artifacts/sourdough/constants/aboutContents.ts
 export interface HelpSection {
   heading: string;
   bullets: string[];
@@ -7,6 +8,11 @@ export interface HelpTab {
   label: string;
   sections: HelpSection[];
 }
+
+export type ChangelogVersion = {
+  version: string;
+  changes: { type: "Added" | "Fixed" | "Changed" | "Removed"; content: string }[];
+};
 
 export const HELP: HelpTab[] = [
 {

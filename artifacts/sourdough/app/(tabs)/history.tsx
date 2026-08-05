@@ -33,6 +33,7 @@ import { useSyncStatus } from "@/contexts/SyncContext";
 import { computeSessionAcidVelocity } from "@/lib/analytics";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
+import { SafePrint } from "@/lib/printUtils";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
@@ -320,7 +321,8 @@ export default function HistoryScreen() {
 
       // 2. CHECK: Does Supabase actually have a session?
       // This is the missing piece causing the RLS error.
-      const { data: { session } } = await api.auth.getSession();
+      const sessionResponse = await api.auth.getSession();
+      const session = sessionResponse?.data?.session ?? null;
       if (!session) {
         console.log("[SYNC] No active Supabase session. Waiting for user to re-identify.");
         return;
@@ -425,66 +427,52 @@ export default function HistoryScreen() {
       ${buildAcidVelocityHtml(entry)}
       ${buildLiftingIndexHtml(entry)}
     </body></html>`;
-    await Print.printAsync({ html }).catch(() => {});
+    await SafePrint.printHtml(html);
   };
 
   /** Build HTML and share a feed session as a PDF via the native share sheet. */
   const shareFeedSession = async (entry: HistoryEntry) => {
-    try {
-      const date = new Date(entry.savedAt).toLocaleDateString();
-      const initialRow = entry.initialPH
-        ? `<tr><td>0m</td><td>${entry.initialPH}</td><td>—</td><td></td></tr>`
-        : "";
-      const midRows = (entry.readings ?? [])
-        .map((r) => {
-          const elapsed = Math.floor((r.loggedAt - entry.savedAt) / 60000);
-          return `<tr><td>${elapsed}m</td><td>${r.pH}</td><td>${r.temp != null && r.temp !== "" ? `${r.temp}°${r.tempUnit ?? "F"}` : "—"}</td><td>${r.note ?? ""}</td></tr>`;
-        })
-        .join("");
-      const peakRow = entry.peak
-        ? `<tr><td>${Math.floor(entry.peak.timeToPeakMs / 60000)}m</td><td>${entry.peak.pH}</td><td>—</td><td><em>Peak</em></td></tr>`
-        : "";
-      const allRows = initialRow + midRows + peakRow;
-      const imgStyle = "max-width:100%;max-height:320px;border-radius:8px;object-fit:cover;display:block;margin:8px 0";
-      const [fedDataUri, peakDataUri] = await Promise.all([
-        toDataUri(entry.fedPhoto),
-        toDataUri(entry.peak?.photo),
-      ]);
-      const fedPhotoHtml = fedDataUri
-        ? `<h3>Feed Photo</h3><img src="${fedDataUri}" style="${imgStyle}" alt="Feed photo" />`
-        : "";
-      const peakPhotoHtml = peakDataUri
-        ? `<img src="${peakDataUri}" style="${imgStyle}" alt="Peak photo" />`
-        : "";
-      const html = `<html><body style="font-family:sans-serif;padding:24px">
-        <h2>Bread Lab — Feed Session</h2>
-        <p><strong>Date:</strong> ${date} &nbsp;·&nbsp; <strong>Ratio:</strong> ${entry.ratioStr}</p>
-        <p><strong>Starter:</strong> ${entry.starterWeight}g &nbsp;
-           <strong>Flour:</strong> ${entry.flourWeight}g &nbsp;
-           <strong>Water:</strong> ${entry.waterWeight}g
-           ${(entry.sugarWeight ?? 0) > 0 ? `&nbsp;<strong>Sugar:</strong> ${entry.sugarWeight}g` : ""}
-        </p>
-        ${fedPhotoHtml}
-        ${allRows ? `<h3>pH Readings</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Elapsed</th><th>pH</th><th>Temp</th><th>Note</th></tr>${allRows}</table>` : ""}
-        ${entry.peak ? `<h3>Peak</h3><p>Rise +${entry.peak.volumeIncreasePct}% &nbsp;·&nbsp; ${formatTimeToPeak(entry.peak.timeToPeakMs)}</p>${peakPhotoHtml}` : ""}
-        ${buildAcidVelocityHtml(entry)}
-        ${buildLiftingIndexHtml(entry)}
-      </body></html>`;
-      if (Platform.OS === "web") {
-        const w = window.open("", "_blank");
-        if (w) { w.document.write(html); w.document.close(); w.print(); }
-        return;
-      }
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert("Sharing not available", "Sharing is not supported on this device.");
-        return;
-      }
-      const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: "Share Feed Session", UTI: "com.adobe.pdf" });
-    } catch {
-      Alert.alert("Could not share PDF", "Something went wrong while generating the PDF. Please try again.");
-    }
+    const date = new Date(entry.savedAt).toLocaleDateString();
+    const initialRow = entry.initialPH
+      ? `<tr><td>0m</td><td>${entry.initialPH}</td><td>—</td><td></td></tr>`
+      : "";
+    const midRows = (entry.readings ?? [])
+      .map((r) => {
+        const elapsed = Math.floor((r.loggedAt - entry.savedAt) / 60000);
+        return `<tr><td>${elapsed}m</td><td>${r.pH}</td><td>${r.temp != null && r.temp !== "" ? `${r.temp}°${r.tempUnit ?? "F"}` : "—"}</td><td>${r.note ?? ""}</td></tr>`;
+      })
+      .join("");
+    const peakRow = entry.peak
+      ? `<tr><td>${Math.floor(entry.peak.timeToPeakMs / 60000)}m</td><td>${entry.peak.pH}</td><td>—</td><td><em>Peak</em></td></tr>`
+      : "";
+    const allRows = initialRow + midRows + peakRow;
+    const imgStyle = "max-width:100%;max-height:320px;border-radius:8px;object-fit:cover;display:block;margin:8px 0";
+    const [fedDataUri, peakDataUri] = await Promise.all([
+      toDataUri(entry.fedPhoto),
+      toDataUri(entry.peak?.photo),
+    ]);
+    const fedPhotoHtml = fedDataUri
+      ? `<h3>Feed Photo</h3><img src="${fedDataUri}" style="${imgStyle}" alt="Feed photo" />`
+      : "";
+    const peakPhotoHtml = peakDataUri
+      ? `<img src="${peakDataUri}" style="${imgStyle}" alt="Peak photo" />`
+      : "";
+    const html = `<html><body style="font-family:sans-serif;padding:24px">
+      <h2>Bread Lab — Feed Session</h2>
+      <p><strong>Date:</strong> ${date} &nbsp;·&nbsp; <strong>Ratio:</strong> ${entry.ratioStr}</p>
+      <p><strong>Starter:</strong> ${entry.starterWeight}g &nbsp;
+         <strong>Flour:</strong> ${entry.flourWeight}g &nbsp;
+         <strong>Water:</strong> ${entry.waterWeight}g
+         ${(entry.sugarWeight ?? 0) > 0 ? `&nbsp;<strong>Sugar:</strong> ${entry.sugarWeight}g` : ""}
+      </p>
+      ${fedPhotoHtml}
+      ${allRows ? `<h3>pH Readings</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Elapsed</th><th>pH</th><th>Temp</th><th>Note</th></tr>${allRows}</table>` : ""}
+      ${entry.peak ? `<h3>Peak</h3><p>Rise +${entry.peak.volumeIncreasePct}% &nbsp;·&nbsp; ${formatTimeToPeak(entry.peak.timeToPeakMs)}</p>${peakPhotoHtml}` : ""}
+      ${buildAcidVelocityHtml(entry)}
+      ${buildLiftingIndexHtml(entry)}
+    </body></html>`;
+
+    await SafePrint.sharePdf(html, "Share Feed Session");
   };
 
   /**
@@ -623,55 +611,14 @@ export default function HistoryScreen() {
     /** Build HTML and invoke the system print dialog for a bake session. */
     const printBakeDetail = async (bake: BakeHistoryEntry) => {
       const html = await buildBakeDetailHtml(bake);
-
-      if (Platform.OS === "web") {
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        document.body.appendChild(iframe);
-
-        const doc = iframe.contentWindow?.document;
-        if (doc) {
-          doc.open();
-          doc.write(html);
-          doc.close();
-
-          // Brief delay to ensure browser engine renders the HTML string
-          setTimeout(() => {
-            iframe.contentWindow?.focus();
-            iframe.contentWindow?.print();
-            document.body.removeChild(iframe);
-          }, 500);
-        }
-      } else {
-        await Print.printAsync({ html }).catch(() => {});
-      }
+      await SafePrint.printHtml(html);
     };
 
 
   /** Export a bake session as a PDF and open the native share sheet. */
   const shareBakeDetail = async (bake: BakeHistoryEntry) => {
-    try {
-      const html = await buildBakeDetailHtml(bake);
-      if (Platform.OS === "web") {
-        const w = window.open("", "_blank");
-        if (w) { w.document.write(html); w.document.close(); w.print(); }
-        return;
-      }
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert("Sharing not available", "Sharing is not supported on this device.");
-        return;
-      }
-      const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: `Share ${bake.recipeName}`, UTI: "com.adobe.pdf" });
-    } catch {
-      Alert.alert("Could not share PDF", "Something went wrong while generating the PDF. Please try again.");
-    }
+    const html = await buildBakeDetailHtml(bake);
+    await SafePrint.sharePdf(html, `Share ${bake.recipeName}`);
   };
 
   const loadHistory = async () => {

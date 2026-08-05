@@ -1,5 +1,5 @@
-/**
-* artifacts/sourdough/lib/recipeMigration.ts
+// artifacts/sourdough/lib/recipeMigration.ts
+/*
 * This utility facilitates the "lossless promotion" of legacy flat-string recipes into the
 * structured Universal Recipe Card format. It primarily handles splitting unstructured text blobs
 * into unique CheckableLine objects while assigning placeholder values for new metric fields.
@@ -14,16 +14,19 @@ import {
   TimelineStep
 } from '../types/recipe';
 import { SavedRecipe } from './recipeTypes';
+import { textToCheckableLines } from './recipeUtils';
 
 // [DIAGNOSTIC LOG] Migration Utility Loaded
-console.log("[Bread Lab] Migration: Initializing legacy-to-universal converter...");
+//console.log("[Bread Lab] Migration: Initializing legacy-to-universal converter...");
 
 export function migrateToUniversalCard(legacy: SavedRecipe): UniversalRecipeCard {
-  console.log(`[Bread Lab] Migration: Processing recipe "${legacy.name}" (ID: ${legacy.id})`);
+//  console.log(`[Bread Lab] Migration: Processing recipe "${legacy.name}" (ID: ${legacy.id})`);
 
   const allIngredients: RecipeIngredient[] = [];
   legacy.phases.forEach((phase, phaseIdx) => {
-    const lines = textToCheckableLines(phase.ingredients);
+    const lines = Array.isArray(phase.ingredients)
+      ? phase.ingredients
+      : textToCheckableLines(phase.ingredients as any, 'ing');
     lines.forEach((line, lineIdx) => {
       allIngredients.push({
         id: line.id,
@@ -38,8 +41,13 @@ export function migrateToUniversalCard(legacy: SavedRecipe): UniversalRecipeCard
   });
 
   const timeline: TimelineStep[] = legacy.phases.map((phase, idx) => {
-    const checklist = textToCheckableLines(phase.instructions);
-    const ingredientsInThisPhase = textToCheckableLines(phase.ingredients).map(l => l.id);
+  const checklist = Array.isArray(phase.instructions)
+    ? phase.instructions
+    : textToCheckableLines(phase.instructions as any, 'ins');
+
+  const ingredientsInThisPhase = Array.isArray(phase.ingredients)
+    ? phase.ingredients.map(l => l.id)
+    : textToCheckableLines(phase.ingredients as any, 'ing').map(l => l.id);
 
     return {
       id: randomUUID(),
@@ -63,14 +71,4 @@ export function migrateToUniversalCard(legacy: SavedRecipe): UniversalRecipeCard
     timeline: timeline,
     migration_metadata: { is_migrated: true, source_legacy_id: legacy.id, needs_review: true },
   };
-}
-
-function textToCheckableLines(text: string): CheckableLine[] {
-  if (!text) return [];
-  return text.split('\n').map(s => s.trim()).filter(s => s.length > 0).map((line, idx) => ({
-    id: randomUUID(),
-    text: line,
-    is_checked: false,
-    sort_order: idx,
-  }));
 }

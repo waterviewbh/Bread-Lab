@@ -14,6 +14,7 @@ import {
   BAKE_HISTORY_KEY,
   DELETED_RECIPE_IDS_KEY,
 } from "@/lib/recipeTypes";
+import { textToCheckableLines } from "@/lib/recipeUtils" // this was my first manual import, not done by the agent
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────
 // A tombstone prevents a locally-deleted recipe from being re-hydrated on the
@@ -84,8 +85,8 @@ export async function loadAll(): Promise<{
         phases: r.phases.map((p) => ({
           key: p.key,
           name: p.name,
-          ingredients: p.ingredients ?? [],
-          instructions: p.instructions ?? [],
+          ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing'),
+          instructions: Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins'),
         })),
       }));
     if (token || apiRecipes.length > 0) {
@@ -103,8 +104,8 @@ export async function loadAll(): Promise<{
         phases: activeBake.phases.map((p) => ({
           key: p.key,
           name: p.name,
-          ingredients: p.ingredients ?? [],
-          instructions: p.instructions ?? [],
+          ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing'),
+          instructions: Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins'),
           startedAt: p.startedAt ?? null,
           completedAt: p.completedAt ?? null,
           readings: p.readings ?? [],

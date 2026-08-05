@@ -14,6 +14,8 @@ import {
 import { useRouter } from 'expo-router';
 import { useTourSlideshow } from '@/contexts/TourSlideshowContext';
 import { TOUR_IMAGES, TOUR_IMAGE_COUNT } from '@/constants/TourImages';
+import { ImageSourcePropType } from 'react-native';
+
 export function TourSlideshow() {
   const { isTourVisible, hideTour } = useTourSlideshow();
   const router = useRouter();
@@ -71,7 +73,7 @@ export function TourSlideshow() {
       <View style={styles.container} {...panResponder.panHandlers}>
         <TouchableWithoutFeedback onPress={handleTap}>
           <Image
-            source={TOUR_IMAGES[currentIndex]}
+            source={TOUR_IMAGES[currentIndex] as ImageSourcePropType}
             style={styles.image}
             resizeMode="contain"
           />
@@ -109,12 +111,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: '#000', // rgba(0,0,0,0.55)', #000 when tour is disabled
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeText: {
-    color: '#fff',
+    color: '#000', // #fff', #000 when tour is disabled
     fontSize: 16,
     lineHeight: 20,
   },

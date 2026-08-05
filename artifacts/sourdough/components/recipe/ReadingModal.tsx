@@ -259,7 +259,7 @@ return (
         <ScrollView
           contentContainerStyle={[
             s.modalContent,
-            { paddingTop: insets.top + webTop + 24, paddingBottom: insets.bottom + 32 },
+            { paddingTop: insets.top + webTop + 24, paddingBottom: insets.bottom + 80 },
           ]}
           keyboardShouldPersistTaps="handled"
         >
@@ -579,7 +579,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     height: 52,
     marginTop: 24,
-    marginBottom: 8,
+    marginBottom: 0,
   },
   saveReadingBtnText: {
     fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — primary action

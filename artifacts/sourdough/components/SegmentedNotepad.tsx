@@ -356,16 +356,14 @@ const insertChip = useCallback(
                 }
               }}
               onKeyPress={(e) => {
-                // iOS physical keyboard: keypress fires reliably for Backspace here.
-                // Android soft keyboard: handled via onChangeText double-empty above.
-                if (e.nativeEvent.key === "Backspace" && seg.value === "") {
+                // This handles Backspace on iOS and Mobile physical keyboards
+                if (e.nativeEvent?.key === "Backspace" && seg.value === "") {
                   handleBackspaceOnEmpty(seg.id);
                 }
               }}
-              // Web + physical keyboard: browsers do NOT fire keypress for Backspace,
-              // but they do fire keydown. onKeyDown is a RN Web pass-through prop.
+              // @ts-ignore - onKeyDown is for React Native Web (Desktop/Laptop support)
               onKeyDown={(e: any) => {
-                if (e.nativeEvent?.key === "Backspace" && seg.value === "") {
+                if (e.key === "Backspace" && seg.value === "") {
                   handleBackspaceOnEmpty(seg.id);
                 }
               }}

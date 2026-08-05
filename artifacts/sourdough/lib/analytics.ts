@@ -144,14 +144,18 @@ export function updateAllTimeAnalytics(
 export interface HistoryEntryForSeries {
   savedAt: number;
   initialPH?: string;
-  readings?: { pH: string; loggedAt: number }[];
+  readings?: {
+    pH: string;
+    loggedAt: number;
+    temp?: string;
+    tempUnit?: "F" | "C";
+  }[];
   peak?: { pH: string; timeToPeakMs: number; volumeIncreasePct: number };
   sugarWeight?: number;
   wwPercent?: number;
-  // ── FCS scatter additions ──────────────────────────────────────────────
   ratioStr?: string;           // e.g. "1:2:2" — needed for flour/water bucketing
   initialTemp?: string;        // ambient temp at feed start — drives thermal color
-  initialTempUnit?: "F" | "C"; // unit for initialTemp
+  initialTempUnit?: "F" | "C";
 }
 
 export type StarterType = "standard" | "sugar" | "ww";

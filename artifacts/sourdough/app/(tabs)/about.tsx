@@ -395,7 +395,7 @@ export default function AboutScreen() {
               opacity: pressed ? 0.7 : 1
             })}
           >
-            <Text style={{ color: colors.primaryForeground, fontSize: 12, fontFamily: fonts.semiSansBold }}>
+            <Text style={{ color: colors.primaryBackground, fontSize: 12, fontFamily: fonts.semiSansBold }}>
               Take the Tour
             </Text>
           </Pressable>

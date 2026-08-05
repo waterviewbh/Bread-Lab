@@ -1,6 +1,6 @@
 {
   "_warning": "This is where we update the version for test builds.",
   "_warning": "Be sure version.json matches this candidate version before build.",
-  "version": "1.1.1-candidate",
+  "version": "2.0.0-the-bakers-bench-release",
   "versionCode": 1
 }

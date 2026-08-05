@@ -193,7 +193,7 @@ export function ContinuousListInput({ lines, onUpdateLines, placeholder }: Props
         lines.map((line, index) => (
           <TextInput
             key={line.id}
-            ref={el => (inputRefs.current[line.id] = el)}
+            ref={el => {inputRefs.current[line.id] = el}}
             value={line.text}
             // ── Change 1: Pass the index to the handler ──
             onChangeText={(text) => handleTextChange(line.id, index, text)}

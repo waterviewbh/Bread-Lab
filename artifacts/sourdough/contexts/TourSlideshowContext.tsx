@@ -40,7 +40,10 @@ export const TourSlideshowProvider: React.FC<{ children: React.ReactNode }> = ({
         if (seenV1 === '1') return;        // Gate 3: already saw the new slideshow → skip
         const seenV2 = await AsyncStorage.getItem(TOUR_SEEN_V2_KEY);
         if (seenV2 === '1') return;        // New install: show after a short delay so the app can settle
-        setTimeout(() => setIsTourVisible(true), 1500);
+        //setTimeout(() => setIsTourVisible(true), 1500);
+        // disable the tour by commenting that line then update TourSlideshow from
+        // closeButton.backgroundClor: 'rgba(0,0,0,0.55)' to '#000' and
+        // closeText.color: '#fff' to '#000'
       } catch {
         // AsyncStorage failure → fail silently, don't block the app
       }

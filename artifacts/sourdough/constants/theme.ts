@@ -35,6 +35,8 @@ export const fonts = {
   sans:           "HankenGrotesk_400Regular",
   sansMedium:     "HankenGrotesk_500Medium",
   sansSemiBold:   "HankenGrotesk_600SemiBold",
+  semiSansBold:   "HankenGrotesk_700Bold",
+
   // Mono — data / scientific readings
   mono:           "JetBrainsMono_500Medium",
 } as const;

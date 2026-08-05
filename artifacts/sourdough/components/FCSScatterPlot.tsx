@@ -35,6 +35,7 @@ import {
   type HydrationSlice,
 } from "@/lib/feedCoordinate";
 import { fonts, radius } from "@/constants/theme";
+import { usePreferences } from "@/contexts/PreferencesContext";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 const CHART_H = 220;
@@ -135,7 +136,7 @@ function calendarWeekKey(date: Date): string {
  * Mirrors the sorting logic in computeLiftingSeries so feedNum values
  * match exactly — this is how cross-panel selection links the two charts.
  */
-function deriveFCSPoints(sessions: HistoryEntryForSeries[]): FCSPoint[] {
+function deriveFCSPoints(sessions: HistoryEntryForSeries[], globalTempUnit: "F" | "C"): FCSPoint[] {
   // Sort oldest-first to assign feedNum chronologically (same as computeLiftingSeries)
   const sorted = [...sessions].sort((a, b) => a.savedAt - b.savedAt);
   const points: FCSPoint[] = [];
@@ -143,14 +144,14 @@ function deriveFCSPoints(sessions: HistoryEntryForSeries[]): FCSPoint[] {
     if (s.peak) {
       const parsed = s.ratioStr ? parseRatioStr(s.ratioStr) : null;      // Ambient temp — prefer initialTemp, fall back to first reading with a temp
       let ambientTempF: number | null = null;
-      const unit: "F" | "C" = (s as any).initialTempUnit ?? "F";
+      const unit = s.initialTempUnit ?? globalTempUnit;
       if (s.initialTemp && !isNaN(parseFloat(s.initialTemp))) {
         ambientTempF = toFahrenheit(parseFloat(s.initialTemp), unit);
       } else if (s.readings) {
         const firstWithTemp = s.readings.find((r) => r.temp && !isNaN(parseFloat(r.temp)));
         if (firstWithTemp) {
           ambientTempF = toFahrenheit(
-            parseFloat(firstWithTemp.temp),
+            parseFloat(firstWithTemp.temp || "0"),
             (firstWithTemp as any).tempUnit ?? "F"
           );
         }
@@ -250,6 +251,7 @@ export default function FCSScatterPlot({
   onSelectFeedNum,
 }: Props) {
   const colors = useColors();
+  const { tempUnit } = usePreferences();
   const [containerW, setContainerW] = useState(320);
   const [viewMode, setViewMode]     = useState<"default" | "compare">("default");
   // ── Seasonal week keys — stable, computed once per render cycle ────────────
@@ -261,7 +263,8 @@ export default function FCSScatterPlot({
       compareWeekKey: calendarWeekKey(compareDate),
     };
   }, []);
-  const fcsPoints = useMemo(() => deriveFCSPoints(sessions), [sessions]);  const chart = useMemo(
+  const fcsPoints = useMemo(() => deriveFCSPoints(sessions, tempUnit), [sessions, tempUnit]);
+  const chart = useMemo(
     () => buildGeometry(fcsPoints, containerW),
     [fcsPoints, containerW]
   );

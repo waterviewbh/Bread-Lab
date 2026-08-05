@@ -246,7 +246,11 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
             water:    levainBreakdown.addedWater,
             ratioStr: levainBreakdown.ratioStr,
           })}
-          style={({ pressed }) => [styles.applyBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 }]}
+          style={({ pressed }) => [styles.applyBtn, {
+            backgroundColor: colors.primary,
+            opacity: pressed ? 0.8 : 1,
+            marginTop: 16
+          }]}
         >
           <Text style={[styles.applyBtnText, { color: colors.primaryForeground }]}>Build this Levain</Text>
           <Feather name="arrow-right" size={16} color={colors.primaryForeground} />
@@ -527,5 +531,19 @@ const styles = StyleSheet.create({
   levainTileValue: {
     fontFamily: fonts.mono,                // JetBrainsMono_500Medium — gram weights are data
     fontSize: 16,
+  },
+  recipeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  recipeValue: {
+    fontFamily: fonts.mono,
+    fontSize: 16,
+  },
+  recipeLabel: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
   },
 });

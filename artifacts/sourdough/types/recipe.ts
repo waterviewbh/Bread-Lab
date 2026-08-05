@@ -71,3 +71,5 @@ export const UniversalRecipeCardSchema = z.object({
 
 export type UniversalRecipeCard = z.infer<typeof UniversalRecipeCardSchema>;
 export type CheckableLine = z.infer<typeof CheckableLineSchema>;
+export type RecipeIngredient = z.infer<typeof RecipeIngredientSchema>;
+export type TimelineStep = z.infer<typeof TimelineStepSchema>;

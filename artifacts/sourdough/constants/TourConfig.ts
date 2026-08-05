@@ -1,5 +1,5 @@
 // Set this to true only when Operation Onboarding is ready for prime time!
-export const IS_TOUR_ENABLED = true;
+export const IS_TOUR_ENABLED = false;
 
 /**
  * GLOBAL STEP ORDERS (Sequential for reliability)

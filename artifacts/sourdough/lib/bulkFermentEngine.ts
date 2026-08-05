@@ -150,7 +150,7 @@ export function estimateInoculationPercent(phases: { ingredients: any }[] = []):
 export function computeBulkFermentState(
   readings: BulkFermentReading[],
   existing: BulkFermentState,
-  allRecipePhases: { ingredients: string }[] = [],
+  allRecipePhases: { ingredients: any }[] = [],
   phaseStartedAt?: number | null,
   manualStartVolume?: string
 ): BulkFermentState {

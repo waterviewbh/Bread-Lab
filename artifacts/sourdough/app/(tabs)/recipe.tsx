@@ -107,7 +107,7 @@ export default function RecipeScreen() {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   // ── Runner auto-scroll ─────────────────────────────────────────────────────
-  const runnerScrollRef = useRef<ScrollView | null>(null);
+  const runnerScrollRef = useRef<ScrollView>(null) as React.RefObject<ScrollView>;
   /** y-offset of each phase card within the phases container (from onLayout) */
   const phaseCardYOffsets = useRef<Record<string, number>>({});
   /** y-offset of the phases container within the runner ScrollView content */
