@@ -1,137 +1,136 @@
-## Summary of the files in Bread-Lab
+# Baker's Bench - App Documentation
 
-### Root Layout & Configuration
+This document serves as the technical documentation for the Bread Lab application (the-bakers-bench branch).
 
-_Located in artifacts/sourdough/app/:_
-- `_layout.tsx`: The primary entry point for the native application. It initializes global providers (Theming, Sync, Font sizing), manages font loading, and controls the splash screen.
-- `_layout.web.tsx`: A platform-specific layout for the web version, optimized for browser performance by using CSS-based font injection and omitting native-only UI components.
-- `+html.tsx`: Defines the root HTML structure for the web build, including SEO meta tags, Open Graph properties, and social sharing metadata.
-- `+not-found.tsx`: The fallback screen for invalid routes, providing users with a way to navigate back to the home screen.
+## 1. App Structure: (tabs) Directory
 
-### Navigation & Feature Tabs
+The `app/(tabs)` directory contains the primary route entry points for the application's tab-based navigation, managed by Expo Router.
 
-_Located in artifacts/sourdough/app/(tabs)/:_
-- `_layout.tsx`: The tab navigator configuration. It defines the bottom tab bar (Feed, Graph, Recipe, Calendar, About) and handles visual effects like the iOS-style blur background.
-- `index.tsx` (Feed): The main dashboard for the "Starter" side of the lab. It allows you to start feed sessions, log pH/temperature readings, record peak rise, and sync data across devices.
-- `graph.tsx` (Graph): A data visualization hub that renders three key charts:
-    - Acidification Index: Tracks bacterial vitality via pH velocity.
-    - Lifting Index: Measures yeast capacity and rise time.
-    - Metabolic Map: A scatter plot comparing feed ratios against temperature.
-- `recipe.tsx` (Recipe): A dual-mode tool for managing bakes:
-    - Builder: An editor for creating complex, multi-phase recipes.
-    - Runner: An execution interface with live timers, ingredient scaling, and specific logging for phases like "Bulk Fermentation."
-- `history.tsx` (Calendar): A chronological view of all past feeds and bakes. It includes a streak tracker, monthly stats, and the ability to export any session as a detailed PDF report.
-- `about.tsx` (About): The settings and education hub. It houses unit preferences (F/C), the "Take the Tour" feature, changelogs, and a technical guide for interpreting fermentation data.
+### Primary Hubs (Visible Tabs)
 
-### Data Visualization Components
+#### [bench.tsx]
+- **Overall Purpose**: The primary workspace of the app (The Bench). It handles active baking and feeding sessions.
+- **Major Functions**:
+    - `IndexRoute`: The default export that renders the `BenchHub` component.
+- **Import/Usage**:
+    - Referenced by `_layout.tsx` as the default `bench` tab (`initialRouteName`).
+    - Navigated to by `app/index.tsx` (the splash/welcome screen).
 
-_Located in artifacts/sourdough/components:_
-- `PHChart.tsx`: A detailed line chart for tracking pH over time during a single feed session. It features an interactive crosshair for scrubbing data, a temperature overlay, and a "comparison mode" for viewing historical averages.
-- `AcidificationChart.tsx`: A longitudinal chart that tracks "pH velocity" (how fast the starter acidifies) across your entire history. This helps bakers visualize their culture's maturation or its response to different flour workloads.
-- `LiftingIndexChart.tsx`: A dual-axis chart focused on yeast vitality. It uses bars to show "hours to peak" and triangles to mark "rise percentage." It includes custom hatch patterns to distinguish between standard, sugar-fed, and whole wheat starters.
-- `FCSScatterPlot.tsx`: Known as the "Metabolic Map," this scatter plot charts feed ratios against hours-to-peak. It uses a thermal color gradient to show ambient temperature and includes a "Season Compare" mode to overlay data from one year ago.
+#### [lab.tsx]
+- **Overall Purpose**: Serves as the entry point for the **Lab** tab. It acts as a lightweight wrapper for the `LabHub` component.
+- **Major Functions**:
+    - `LabRoute`: The default export that renders the `LabHub` component.
+- **Import/Usage**:
+    - Imported/Referenced by `_layout.tsx` as the `lab` tab.
 
-### User Interaction & Tooling
+#### [logbook.tsx]
+- **Overall Purpose**: Entry point for the **Logbook** feature, which manages personal baking logs or notes.
+- **Major Functions**:
+    - `LogbookRoute`: The default export that renders the `LogbookHub` component.
+- **Import/Usage**:
+    - Referenced by `_layout.tsx` as the `logbook` tab.
 
-_Located in artifacts/sourdough/components:_
-- `SegmentedNotepad.tsx`: A specialized note editor used in the Bake log. It allows free-form typing while treating "Phase Tags" (e.g., Bulk Fermenting) as atomic tokens that can be inserted as headers.
-- `FlourSlider.tsx`: A custom range slider for managing flour blends. It calculates the exact gram weights of All-Purpose vs. Whole Wheat flour in real-time as the user slides.
-- `AuthModal.tsx`: The user identity interface where bakers can "Name their data" (First Name + Starter Name). It manages the complex process of linking devices and migrating local data to the cloud.
-- `YieldPill.tsx`: A compact UI element used in the Recipe Builder and Runner to display and edit how many loaves a recipe produces.
-- `NudgeBanner.tsx`: A floating notification that encourages anonymous users to add a name to their data to ensure it is backed up and accessible on other devices.
-- `AffiliateCarousel.tsx`: A rotating gallery of recommended baking gear (jars, scales, etc.) that complies with Amazon Associate disclosure requirements.
+### Secondary Routes (Hidden Tabs)
 
-### System & Infrastructure
+#### [graph.tsx]
+- **Overall Purpose**: Provides data visualization and analytics for starter health.
+- **Major Functions**:
+    - `GraphScreen`: The main component managing chart data and layout.
+- **Import/Usage**:
+    - Defined as a hidden route in `_layout.tsx`.
 
-_Located in artifacts/sourdough/components:_
-- `ErrorBoundary.tsx` & `ErrorFallback.tsx`: A safety wrapper that prevents the entire app from crashing if a UI component fails. In development, it provides a detailed stack trace; in production, it offers a "Try Again" button.
-- `TourSlideshow.tsx & TourStep.tsx`: The infrastructure for the app's guided tour. TourSlideshow handles the full-screen onboarding gallery, while TourStep provides the anchors for highlighting specific UI elements.
-- `KeyboardProviderCompat.tsx` & `KeyboardAwareScrollViewCompat.tsx`: Compatibility layers that handle keyboard behavior (avoidance and styling) across iOS, Android, and Web, ensuring the app doesn't crash on platforms where native keyboard controllers are missing.
-- `TourProviderWrapper.tsx`: A utility that safely injects the guided tour context only on platforms that support it, preventing bundle errors on the web version.
+#### [recipe.tsx]
+- **Overall Purpose**: A complex screen for managing the "Recipe Builder" and "Recipe Runner."
+- **Import/Usage**:
+    - Defined as a hidden route in `_layout.tsx`.
 
-### Feed Tab Components
+---
 
-_Located in artifacts/sourdough/components/feed:_
-These components manage the setup and active tracking of sourdough starter refreshes.
-- `FeedSetupView.tsx`: The primary form for starting a new feed. It handles weight inputs for starter, flour, water, and optional sugar, integrates the FlourSlider for custom blends, and allows bakers to snap a "Just Fed" photo.
-- `FeedActiveSessionView.tsx`: The dashboard for a feed in progress. It features a large "Time Since Feed" timer, a live PHChart, and controls for logging additional readings or marking the session as "Peaked."
-- `PeakWindowAdvisor.tsx`: A predictive tool that helps bakers plan their feeds. Based on history, it calculates the exact weights needed to ensure a starter peaks at a specific target time (e.g., "I need this ready in 6 hours").
-- `LevainSlider.tsx`: A specialized hydration slider used within the advisor. It maps "Stiff" to "Slack" consistencies onto precise flour-to-water ratios, respecting biological limits for sourdough cultures.
+## 2. Component Architecture
 
-### Recipe Components
+The app follows a modular component structure, organized by feature hubs.
 
-_Located in artifacts/sourdough/components/recipe:_
-These components power the two-stage recipe system: creating a spec (Builder) and executing it (Runner).
+### Bench Components (`components/bench`)
+*Execution workspace logic.*
 
-**Recipe Runner (Active Tracking)**
-- `RecipeRunnerActiveView.tsx`: The main interface for an active bake. It displays a progress bar (SegmentBar), manages ingredient scaling, and houses the scrollable list of phase cards.
-- `PhaseCard.tsx`: A multi-variant component that adapts based on a phase's status:
-    - Pending: Shows a start button and preview.
-    - Active: Shows a live timer, interactive checklist, and logging controls.
-    - Done: Shows a collapsed summary of logged data.
-- `ReadingModal.tsx`: A contextual logging form. It swaps between a generic mode (pH/Temp) and a "Bulk Mode" which includes container volume tracking and sensory observations (e.g., surface bubbles, puffiness).
-- `ReadingRow.tsx`: A compact row used inside phase cards to display a single log entry's timestamp and data points.
-- `SegmentBar.tsx`: A visual progress strip that sits at the top of the bake tracker, showing which phases are complete, active, or upcoming.
-- `PhaseHighlight.tsx`: An animation wrapper that creates a brief "pulse" effect to guide the baker's eye to the next phase after completing the previous one.
+- **[benchHub.tsx]**: Layout controller for the Bench tab; toggles between Feed and Bake modes.
+- **[ActiveBakeSection.tsx]**: Controller for recipe execution, managing phase progression and storage sync.
+- **[ActiveFeedSection.tsx]**: Manages starter feed sessions, including the "New Starter" flow.
 
-**Recipe Builder (Management)**
-- `RecipeBuilderListView.tsx`: The library of saved recipes. It features a retro "Keycap" style A–Z index (KeycapKey.tsx) for quick navigation through a large collection.
-- `RecipeBuilderEditView.tsx`: The editor for creating or modifying recipes. It allows bakers to add/remove phases and define specific ingredients and instructions for each.
-- `ContinuousListInput.tsx`: A "zero-friction" list editor. It behaves like a modern chat app—pressing Enter instantly creates a new line item—enabling bakers to quickly build structured, checkable ingredient lists.
-- `PhasePickerModal.tsx`: A categorized menu for selecting which phases to include in a recipe (e.g., Autolyse, Bulk Ferment, Cold Retard).
-- `RecipePickerModal.tsx`: A simple selection sheet used to pick a saved recipe before starting the RecipeRunner.
+### Feed Components (`components/feed`)
+*Starter maintenance tools.*
 
-### Constants
+- **[FeedSetupView.tsx]**: Input form for new feed sessions (weights, ratios, photos).
+- **[FeedActiveSessionView.tsx]**: Dashboard for active feeds, featuring live timers and pH charts.
+- **[PeakWindowAdvisor.tsx]**: Prediction tool that solves for ideal feed weights based on target peak times.
 
-_Located in artifacts/sourdough/constants:_
-- `theme.ts`: The single source of truth for non-color design tokens. It defines the spacing grid (4px baseline), border radius levels, font families (Serif, Sans, Mono), and a standard typography scale.
-- `colors.ts`: Defines the "Artisan Hearth" color palette for both light and dark modes. It uses earthy, natural tones like Soft Flour, Crust Brown, and Baked Earth.
-- `TourConfig.ts`: Configures the multi-chapter guided tour. It maps specific UI elements to descriptive text and defines the sequence of steps across all five tabs.
-- `TourImages.ts`: An ordered registry of full-screen images used in the onboarding slideshow.
-- `aboutContents.ts`: A content repository housing the detailed "Help" documentation, the application changelog, and technical guides for interpreting acidification and lifting data.
+### Lab Components (`components/lab`)
+*Analytics and high-level planning.*
 
-### Contexts
+- **[labHub.tsx]**: Central hub for the Lab tab; coordinates Feed Planner and Recipe Builder views.
+- **[labAnalyticsComponents.tsx]**: Shared UI elements (like Hints) used across analytics charts.
 
-_Located in artifacts/sourdough/contexts:_
-These providers manage persistent global state and broadcast updates across the app.
-- `SyncContext.tsx`: Manages the status of background data synchronization with the cloud. It provides a SyncToast notification to inform users when their data is successfully backed up or if they are currently offline.
-- `PreferencesContext.tsx`: Stores user-defined settings such as temperature units (°F/°C), weight units (g/oz), and time formats (12h/24h), persisting them to local storage.
-- `FontSizeContext.tsx`: Handles accessibility scaling. It allows users to toggle "Full System Font Size" and applies a custom cap to ensure the UI remains legible at extreme scales.
-- `MigrationToastContext.tsx`: Orchestrates the complex UI for migrating local data to a new account. It provides a top-anchored toast that shows progress and success counts (e.g., "Your 12 sessions are now backed up").
-- `TourSlideshowContext.tsx`: Controls the visibility of the full-screen onboarding tour. It includes logic to automatically trigger the tour for new installs while skipping it for existing users who have already seen it.
-- `TourContext.tsx` & `TourContext.web.tsx`: Compatibility shims for the element-highlighting tour. The web version acts as a safe "no-op" shell to prevent native dependency errors in the browser.
+### Log Components (`components/log`)
+*History and education.*
 
-### Custom Hooks
+- **[logHub.tsx]**: Toggle between Bake History and Resources.
+- **[logBook.tsx]**: Calendar-based history viewer.
+- **[logManual.tsx]**: Science Hub and user settings (Temp units, Accessibility).
 
-_Located in artifacts/sourdough/hooks:_
-- `useColors.ts`: A theme-aware hook that provides the Artisan Hearth color tokens. It automatically switches between light and dark palettes based on the user's system appearance.
-- `useActiveBakeTimer.ts`: A real-time engine for the Bake log. It calculates the elapsed time for every in-progress recipe phase and updates every second to drive the live UI timers.
-- `useBulkFermentTimer.ts`: A specialized timer for the Bulk Fermentation phase. It handles three states: "None" (waiting for data), "Countdown" (projected time remaining), and "Overtime" (time elapsed since reaching the target rise).
+### Recipe Components (`components/recipe`)
+*Recipe definition and execution blocks.*
 
-### Data & Infrastructure Libraries
+- **[PhaseCard.tsx]**: State-aware UI cards for recipe phases (Pending/Active/Done). Includes the Bulk Dashboard.
+- **[ContinuousListInput.tsx]**: High-efficiency text input for ingredient/instruction lists.
+- **[RecipeBuilderEditView.tsx]**: Full-screen editor for recipe configuration.
 
-_Located in artifacts/sourdough/lib:_
-- `api.ts`: The Supabase-backed data layer. It manages the user's stable "Shadow Account" and provides typed methods for listing, upserting, and deleting recipes, feeds, and bake sessions.
-- `supabase.ts`: Configures the Supabase client, including auto-refreshing authentication tokens and persistent sessions using AsyncStorage.
-- `auth.ts`: Manages the local storage of the user's identity token and profile metadata (First Name, Starter Name).
-- `migrate.ts`: Orchestrates the "local-to-cloud" migration process, ensuring that sessions created while offline or before "naming" are safely uploaded to the user's permanent account.
-- `recipeStorage.ts`: A persistence wrapper that combines local AsyncStorage (for offline speed) with the remote api.ts (for multi-device sync).
-- `deviceId.ts`: Generates and persists a stable, unique identifier for the hardware, allowing the app to track data owners before a user creates an account.
+---
 
-### Analytics & Physics Libraries
+## 3. Business Logic & Data Layer (`lib/`)
 
-_Located in artifacts/sourdough/lib:_
-- `analytics.ts`: Houses the logic for computing sourdough vitality. It converts raw pH readings into "Vitality Curves," calculates all-time averages, and derives longitudinal series for the Acidification and Lifting Index charts.
-- `predictions.ts`: The "Peak Window Advisor" engine. It uses an exponential model to predict fermentation speed based on inoculation ratio, ambient temperature, and hydration.
-- `bulkFermentEngine.ts`: A Proportional-Derivative (PD) engine for tracking dough rise. It blends biological "priors" (typical durations) with empirical data from live readings to project when a dough will be ready for shaping.
-- `bulkFermentUtils.ts`: Formatting helpers for the bulk fermentation display, including target volume labels and rise-percentage calculators.
-- `feedCoordinate.ts`: Defines the "Feed Coordinate System" (FCS). It buckets feed ratios into macro "Flour Chapters" and micro "Hydration Slices" to organize data on the Metabolic Map.
+The `lib/` directory houses the core mathematical models, synchronization logic, and pure utility functions.
 
-### Utilities & Tools Libraries
+### Infrastructure & Sync
+- **[supabase.ts]**: Configures the Supabase client with AsyncStorage persistence and auto-refresh for user sessions.
+- **[api.ts]**: The primary data gateway. Implements CRUD operations for recipes, feeds, and bakes. It also manages legacy data flattening and cross-device ownership filtering.
+- **[auth.ts]**: Handles local storage of authentication tokens and `AuthUser` profiles.
+- **[deviceId.ts]**: Generates a persistent unique identifier for the device to link local data before a user identifies.
+- **[migrate.ts]**: Orchestrates the "Promotion" flow, migrating local "orphan" data to a cloud account.
 
-_Located in artifacts/sourdough/lib:_
-- `recipeUtils.ts`: A collection of pure formatting functions. It includes the scalePhaseText engine, which uses regex to multiply ingredient quantities (e.g., "500g") while ignoring temperatures and times.
-- `recipeHtml.ts`: Pure builders that convert recipes and bake summaries into standalone HTML documents for high-quality printing or sharing as PDFs.
-- `recipeMigration.ts`: A tool for "lossless promotion" that upgrades legacy flat-string recipes into the structured, line-item format required by the new checklist system.
-- `feedUtils.ts`: General helpers for the feed tab, such as calculating feeding ratios from weights and formatting timer durations.
-- `affiliateItems.ts`: Fetches active product recommendations from the remote database to populate the AffiliateCarousel.  
+### Sourdough Analytics & Prediction
+- **[analytics.ts]**: Contains core math for pH curves, including linear interpolation (LERP), mean curve calculation (Vitality), and longitudinal series for Acidification/Lifting indices.
+- **[predictions.ts]**: The engine behind the Peak Window Advisor. Trains a model based on historical inoculation ratios and temperatures to predict future fermentation durations.
+- **[feedCoordinate.ts]**: Implements the **Feed Coordinate System (FCS)**, mapping metabolic states based on flour workload chapters and hydration slices.
+- **[feedUtils.ts]**: Pure utilities for calculating ratio strings and formatting feed timers.
+
+### Recipe & Bake Orchestration
+- **[recipeTypes.ts]**: The centralized source of truth for TypeScript interfaces and canonical phase definitions.
+- **[recipeStorage.ts]**: Async persistence logic that merges local AsyncStorage reads with Supabase API calls. Handles "tombstoning" for robust deletions.
+- **[recipeUtils.ts]**: Display utilities, including the regex-based mass quantity scaler and ingredient metric parsers.
+- **[bulkFermentEngine.ts]**: A Proportional-Derivative (PD) engine that calculates real-time fermentation velocity and projects completion times based on volume readings.
+- **[bulkFermentUtils.ts]**: Formatting logic for the Bulk Dashboard's countdown and rise progress indicators.
+- **[recipeHtml.ts]**: Generates standalone HTML documents for printing and PDF sharing.
+- **[recipeMigration.ts]**: Utility for promoting legacy flat-string recipes into the structured Universal Recipe format.
+
+---
+
+## 4. Global State & Contexts (`contexts/`)
+
+The application uses React Context for managing global state that needs to be accessed across multiple tabs and components.
+
+- **[PreferencesContext.tsx]**: Manages user settings for Temperature Units (F/C), Weight Units (g/oz), and Time Formats. Persists changes to local storage automatically.
+- **[SyncContext.tsx]**: Provides a global sync status and renders a floating "Sync Toast" notification to inform the user of background data persistence.
+- **[FontSizeContext.tsx]**: Implements a global accessibility feature that bypasses default font scaling limits by modifying `defaultProps` on core React Native text components.
+- **[TourSlideshowContext.tsx]**: Orchestrates the application's high-level onboarding walkthrough, handling auto-show logic for new installs.
+- **[MigrationToastContext.tsx]**: Specifically manages UI feedback during the data "promotion" phase (moving local device data to a cloud account).
+- **[TourContext.tsx]**: A legacy/stub context used to maintain compatibility with components that previously used granular Copilot-style tours.
+
+---
+
+## 5. Custom Hooks (`hooks/`)
+
+Custom hooks encapsulate reusable logic, specifically around theming and fermentation timers.
+
+- **[useColors.ts]**: Dynamically resolves design tokens (colors, radius) based on the device's light/dark mode setting.
+- **[useActiveBakeTimer.ts]**: A reactive 1-second ticker that tracks the elapsed time for every in-progress phase in an active bake session.
+- **[useBulkFermentTimer.ts]**: Specialized timer hook that consumes the `BulkFermentState` to provide a real-time countdown to target or an overtime counter.
