@@ -7,7 +7,7 @@ import NudgeBanner from "@/components/NudgeBanner";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   AppState,
@@ -88,6 +88,9 @@ import { fonts, spacing, radius } from "@/constants/theme";
 import { estimateInoculationPercent } from "@/lib/bulkFermentEngine";
 import { migrateToUniversalCard } from "@/lib/recipeMigration";
 import { CheckableLine } from "@/types/recipe";
+import { useFocusEffect } from "expo-router";
+
+
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -97,6 +100,7 @@ export default function RecipeScreen() {
   const webTop = Platform.OS === "web" ? 67 : 0;
   const tabBarPad = Platform.OS === "web" ? 84 : 49;
   const { reportSyncStart, reportSyncSuccess, reportSyncFailure } = useSyncStatus();
+  const [lastSynced, setLastSynced] = useState<number | null>(null);
 
   const [section, setSection] = useState<"builder" | "runner">("builder");
 
@@ -191,10 +195,12 @@ export default function RecipeScreen() {
 // Replaces the manual setInterval useEffect — keyed on bake.id for stability
 const elapsed = useActiveBakeTimer(bake);
 
-  useEffect(() => {
-    loadAll();
-    getStoredUser().then(setCurrentUser).catch(() => {});
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadAll();
+      getStoredUser().then(setCurrentUser).catch(() => {});
+    }, [])
+  );
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState: AppStateStatus) => {
@@ -242,6 +248,7 @@ const loadAll = async () => {
 
   if (migratedRecipes.length > 0) setRecipes(migratedRecipes);
   if (loadedBake) setBake(loadedBake);
+  setLastSynced(Date.now());
 };
 
 const persistRecipes = async (updated: SavedRecipe[]) => {
@@ -396,10 +403,15 @@ const saveBakeToHistory = async (b: ActiveBake) => {
     setIsNewRecipe(false);
   };
 
-  const printRecipe = async (r: SavedRecipe) => {
-    try { await printHtml(buildRecipeHtml(r)); }
-    catch { Alert.alert("Could not print", "Something went wrong while printing. Please try again."); }
-  };
+    const printRecipe = async (r: SavedRecipe) => {
+      try {
+        await printHtml(buildRecipeHtml(r));
+      } catch (e) {
+        // LOG THIS ERROR - it will show up in your Logcat!
+        console.error("[RecipeScreen] Print recipe error:", e);
+        Alert.alert("Could not print", "Something went wrong while printing. Please try again.");
+      }
+    };
 
   const shareAsPdf = async (r: SavedRecipe) => {
     try { await shareHtmlAsPdf(buildRecipeHtml(r), `Share ${r.name}`); }
@@ -730,6 +742,31 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
   }));
 }
 
+function formatSyncTime(ts: number): string {
+  const diffMs = Date.now() - ts;
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 10) return "just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  return `${diffHr}h ago`;
+}
+
+function SyncLabel({ ts }: { ts: number }) {
+  const colors = useColors();
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <Text style={[s.syncLabel, { color: colors.mutedForeground }]}>
+      Synced {formatSyncTime(ts)}
+    </Text>
+  );
+}
+
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════
@@ -749,6 +786,10 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
           },
         ]}
       >
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ fontSize: 24, fontWeight: '700', color: colors.foreground }}>Recipes</Text>
+          {lastSynced !== null && <SyncLabel ts={lastSynced} />}
+        </View>
         {/* ── Top section toggle — one step highlights both tabs ── */}
         <TourStep  order={15} name="recipe-pages">
           <CopilotView>
@@ -943,7 +984,10 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
         onClose={() => setShowAuthModal(false)}
         onAuthChange={(user) => {
           setCurrentUser(user);
-          if (user) setShowNudge(false);
+          if (user) {
+            setShowNudge(false);
+            loadAll();
+          }
         }}
       />
     </View>
@@ -977,5 +1021,12 @@ const s = StyleSheet.create({
   sectionBtnText: {
     fontSize: 14,
     // fontFamily set inline — fonts.sansSemiBold when active, fonts.sans when inactive
+  },
+  syncLabel: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    marginTop: 4,
+    letterSpacing: 0.2,
+    opacity: 0.7,
   },
 });

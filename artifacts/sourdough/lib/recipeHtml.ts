@@ -1,4 +1,4 @@
-// lib/recipeHtml.ts
+// artifacts/sourdough/lib/recipeHtml.ts
 // ─── HTML generation + print/share actions ────────────────────────────────────
 // No React, no hooks, no component state. All HTML builders are pure functions.
 import { Alert, Platform } from "react-native";
@@ -8,8 +8,94 @@ import { type SavedRecipe, type BakePhase, type ActiveBake } from "@/lib/recipeT
 import { scalePhaseText, scaleCheckableLines, formatDone } from "@/lib/recipeUtils";
 
 /**
+ * SafePrint prevents concurrent print requests and stabilizes the Android spooler
+ * by managing a lock state and adding a brief cooldown between jobs.
+ */
+class SafePrintManager {
+  private isBusy = false;
+
+  async printHtml(html: string): Promise<void> {
+    if (this.isBusy) {
+      console.warn("[SafePrint] A print request is already in progress. Ignoring.");
+      return;
+    }
+
+    if (Platform.OS === "web") {
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.write(html);
+        w.document.close();
+        w.print();
+      }
+      return;
+    }
+
+    try {
+      this.isBusy = true;
+      await Print.printAsync({ html });
+    } catch (e: any) {
+      if (!e.message?.includes("already in progress")) {
+        console.error("[SafePrint] Print error:", e);
+        throw e;
+      }
+    } finally {
+      // 800ms cooldown helps the system print spooler settle on Android
+      setTimeout(() => { this.isBusy = false; }, 800);
+    }
+  }
+
+  async sharePdf(html: string, dialogTitle: string): Promise<void> {
+    if (this.isBusy) return;
+
+    if (Platform.OS === "web") {
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.write(html);
+        w.document.close();
+        w.print();
+      }
+      return;
+    }
+
+    try {
+      this.isBusy = true;
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert("Sharing not available", "Sharing is not supported on this device.");
+        return;
+      }
+
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, {
+        mimeType: "application/pdf",
+        dialogTitle,
+        UTI: "com.adobe.pdf",
+      });
+    } catch (e: any) {
+      console.error("[SafePrint] Share error:", e);
+      throw e;
+    } finally {
+      setTimeout(() => { this.isBusy = false; }, 800);
+    }
+  }
+}
+
+const SafePrint = new SafePrintManager();
+
+/**
+ * Defensive helper to ensure we are working with an array of objects,
+ * even if the data is a legacy string. Prevents .filter() crashes.
+ */
+function toCheckableArray(input: any): { text: string }[] {
+  if (Array.isArray(input)) return input;
+  if (typeof input === "string" && input.trim().length > 0) {
+    return input.split("\n").map((s) => ({ text: s.trim() }));
+  }
+  return [];
+}
+
+/**
  * Common CSS shared by all printable documents for consistency.
- * Defines the checklist and checkbox aesthetics.
  */
 const COMMON_STYLE = `
   .recipe-info { margin: 0 0 10px }
@@ -24,7 +110,6 @@ const COMMON_STYLE = `
 `;
 
 // ─── buildRecipeHtml ──────────────────────────────────────────────────────────
-// Produces a standalone printable HTML doc for a recipe from the builder.
 export function buildRecipeHtml(recipe: SavedRecipe): string {
   const date = new Date(recipe.createdAt).toLocaleDateString([], {
     year: "numeric", month: "long", day: "numeric",
@@ -41,8 +126,7 @@ export function buildRecipeHtml(recipe: SavedRecipe): string {
            </div>`
         : "";
 
-      // Filter out ghost lines (empty or whitespace only)
-      const filteredIngs = p.ingredients.filter(l => l.text.trim().length > 0);
+      const filteredIngs = toCheckableArray(p.ingredients).filter(l => l.text.trim().length > 0);
       const ingHtml = filteredIngs.length > 0
         ? `<div class="recipe-info">
              <span class="recipe-label">Ingredients</span>
@@ -52,7 +136,7 @@ export function buildRecipeHtml(recipe: SavedRecipe): string {
            </div>`
         : "";
 
-      const filteredIns = p.instructions.filter(l => l.text.trim().length > 0);
+      const filteredIns = toCheckableArray(p.instructions).filter(l => l.text.trim().length > 0);
       const insHtml = filteredIns.length > 0
         ? `<div class="recipe-info">
              <span class="recipe-label">Instructions</span>
@@ -100,14 +184,9 @@ export function buildRecipeHtml(recipe: SavedRecipe): string {
 }
 
 // ─── buildPhaseHtml ───────────────────────────────────────────────────────────
-// Produces a single-phase spec sheet. Quantities are scaled by multiplier.
-export function buildPhaseHtml(
-  phase: BakePhase,
-  recipeName: string,
-  multiplier: number
-): string {
-  const scaledIngs = scaleCheckableLines(phase.ingredients, multiplier).filter(l => l.text.trim().length > 0);
-  const scaledIns = scaleCheckableLines(phase.instructions, multiplier).filter(l => l.text.trim().length > 0);
+export function buildPhaseHtml(phase: BakePhase, recipeName: string, multiplier: number): string {
+  const scaledIngs = scaleCheckableLines(toCheckableArray(phase.ingredients), multiplier).filter(l => l.text.trim().length > 0);
+  const scaledIns = scaleCheckableLines(toCheckableArray(phase.instructions), multiplier).filter(l => l.text.trim().length > 0);
 
   const scaleNote = multiplier !== 1 ? ` · ${multiplier}× batch` : "";
   const ingHtml = scaledIngs.length > 0
@@ -153,11 +232,7 @@ export function buildPhaseHtml(
 }
 
 // ─── buildBakeHtml ────────────────────────────────────────────────────────────
-export function buildBakeHtml(
-  bake: ActiveBake,
-  bakeNotes: string,
-  completedCount: number
-): string {
+export function buildBakeHtml(bake: ActiveBake, bakeNotes: string, completedCount: number): string {
   const date = new Date(bake.startedAt).toLocaleDateString([], {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
@@ -185,7 +260,7 @@ export function buildBakeHtml(
             .join("")}</tbody></table>`
         : "";
 
-      const filteredIngs = p.ingredients.filter(l => l.text.trim().length > 0);
+      const filteredIngs = toCheckableArray(p.ingredients).filter(l => l.text.trim().length > 0);
       const ingHtml = filteredIngs.length > 0
         ? `<div class="recipe-info">
              <span class="recipe-label">Ingredients</span>
@@ -195,7 +270,7 @@ export function buildBakeHtml(
            </div>`
         : "";
 
-      const filteredIns = p.instructions.filter(l => l.text.trim().length > 0);
+      const filteredIns = toCheckableArray(p.instructions).filter(l => l.text.trim().length > 0);
       const insHtml = filteredIns.length > 0
         ? `<div class="recipe-info">
              <span class="recipe-label">Instructions</span>
@@ -255,29 +330,9 @@ export function buildBakeHtml(
 
 // ─── Print / Share actions ────────────────────────────────────────────────────
 export async function printHtml(html: string): Promise<void> {
-  if (Platform.OS === "web") {
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); w.print(); }
-    return;
-  }
-  await Print.printAsync({ html });
+  await SafePrint.printHtml(html);
 }
 
 export async function shareHtmlAsPdf(html: string, dialogTitle: string): Promise<void> {
-  if (Platform.OS === "web") {
-    const w = window.open("", "_blank");
-    if (w) { w.document.write(html); w.document.close(); w.print(); }
-    return;
-  }
-  const isAvailable = await Sharing.isAvailableAsync();
-  if (!isAvailable) {
-    Alert.alert("Sharing not available", "Sharing is not supported on this device.");
-    return;
-  }
-  const { uri } = await Print.printToFileAsync({ html });
-  await Sharing.shareAsync(uri, {
-    mimeType: "application/pdf",
-    dialogTitle,
-    UTI: "com.adobe.pdf",
-  });
+  await SafePrint.sharePdf(html, dialogTitle);
 }
