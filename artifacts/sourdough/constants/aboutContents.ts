@@ -155,12 +155,19 @@ export const HELP: HelpTab[] = [
 export const CHANGELOG: ChangelogVersion[] = [
 
     /*{
-      version: "v1.1.1", /* -- published 202607XX -- /
+      version: "v2.0.0", /* -- published 202608XX -- /
+      changes: [
+        { type: "Changed", content: "Introducing The Baker's Bench release. This is a new, cleaner layout with highly anticipated additional features." },
+        { type: "Fixed", content: "Some bakers had difficulty accessing or changing their name+name login. That has been resolved." },
+      ],
+    },*/
+    {
+      version: "v1.1.1", /* -- published 202608XX -- */
       changes: [
         { type: "Fixed", content: "The print feature works again, including with checkboxes." },
         { type: "Fixed", content: "Some bakers had difficulty accessing or changing their name+name login. That has been resolved." },
       ],
-    },*/
+    },
     {
       version: "v1.1.0", /* -- published 20260727 -- */
       changes: [
