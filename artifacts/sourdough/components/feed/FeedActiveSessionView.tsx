@@ -177,7 +177,7 @@ export default function FeedActiveSessionView({
   };
 
   const webTop = Platform.OS === "web" ? 67 : 0;
-  const tabBarPad = Platform.OS === "web" ? 84 : 49;
+  const tabBarPad = Platform.OS === "web" ? 84 : 60;
 
   const apPct = 100 - session.wwPercent;
   const apGrams = session.flourWeight > 0

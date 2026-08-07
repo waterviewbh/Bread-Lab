@@ -155,7 +155,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
   };
 
   const webTop = Platform.OS === "web" ? 67 : 0;
-  const tabBarPad = Platform.OS === "web" ? 84 : 49;
+  const tabBarPad = Platform.OS === "web" ? 84 : 60;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>

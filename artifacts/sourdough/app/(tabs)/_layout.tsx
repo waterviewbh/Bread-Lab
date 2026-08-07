@@ -5,6 +5,7 @@ import { Svg, Path, G } from "react-native-svg";
 import { useColors } from "@/hooks/useColors";
 import { TourSlideshowProvider } from "@/contexts/TourSlideshowContext";
 import { TourSlideshow } from "@/components/TourSlideshow";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const s = StyleSheet.create({
   iconWrapper: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
@@ -84,6 +85,7 @@ function HubIcon({ name, color, focused }: {
 
 function ClassicTabLayout() {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
 
   return (
@@ -98,8 +100,8 @@ function ClassicTabLayout() {
           borderTopWidth: isWeb ? 1 : 0,
           borderTopColor: colors.border,
           elevation: 0,
-          height: isWeb ? 84 : 60,
-          ...(isWeb ? {} : { paddingBottom: 8 }),
+          height: isWeb ? 84 : 60 + insets.bottom,
+          ...(isWeb ? {} : { paddingBottom: 8 + insets.bottom }),
         },
         tabBarBackground: () =>
           isWeb ? (

@@ -160,7 +160,7 @@ export function LabHub() {
         />
       ) : (
         <ScrollView
-          contentContainerStyle={s.scrollContent}
+          contentContainerStyle={[s.scrollContent, { paddingBottom: 100 + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.mutedForeground} />}
         >

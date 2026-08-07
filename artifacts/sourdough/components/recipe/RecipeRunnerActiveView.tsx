@@ -126,7 +126,7 @@ export function RecipeRunnerActiveView({
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const tabBarPad = Platform.OS === "web" ? 84 : 49;
+  const tabBarPad = Platform.OS === "web" ? 84 : 60;
 
   return (
     <>

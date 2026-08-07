@@ -48,7 +48,7 @@ export function RecipeRunnerSetupView({
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const tabBarPad = Platform.OS === "web" ? 84 : 49;
+  const tabBarPad = Platform.OS === "web" ? 84 : 60;
   // ── Pre-start confirm: recipe has been selected ───────────────────────────
   if (selectedRecipe) {
     return (

@@ -548,7 +548,7 @@ export function HistorySection() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadHistory} tintColor={colors.mutedForeground} />}>
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadHistory} tintColor={colors.mutedForeground} />}>
         <Animated.View entering={FadeIn.duration(400)} style={styles.pageHeader}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
             <View>
