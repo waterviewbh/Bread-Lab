@@ -23,12 +23,12 @@ The `app/(tabs)` directory contains the primary route entry points for the appli
 - **Import/Usage**:
     - Imported/Referenced by `_layout.tsx` as the `lab` tab.
 
-#### [logbook.tsx]
-- **Overall Purpose**: Entry point for the **Logbook** feature, which manages personal baking logs or notes.
-- **Major Functions**:
-    - `LogbookRoute`: The default export that renders the `LogbookHub` component.
-- **Import/Usage**:
-    - Referenced by `_layout.tsx` as the `logbook` tab.
+#### [log.tsx]
+- **Overall Purpose**: Entry point for the **Log** feature, which manages personal baking logs or notes.
+- Major Functions:
+    - `LogRoute`: The default export that renders the `LogHub` component.
+- Import/Usage:
+    - Referenced by `_layout.tsx` as the `log` tab.
 
 ### Secondary Routes (Hidden Tabs)
 
@@ -74,7 +74,7 @@ The app follows a modular component structure, organized by feature hubs.
 *History and education.*
 
 - **[logHub.tsx]**: Toggle between Bake History and Resources.
-- **[logBook.tsx]**: Calendar-based history viewer.
+- **[log.tsx]**: Calendar-based history viewer.
 - **[logManual.tsx]**: Science Hub and user settings (Temp units, Accessibility).
 
 ### Recipe Components (`components/recipe`)

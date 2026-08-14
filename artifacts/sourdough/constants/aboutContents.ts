@@ -108,12 +108,17 @@ export const HELP: HelpTab[] = [
 ];
 
 export const CHANGELOG: ChangelogVersion[] = [
+    /*{
+      version: "v2.0.1", /* -- published 202608XX -- /
+      changes: [
+         { type: "Changed", content: "The Log now acts as your baker's journal, showing recent bake notes and allowing recipe updates directly from history." },
+     ],
+    },*/
     {
-      version: "v2.0.0", /* -- published 202608XX -- */
+      version: "v2.0.0", /* -- published 20260814 -- */
       changes: [
         { type: "Changed", content: "Architecture Overhaul: Features are now categorized into three distinct hubs: The Bench (Execution), The Lab (Planning), and The Log (History)." },
         { type: "Added", content: "Bakers new to sourdough starters can complete a guided program to establish a new starter. Check in each day for instructions!" },
-        { type: "Changed", content: "The Log now acts as your baker's journal, showing recent bake notes and allowing recipe updates directly from history." },
         { type: "Added", content: "Recipes may now be duplicated, and their lineage is tracked so you don't lose data when iterating." },
       ],
     },
