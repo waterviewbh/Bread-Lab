@@ -1,3 +1,4 @@
+// artifacts/sourdough/components/feed/FeedActiveSessionView.tsx
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -28,11 +29,10 @@ import PHChart from "@/components/PHChart";
 import type { SessionForChart, TempReading } from "@/components/PHChart";
 import { FeedSession, Reading, PeakData } from "@/types/feed";
 import AffiliateCarousel from "@/components/AffiliateCarousel";
-import { formatDuration, formatTimeToPeak } from "@/lib/feedUtils";
+import { AffiliateMilestoneCard } from "@/components/AffiliateMilestoneCard";
+import { formatDuration, formatTimeToPeak, checkGraduationEligibility } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { fonts } from "@/constants/theme";
-
-// const CopilotView = walkthroughable(View);  red-tagged for web-0.1 rmv in 3 revs
 
 interface Props {
   session: FeedSession;
@@ -40,6 +40,8 @@ interface Props {
   onLogReading: (reading: Reading) => void;
   onSavePeak: (peak: PeakData) => void;
   onClearSession: () => void;
+  onProgressDay?: () => void;
+  onGraduate?: () => void;
 }
 
 export default function FeedActiveSessionView({
@@ -48,13 +50,24 @@ export default function FeedActiveSessionView({
   onLogReading,
   onSavePeak,
   onClearSession,
+  onProgressDay,
+  onGraduate,
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { tempUnit } = usePreferences();
+  const { tempUnit, starterTutorialMode, tutorialDay, baselineVolume } = usePreferences();
+
+  const isEligibleForGraduation = checkGraduationEligibility(historyData);
+
+  // --- Time Warp Backdoor (Pi = 3.14) ---
+  const isTimeWarp = session.initialVolume === "3.14";
+  const WARP_FACTOR = 1439; // 1 real minute = 23h 59m (~24h)
 
   // --- Local State (Timer & Modals) ---
-  const [elapsed, setElapsed] = useState(Date.now() - session.savedAt);
+  const [elapsed, setElapsed] = useState(() => {
+    const realElapsed = Date.now() - session.savedAt;
+    return isTimeWarp ? realElapsed * WARP_FACTOR : realElapsed;
+  });
   const [showPeakModal, setShowPeakModal] = useState(false);
   const [peakPH, setPeakPH] = useState("");
   const [peakTemp, setPeakTemp] = useState("");
@@ -68,14 +81,20 @@ export default function FeedActiveSessionView({
   const [readingNote, setReadingNote] = useState("");
   const [expandedReadingIndex, setExpandedReadingIndex] = useState<number | null>(null);
 
+  // Validation state for tutorial
+  const volNum = parseFloat(readingVolume);
+  const isTypoHigh = starterTutorialMode && baselineVolume > 0 && volNum > baselineVolume * 4;
+  const isEarlyDiscard = starterTutorialMode && baselineVolume > 0 && volNum < baselineVolume / 2 && readingVolume !== "";
+
   // Timer Effect
   useEffect(() => {
     if (session.peak) return;
     const interval = setInterval(() => {
-      setElapsed(Date.now() - session.savedAt);
-    }, 1000);
+      const realElapsed = Date.now() - session.savedAt;
+      setElapsed(isTimeWarp ? realElapsed * WARP_FACTOR : realElapsed);
+    }, isTimeWarp ? 100 : 1000); // Tighter interval for warp mode
     return () => clearInterval(interval);
-  }, [session]);
+  }, [session, isTimeWarp]);
 
 
   const pickPhoto = (onPhoto: (uri: string) => void) => {
@@ -130,7 +149,9 @@ export default function FeedActiveSessionView({
       initVol > 0 && peakVol > 0
         ? Math.round(((peakVol - initVol) / initVol) * 100 * 10) / 10
         : 0;
-    const timeToPeakMs = Date.now() - session.savedAt;
+
+    const realElapsed = Date.now() - session.savedAt;
+    const timeToPeakMs = isTimeWarp ? realElapsed * WARP_FACTOR : realElapsed;
 
     onSavePeak({
       pH: peakPH,
@@ -138,7 +159,7 @@ export default function FeedActiveSessionView({
       tempUnit: tempUnit as "F" | "C", // Include global unit
       volume: peakVolume,
       photo: peakPhoto,
-      loggedAt: Date.now(),
+      loggedAt: session.savedAt + timeToPeakMs,
       volumeIncreasePct,
       timeToPeakMs,
     });
@@ -161,13 +182,16 @@ export default function FeedActiveSessionView({
       Alert.alert("Empty Reading", "Please enter at least one value (pH, Temp, Volume, or Note).");
       return;
     }
+    const realElapsed = Date.now() - session.savedAt;
+    const warpedLoggedAt = isTimeWarp ? session.savedAt + (realElapsed * WARP_FACTOR) : Date.now();
+
     onLogReading({
       pH: readingPH.trim(),
       temp: readingTemp.trim(),
       tempUnit: tempUnit as "F" | "C", // Use global preference from usePreferences()
       volume: readingVolume.trim(),
       note: readingNote.trim(),
-      loggedAt: Date.now(),
+      loggedAt: warpedLoggedAt,
     });
     setShowReadingModal(false);
     setReadingPH("");
@@ -187,11 +211,100 @@ export default function FeedActiveSessionView({
     ? Math.round(session.flourWeight * (session.wwPercent / 100) * 10) / 10
     : null;
 
+  const isLate = elapsed > 24 * 60 * 60 * 1000;
+  const isTimedOut = elapsed > 48 * 60 * 60 * 1000;
+  const hasVolumeLog = session.readings?.some(r => !!r.volume) || !!session.peak?.volume;
+
+  const latestVol = session.readings && session.readings.length > 0
+    ? parseFloat(session.readings[session.readings.length - 1].volume)
+    : parseFloat(session.initialVolume);
+  const latestVolMultiplier = baselineVolume > 0 ? (latestVol / baselineVolume) : 1;
+
+  const currentMass = (parseFloat(session.starterWeight) || 0) + session.flourWeight + session.waterWeight;
+  const initialVol = parseFloat(session.initialVolume) || 0;
+  const isAccuracyIssue = starterTutorialMode && initialVol > 0 && (initialVol < currentMass * 0.85 || initialVol > currentMass * 1.0);
+
+  let canProgressTutorial = false;
+  let progressionHint = "";
+
+  if (starterTutorialMode) {
+    if (tutorialDay <= 2) {
+      canProgressTutorial = isLate;
+      if (!isLate) progressionHint = "Button unlocks after 24 hours.";
+    } else if (tutorialDay <= 7) {
+      canProgressTutorial = hasVolumeLog || isTimedOut;
+      if (!canProgressTutorial) progressionHint = "After 24 hours, log a reading to progress.";
+    } else {
+      canProgressTutorial = true;
+    }
+  }
+
+  const showFalseRise = starterTutorialMode && (tutorialDay === 2 || tutorialDay === 3) && latestVolMultiplier > 1.5;
+  const isCool = (parseFloat(session.initialTemp) > 0 && parseFloat(session.initialTemp) < 68) ||
+                 session.readings?.some(r => parseFloat(r.temp) > 0 && parseFloat(r.temp) < 68);
+  const isWarm = (parseFloat(session.initialTemp) > 80) ||
+                 session.readings?.some(r => parseFloat(r.temp) > 80);
+
+  // Biological Affiliate Triggers
+  const showThermometers = starterTutorialMode && tutorialDay >= 3 && tutorialDay <= 7;
+  const showWarmPad = isCool && starterTutorialMode;
+  const showJarRecommendation = isAccuracyIssue;
+  const showPHMeter = starterTutorialMode && tutorialDay >= 8;
+
+  const showSluggishDiagnostic = starterTutorialMode && tutorialDay >= 14 && !isEligibleForGraduation;
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {starterTutorialMode && (
+        <View style={[styles.tutorialBanner, { backgroundColor: colors.accent + "15", paddingTop: insets.top + 8 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12 }}>
+            <Text style={[styles.tutorialBannerText, { color: colors.accent }]}>NEW CULTURE: DAY {tutorialDay}</Text>
+            {tutorialDay >= 14 && onGraduate && isEligibleForGraduation && (
+              <Pressable onPress={onGraduate} style={[styles.graduateBtn, { backgroundColor: colors.accent }]}>
+                <Text style={styles.graduateBtnText}>Graduate</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Logic Banners */}
+      {starterTutorialMode && !session.peak && (
+        <View style={{ backgroundColor: colors.primary + '10', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.primary + '30' }}>
+          <Text style={{ color: colors.primary, fontSize: 12, fontFamily: fonts.sansMedium }}>
+            💡 After 24 hours, log a volume reading to unlock progression to the next day.
+          </Text>
+        </View>
+      )}
+
+      {isCool && (
+        <View style={{ backgroundColor: '#eff6ff', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8 }}>
+          <Text style={{ color: '#1e40af', fontSize: 12, fontFamily: fonts.sansMedium }}>
+            ❄️ Cool kitchen detected. Activity may take up to 36–48 hours to peak. Keep watching the volume!
+          </Text>
+        </View>
+      )}
+
+      {isWarm && (
+        <View style={{ backgroundColor: '#fff1f2', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8 }}>
+          <Text style={{ color: '#9f1239', fontSize: 12, fontFamily: fonts.sansMedium }}>
+            🔥 Warm kitchen detected. Yeast activity will be accelerated. Check volume frequently!
+          </Text>
+        </View>
+      )}
+
+      {showFalseRise && (
+        <View style={{ backgroundColor: '#fff7ed', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: '#fdba74' }}>
+          <Text style={{ color: '#9a3412', fontWeight: '700', fontSize: 13, marginBottom: 4 }}>⚠️ Heads Up: The Early Bacterial Bloom</Text>
+          <Text style={{ color: '#9a3412', fontSize: 12, lineHeight: 16 }}>
+            Seeing sudden bubbling or a funky smell? This is a normal surge of bacteria, not yeast! Expect it to go flat and look "dead" soon. Do not stop feeding!
+          </Text>
+        </View>
+      )}
+
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + webTop + 16,
+          paddingTop: 16, // Reduced since banners are above
           paddingBottom: insets.bottom + tabBarPad + 24,
           paddingHorizontal: 20,
         }}
@@ -462,9 +575,61 @@ export default function FeedActiveSessionView({
           </Animated.View>
         )}
 
+        {/* Biological Affiliate Recommendations */}
+        {showWarmPad && (
+          <AffiliateMilestoneCard
+            milestone="warm-pad"
+            title="🌡️ Is your starter sluggish?"
+            defaultDescription="Ambient kitchen temperature dictates exactly how fast your wild yeast grows. Unlock precise tracking with an external ambient probe."
+            icon="thermometer-outline"
+          />
+        )}
+
+        {showThermometers && !showWarmPad && (
+          <AffiliateMilestoneCard
+            milestone="thermometer1"
+            title="📏 Measure for Maturity"
+            defaultDescription="Consistent temperature tracking is key to a reliable starter. Grab a probe to prep for advanced feeding stages."
+            icon="speedometer-outline"
+          />
+        )}
+
+        {showJarRecommendation && (
+          <AffiliateMilestoneCard
+            milestone="starter-jar"
+            title="🏺 Accuracy Issue Detected"
+            defaultDescription="Your volume readings vary significantly from your ingredient mass. A standard narrow jar ensures accurate growth tracking."
+            icon="flask-outline"
+          />
+        )}
+
+        {showPHMeter && (
+          <AffiliateMilestoneCard
+            milestone="ph-meter"
+            title="🧪 Advanced Baker Tool Unlocked"
+            defaultDescription="Your yeast is now highly active! To prevent your starter from becoming overly sour or weak, advanced bakers track precise pH drops."
+            icon="flask-outline"
+          />
+        )}
+
+        {/* Sluggish Diagnostic Fallback */}
+        {showSluggishDiagnostic && (
+          <Animated.View entering={FadeInDown.delay(250).duration(400)} style={{ marginTop: 20 }}>
+            <View style={{ backgroundColor: '#fef2f2', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#fecaca' }}>
+              <Text style={{ color: '#991b1b', fontWeight: '700', fontSize: 14, marginBottom: 4 }}>Why hasn't my starter doubled yet?</Text>
+              <Text style={{ color: '#991b1b', fontSize: 13, lineHeight: 18, marginBottom: 12 }}>
+                Your starter is taking longer than expected to mature. Most sluggish starters just need more time or a warmer environment.
+              </Text>
+              <Pressable style={{ backgroundColor: '#991b1b', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>Run Starter Diagnostic Workflow →</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        )}
+
         <View style={{ height: 32 }} />
 
-        {!session.peak && (
+        {!session.peak && !starterTutorialMode && (
           <Animated.View entering={FadeInUp.delay(300).duration(400)}>
             <TourStep order={9} name="mark-as-peak">
               <CopilotView>
@@ -474,6 +639,33 @@ export default function FeedActiveSessionView({
                 </Pressable>
               </CopilotView>
             </TourStep>
+          </Animated.View>
+        )}
+
+        {starterTutorialMode && onProgressDay && (
+          <Animated.View entering={FadeInUp.duration(400)} style={{ gap: 8 }}>
+             {progressionHint !== "" && !canProgressTutorial && (
+               <Text style={{ textAlign: 'center', fontSize: 12, color: colors.mutedForeground, fontFamily: fonts.sans, fontStyle: 'italic' }}>
+                 {progressionHint}
+               </Text>
+             )}
+             <Pressable
+                onPress={onProgressDay}
+                disabled={!canProgressTutorial}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  {
+                    backgroundColor: canProgressTutorial ? colors.primary : colors.muted,
+                    borderRadius: colors.radius,
+                    opacity: (pressed && canProgressTutorial) ? 0.85 : 1
+                  }
+                ]}
+             >
+                <Ionicons name="arrow-forward-circle-outline" size={20} color={canProgressTutorial ? colors.primaryForeground : colors.mutedForeground} />
+                <Text style={[styles.primaryButtonText, { color: canProgressTutorial ? colors.primaryForeground : colors.mutedForeground }]}>
+                  Progress to Day {tutorialDay + 1}
+                </Text>
+             </Pressable>
           </Animated.View>
         )}
         {/* Affiliate product carousel — shown while session is active */}
@@ -643,7 +835,7 @@ export default function FeedActiveSessionView({
                       <View style={styles.readingItem}>
                         <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Vol (mL)</Text>
                         <TextInput
-                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
+                          style={[styles.input, { width: '100%', backgroundColor: colors.background, borderColor: (isTypoHigh || isEarlyDiscard) ? '#f59e0b' : colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono, textAlign: 'center' }]}
                           placeholder="200"
                           value={readingVolume}
                           onChangeText={setReadingVolume}
@@ -651,6 +843,12 @@ export default function FeedActiveSessionView({
                         />
                       </View>
                     </View>
+                    {isTypoHigh && (
+                      <Text style={[styles.validationMsg, { color: '#f59e0b' }]}>Typo check: That volume seems too high for your jar size. Please verify your entry.</Text>
+                    )}
+                    {isEarlyDiscard && (
+                      <Text style={[styles.validationMsg, { color: '#f59e0b' }]}>Did you discard already? Be sure to log the maximum height before you discarded down.</Text>
+                    )}
                   </View>
 
                   {/* Notes Input */}
@@ -915,5 +1113,44 @@ const styles = StyleSheet.create({
   unitBtnText: {
     fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — "°F" / "°C" toggle
     fontSize: 14,
+  },
+  tutorialBanner: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  tutorialBannerText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  progressBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  progressBtnText: {
+    color: '#fff',
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 14,
+  },
+  graduateBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  graduateBtnText: {
+    color: '#fff',
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  validationMsg: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    marginTop: 10,
+    lineHeight: 16,
   },
 });

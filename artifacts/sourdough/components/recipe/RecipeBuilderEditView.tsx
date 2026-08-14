@@ -34,6 +34,7 @@ interface Props {
   onOpenPhasePicker: () => void;
   onSave: () => void;
   onCancel: () => void;
+  onDuplicate: () => void;
   onDelete: (id: string) => void;
 }
 
@@ -49,6 +50,7 @@ export function RecipeBuilderEditView({
   onOpenPhasePicker,
   onSave,
   onCancel,
+  onDuplicate,
   onDelete,
 }: Props) {
   const colors = useColors();
@@ -61,7 +63,7 @@ export function RecipeBuilderEditView({
     >
       <ScrollView
         contentContainerStyle={{
-          paddingTop: 24,
+          paddingTop: insets.top + 24,
           paddingBottom: insets.bottom + tabBarPad + 60,
           paddingHorizontal: 20,
         }}
@@ -73,6 +75,7 @@ export function RecipeBuilderEditView({
           <View style={s.editHeader}>
             <Pressable
               onPress={onCancel}
+              hitSlop={12}
               style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
             >
               <Feather name="x" size={20} color={colors.mutedForeground} />
@@ -241,17 +244,31 @@ export function RecipeBuilderEditView({
               </Text>
             </Pressable>
           )}
-          {/* ── Delete link (existing recipes only) ─────────────────────── */}
+          {/* ── Duplicate & Delete links (existing recipes only) ─────────── */}
           {!isNewRecipe && (
-            <Pressable
-              onPress={() => onDelete(editingRecipe.id)}
-              style={({ pressed }) => [s.deleteLinkRow, { opacity: pressed ? 0.5 : 1 }]}
-            >
-              <Feather name="trash-2" size={14} color={colors.destructive ?? "#C0392B"} />
-              <Text style={[s.deleteLink, { color: colors.destructive ?? "#C0392B" }]}>
-                Delete Recipe
-              </Text>
-            </Pressable>
+            <View style={s.dangerZone}>
+              <Pressable
+                onPress={onDuplicate}
+                style={({ pressed }) => [s.actionLinkRow, { opacity: pressed ? 0.5 : 1 }]}
+              >
+                <Feather name="copy" size={14} color={colors.accent} />
+                <Text style={[s.actionLink, { color: colors.accent }]}>
+                  Duplicate Recipe
+                </Text>
+              </Pressable>
+
+              <View style={[s.divider, { backgroundColor: colors.border }]} />
+
+              <Pressable
+                onPress={() => onDelete(editingRecipe.id)}
+                style={({ pressed }) => [s.actionLinkRow, { opacity: pressed ? 0.5 : 1 }]}
+              >
+                <Feather name="trash-2" size={14} color={colors.destructive ?? "#C0392B"} />
+                <Text style={[s.actionLink, { color: colors.destructive ?? "#C0392B" }]}>
+                  Delete Recipe
+                </Text>
+              </Pressable>
+            </View>
           )}
         </Animated.View>
       </ScrollView>
@@ -385,17 +402,27 @@ const s = StyleSheet.create({
     fontFamily: fonts.sans,                  // HankenGrotesk_400Regular — "X remaining"
     fontSize: 12,
   },
-  deleteLinkRow: {
+  dangerZone: {
+    marginTop: 28,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'transparent', // just for spacing/structure
+  },
+  actionLinkRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,                         // 8
     justifyContent: "center",
-    marginTop: 28,
     paddingVertical: 12,
   },
-  deleteLink: {
-    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium — destructive action
+  actionLink: {
+    fontFamily: fonts.sansMedium,            // HankenGrotesk_500Medium
     fontSize: 14,
+  },
+  divider: {
+    height: 1,
+    marginHorizontal: 40,
+    opacity: 0.3,
   },
   fab: {
     position: "absolute",

@@ -18,15 +18,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
-import { saveAuth, clearAuth, type AuthUser } from "@/lib/auth";
+import { saveAuth, type AuthUser } from "@/lib/auth";
+import { clearAllAppData } from "@/lib/storageUtils";
 import { getDeviceId } from "@/lib/deviceId";
-import { migrateLocalDataToAccount, setMigrationPending, clearMigrationPending } from "@/lib/migrate";
+import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 
-const HISTORY_KEY = "sourdough_feed_history_v1";
-const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
-const RECIPES_KEY = "bread_lab_recipes_v1";
 
 interface Props {
   visible: boolean;
@@ -95,11 +93,16 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         .catch(() => {});
     } catch (error) {
       console.error("Auth Identification Error:", error);
+      const msg = error instanceof Error ? error.message : "Something went wrong";
+
       if (Platform.OS === 'web') {
-        // window.alert is reliable for debugging on web
-        window.alert("Auth Error: " + (error instanceof Error ? error.message : "Check console"));
+        window.alert(msg);
       } else {
-        Alert.alert("Something went wrong", "Check your connection and try again.");
+        if (msg.includes("recovery failed")) {
+          Alert.alert("Account Conflict", "This starter name is registered, but the recovery key didn't match. Double-check your spelling or capitalization.");
+        } else {
+          Alert.alert("Something went wrong", "Check your connection and try again.");
+        }
       }
     } finally {
       setLoading(false);
@@ -107,26 +110,23 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
   };
 
   const handleClearIdentity = async () => {
+    const performClear = async () => {
+      await api.auth.signout().catch(() => {});
+      await clearAllAppData();
+      onAuthChange(null);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      onClose();
+    };
 
-  const performClear = async () => {
-    await api.auth.signout().catch(() => {});
-    await clearAuth();
-    await clearMigrationPending().catch(() => {});
-    await AsyncStorage.multiRemove([HISTORY_KEY, BAKE_HISTORY_KEY, RECIPES_KEY]).catch(() => {});
-    onAuthChange(null);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onClose();
-  };
-
-  // WEB FIX: Use window.confirm if on web, otherwise use native Alert
-  if (Platform.OS === "web") {
-    if (window.confirm("Remove name? Your data stays synced to the server. You can re-enter your name any time to reconnect.")) {
-      await performClear();
+    // WEB FIX: Use window.confirm if on web, otherwise use native Alert
+    if (Platform.OS === "web") {
+      if (window.confirm("Remove name? Your data stays synced to the server. You can re-enter your name any time to reconnect.")) {
+        await performClear();
+      }
+      return;
     }
-    return;
-  }
 
-  // Original Mobile Alert logic
+    // Original Mobile Alert logic
     Alert.alert(
       "Remove name?",
       "Your data stays synced to the server. You can re-enter your name any time to reconnect.",
@@ -135,15 +135,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         {
           text: "Remove",
           style: "destructive",
-          onPress: async () => {
-            await api.auth.signout().catch(() => {});
-            await clearAuth();
-            await clearMigrationPending().catch(() => {});
-            await AsyncStorage.multiRemove([HISTORY_KEY, BAKE_HISTORY_KEY, RECIPES_KEY]).catch(() => {});
-            onAuthChange(null);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            onClose();
-          },
+          onPress: performClear,
         },
       ]
     );

@@ -1,6 +1,6 @@
 // artifacts/sourdough/components/lab/labHub.tsx
 import React, { useCallback, useMemo, useState, useEffect } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View, RefreshControl } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View, RefreshControl, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
@@ -60,13 +60,20 @@ export function LabHub() {
     }
   }, []);
 
+  const handleCloseEdit = useCallback(() => {
+    setEditingRecipe(null);
+    if (params.action === 'new') {
+      router.setParams({ action: undefined });
+    }
+  }, [params.action, router]);
+
   useEffect(() => {
     if (params.section) setSection(params.section as any);
-    if (params.action === 'new') {
+    if (params.action === 'new' && !editingRecipe) {
       setEditingRecipe({ id: Date.now().toString(), name: "", createdAt: Date.now(), phases: [] });
       setIsNewRecipe(true);
     }
-  }, [params.section, params.action]);
+  }, [params.section, params.action, editingRecipe]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
@@ -98,7 +105,7 @@ export function LabHub() {
     const updated = isNewRecipe ? [saved, ...recipes] : recipes.map(r => r.id === saved.id ? saved : r);
     setRecipes(updated);
     await writeRecipesLocal(updated);
-    setEditingRecipe(null);
+    handleCloseEdit();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     reportSyncStart();
     upsertRecipeRemote(saved).then(() => reportSyncSuccess()).catch(() => reportSyncFailure());
@@ -110,12 +117,63 @@ export function LabHub() {
       setRecipes(updated);
       await writeRecipesLocal(updated);
       await addToRecipeTombstone(id);
-      setEditingRecipe(null);
+      handleCloseEdit();
       const [deviceId, token] = await Promise.all([getDeviceId().catch(() => ""), getStoredToken().catch(() => null)]);
       api.recipes.delete(id, deviceId || undefined, token ?? undefined)
       .then(d => { if (d) removeFromRecipeTombstone(id); });
     };
     Alert.alert("Delete Recipe?", "Cannot be undone.", [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: doDelete }]);
+  };
+
+  const handleDuplicateRecipe = async (recipe: any) => {
+    const doDuplicate = async (newName: string) => {
+      reportSyncStart();
+      try {
+        const deviceId = await getDeviceId();
+        const token = await getStoredToken().catch(() => null);
+        const duplicatedApi = await api.recipes.duplicate(
+          recipe.id,
+          newName,
+          deviceId,
+          token ?? undefined
+        );
+
+        // Map ApiRecipe back to SavedRecipe shape
+        const newSaved = {
+          id: duplicatedApi.id,
+          name: duplicatedApi.name,
+          overview: duplicatedApi.overview,
+          createdAt: new Date(duplicatedApi.createdAt).getTime(),
+          updatedAt: new Date(duplicatedApi.updatedAt).getTime(),
+          yieldValue: duplicatedApi.yield_value > 0 ? duplicatedApi.yield_value.toString() : "",
+          phases: duplicatedApi.phases.map((p: any) => ({
+            key: p.key,
+            name: p.name,
+            ingredients: Array.isArray(p.ingredients) ? p.ingredients : [],
+            instructions: Array.isArray(p.instructions) ? p.instructions : [],
+          })),
+          parentRecipeId: duplicatedApi.parent_recipe_id,
+          versionLabel: duplicatedApi.version_label
+        };
+
+        const updated = [newSaved, ...recipes];
+        setRecipes(updated);
+        await writeRecipesLocal(updated);
+        reportSyncSuccess();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        // Optionally navigate to the new recipe
+        setEditingRecipe(newSaved);
+        setIsNewRecipe(false);
+      } catch (e) {
+        console.error("[LabHub] Duplicate failed", e);
+        reportSyncFailure();
+        Alert.alert("Error", "Failed to duplicate recipe.");
+      }
+    };
+
+    // Android-first duplication flow: Duplicate immediately and navigate to editor.
+    doDuplicate(`Copy of ${recipe.name}`);
   };
 
   const handleConfirmPhases = (keys: string[]) => {
@@ -134,7 +192,7 @@ export function LabHub() {
       {!isEditing && (
         <View style={[s.toggleWrap, { paddingTop: insets.top + 16 }]}>
           <View style={[s.toggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-            {(["feed planner", "recipe builder", "analytics"] as const).map((sec) => (
+            {(["analytics", "feed planner", "recipe builder"] as const).map((sec) => (
               <Pressable key={sec} onPress={() => { setSection(sec); Haptics.selectionAsync(); }} style={[s.toggleBtn, section === sec && { backgroundColor: colors.card }]}>
                 <Text style={[s.toggleText, { color: section === sec ? colors.foreground : colors.mutedForeground }]}>{sec.toUpperCase()}</Text>
               </Pressable>
@@ -155,7 +213,8 @@ export function LabHub() {
           onRemovePhase={removePhaseFromEdit}
           onOpenPhasePicker={() => setShowPhasePicker(true)}
           onSave={handleSaveRecipe}
-          onCancel={() => setEditingRecipe(null)}
+          onCancel={handleCloseEdit}
+          onDuplicate={() => handleDuplicateRecipe(editingRecipe)}
           onDelete={handleDeleteRecipe}
         />
       ) : (
@@ -167,11 +226,11 @@ export function LabHub() {
           {section === "analytics" && (
             <View>
               <Text style={s.hubTitle}>Vitality Analytics</Text>
-              <ReadingHint body={ACIDIFICATION_HINT} onAbout={() => router.navigate("/logbook")} colors={colors} />
+              <ReadingHint body={ACIDIFICATION_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
               <AcidificationChart data={acidSeries} hasLivePoint={false} />
-              <ReadingHint body={LIFTING_HINT} onAbout={() => router.navigate("/logbook")} colors={colors} />
+              <ReadingHint body={LIFTING_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
               <LiftingIndexChart data={liftSeries} selectedFeedNum={null} onSelectFeedNum={() => {}} />
-              <ReadingHint body={METABOLIC_HINT} onAbout={() => router.navigate("/logbook")} colors={colors} />
+              <ReadingHint body={METABOLIC_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
               <FCSScatterPlot sessions={history} selectedFeedNum={null} onSelectFeedNum={() => {}} />
             </View>
           )}
@@ -187,6 +246,7 @@ export function LabHub() {
               onEditRecipe={(r) => { setEditingRecipe(r); setIsNewRecipe(false); }}
               onPrintRecipe={(r) => printHtml(buildRecipeHtml(r))}
               onShareRecipe={(r) => shareHtmlAsPdf(buildRecipeHtml(r), r.name)}
+              onDuplicateRecipe={handleDuplicateRecipe}
               onSetLetterFilter={setLetterFilter}
               onRefresh={loadData}
             />

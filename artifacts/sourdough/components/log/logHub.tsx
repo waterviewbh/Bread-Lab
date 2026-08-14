@@ -8,14 +8,14 @@ import { fonts, radius } from "@/constants/theme";
 import { useLocalSearchParams } from "expo-router";
 
 // --- Sub-sections ---
-import { HistorySection } from "./logBook";
+import { HistorySection } from "./log";
 import { ResourcesSection } from "./logManual";
 
 /**
- * THE LOGBOOK: History and Learning
+ * THE LOG: History and Learning
  * [ History ] [ Resources ]
  */
-export function LogbookHub() {
+export function LogHub() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();

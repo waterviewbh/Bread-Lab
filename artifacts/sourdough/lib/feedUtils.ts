@@ -40,3 +40,24 @@ export function formatTimeToPeak(ms: number): string {
   return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 }
+
+/**
+ * Checks if the starter is ready for graduation based on biological activity.
+ * Criteria: 3 consecutive feeds doubling (2.0x) within 8 hours.
+ */
+export function checkGraduationEligibility(history: any[] | undefined | null): boolean {
+  if (!history || !Array.isArray(history)) return false;
+
+  const activeLogs = history.slice(0, 3);
+  if (activeLogs.length < 3) return false;
+
+  return activeLogs.every(log => {
+    if (!log?.peak || !log?.initialVolume) return false;
+    const peakVol = parseFloat(log.peak.volume);
+    const initVol = parseFloat(log.initialVolume);
+    if (isNaN(peakVol) || isNaN(initVol) || initVol <= 0) return false;
+    const multiplier = peakVol / initVol;
+    // 8 hours in ms = 28,800,000
+    return multiplier >= 2.0 && log.peak.timeToPeakMs <= 28800000;
+  });
+}

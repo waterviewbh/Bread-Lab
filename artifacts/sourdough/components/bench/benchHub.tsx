@@ -56,7 +56,7 @@ export function BenchHub() {
                   fontFamily: section === sec ? fonts.sansSemiBold : fonts.sans
                 }
               ]}>
-                {sec === "feed" ? "Feed Tracker" : "Bake"}
+                {sec === "feed" ? "Feed Tracker" : "Recipe Runner"}
               </Text>
             </Pressable>
           ))}

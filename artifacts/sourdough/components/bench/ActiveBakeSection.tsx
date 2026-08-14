@@ -51,9 +51,13 @@ export function ActiveBakeSection() {
   // State
   const [recipes, setRecipes] = useState<SavedRecipe[]>([]);
   const [bake, setBake] = useState<ActiveBake | null>(null);
-  const [selectedRecipe, setSelectedRecipe] = useState<SavedRecipe | null>(null);
-  const [runPhaseEnabled, setRunPhaseEnabled] = useState<Record<string, boolean>>({});
   const [phaseStartVolumes, setPhaseStartVolumes] = useState<Record<string, string>>({});
+
+  // Expansion States
+  const [expandedDone, setExpandedDone] = useState<Set<string>>(new Set());
+  const [expandedRecipeInfo, setExpandedRecipeInfo] = useState<Set<string>>(new Set());
+  const [expandedPending, setExpandedPending] = useState<Set<string>>(new Set());
+  const [recentlyCompletedKey, setRecentlyCompletedKey] = useState<string | null>(null);
 
   // Modals
   const [showRecipePicker, setShowRecipePicker] = useState(false);
@@ -79,35 +83,60 @@ export function ActiveBakeSection() {
   // Active Timers
   const elapsed = useActiveBakeTimer(bake);
 
+  const sessionChecks = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    if (!bake) return map;
+    bake.phases.forEach(p => {
+      p.ingredients.forEach(i => { if (i.is_checked) map[i.id] = true; });
+      p.instructions.forEach(i => { if (i.is_checked) map[i.id] = true; });
+    });
+    return map;
+  }, [bake]);
+
   // --- Data Loading ---
   const load = async () => {
     const data = await loadData();
     setRecipes(data.recipes);
     setBake(data.bake);
+
+    if (data.bake) {
+      const active = data.bake.phases.find(p => p.startedAt && !p.completedAt);
+      if (active) {
+        setExpandedRecipeInfo(new Set([active.key]));
+      } else {
+        const firstPending = data.bake.phases.find(p => !p.startedAt);
+        if (firstPending) {
+          setExpandedPending(new Set([firstPending.key]));
+        }
+      }
+    }
   };
 
   useEffect(() => { load(); }, []);
 
   // --- Handlers ---
-  const handleStartBake = async () => {
-    if (!selectedRecipe) return;
-    const phases: BakePhase[] = selectedRecipe.phases
-      .filter((p) => runPhaseEnabled[p.key])
+  const handleStartBakeWithRecipe = async (recipe: SavedRecipe) => {
+    const phases: BakePhase[] = recipe.phases
       .map((p) => ({ ...p, startedAt: null, completedAt: null, readings: [] }));
 
     const newBake: ActiveBake = {
       id: Date.now().toString(),
-      recipeId: selectedRecipe.id,
-      recipeName: selectedRecipe.name,
+      recipeId: recipe.id,
+      recipeName: recipe.name,
       startedAt: Date.now(),
       phases,
-      yieldValue: selectedRecipe.yieldValue || "1",
+      yieldValue: recipe.yieldValue || "1",
     };
 
     setBake(newBake);
     await writeBakeLocal(newBake);
     upsertBakeRemote(newBake).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Auto-expand the first phase of a new bake
+    if (phases.length > 0) {
+      setExpandedPending(new Set([phases[0].key]));
+    }
   };
 
   const handleSaveReading = async (reading: Reading) => {
@@ -163,6 +192,13 @@ export function ActiveBakeSection() {
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Auto-expand the specs of the phase we just started
+    setExpandedRecipeInfo(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
   };
 
   const handleCompletePhase = async (key: string) => {
@@ -178,6 +214,48 @@ export function ActiveBakeSection() {
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Auto-expand the NEXT unstarted phase instead of looking back
+    const currentIndex = bake.phases.findIndex(p => p.key === key);
+    const nextPhase = bake.phases.slice(currentIndex + 1).find(p => !p.startedAt);
+
+    if (nextPhase) {
+      setExpandedPending(prev => {
+        const next = new Set(prev);
+        next.add(nextPhase.key);
+        return next;
+      });
+    }
+
+    // Collapse the done card (removed looking back logic)
+    setRecentlyCompletedKey(null);
+  };
+
+  const handleToggleExpandDone = (key: string) => {
+    setExpandedDone(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleToggleExpandRecipeInfo = (key: string) => {
+    setExpandedRecipeInfo(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleToggleExpandPending = (key: string) => {
+    setExpandedPending(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
     const handleStartVolumeChange = (key: string, value: string) => {
@@ -190,10 +268,24 @@ export function ActiveBakeSection() {
         p.key === key ? { ...p, startVolume: value } : p
       );
       const updatedBake = { ...bake, phases };
-      setBake(updatedBake);
+        setBake(updatedBake);
       await writeBakeLocal(updatedBake);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
+
+  const handleToggleLineCheck = async (id: string) => {
+    if (!bake) return;
+    const phases = bake.phases.map(p => ({
+      ...p,
+      ingredients: p.ingredients.map(i => i.id === id ? { ...i, is_checked: !i.is_checked } : i),
+      instructions: p.instructions.map(i => i.id === id ? { ...i, is_checked: !i.is_checked } : i),
+    }));
+    const updatedBake = { ...bake, phases };
+    setBake(updatedBake);
+    await writeBakeLocal(updatedBake);
+    upsertBakeRemote(updatedBake).catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
 
   // --- Render ---
   return (
@@ -219,19 +311,19 @@ export function ActiveBakeSection() {
         recipeStale={false}
         inoculationAnchorKey={null}
         inoculationPercent={null}
-        expandedDone={new Set()}
-        expandedRecipeInfo={new Set()}
-        expandedPending={new Set()}
-        recentlyCompletedKey={null}
+        expandedDone={expandedDone}
+        expandedRecipeInfo={expandedRecipeInfo}
+        expandedPending={expandedPending}
+        recentlyCompletedKey={recentlyCompletedKey}
         nextHighlightKey={null}
         copiedIngredientsKey={null}
         phaseStartVolumes={phaseStartVolumes}
         scrollRef={{ current: null } as any}
         phaseCardYOffsets={{ current: {} } as any}
         phasesContainerY={{ current: 0 } as any}
-        onToggleExpandDone={() => {}}
-        onToggleExpandRecipeInfo={() => {}}
-        onToggleExpandPending={() => {}}
+        onToggleExpandDone={handleToggleExpandDone}
+        onToggleExpandRecipeInfo={handleToggleExpandRecipeInfo}
+        onToggleExpandPending={handleToggleExpandPending}
         onDeleteReading={() => {}}
         onIncrementFold={() => {}}
         onStartVolumeChange={handleStartVolumeChange}
@@ -244,22 +336,16 @@ export function ActiveBakeSection() {
         onSaveNotesOverlay={() => setShowNotesOverlay(false)}
         onCloseNotesOverlay={() => setShowNotesOverlay(false)}
         onOverlayDraftChange={setOverlayDraft}
-        sessionChecks={{}}
-        onToggleLineCheck={() => {}}
+        sessionChecks={sessionChecks}
+        onToggleLineCheck={handleToggleLineCheck}
       />
       ) : (
       <RecipeRunnerSetupView
         hasRecipes={recipes.length > 0}
-        selectedRecipe={selectedRecipe}
-        runPhaseEnabled={runPhaseEnabled}
         onOpenRecipePicker={() => setShowRecipePicker(true)}
-        onStartBake={handleStartBake}
-        onTogglePhase={(key) => setRunPhaseEnabled(prev => ({ ...prev, [key]: !prev[key] }))}
-        // Add these required props
         refreshing={refreshing}
         onGoToBuilder={() => {}}
         onCreateRecipe={() => {}}
-        onChangeRecipe={() => setSelectedRecipe(null)}
         onRefresh={load}
       />
       )}
@@ -267,7 +353,7 @@ export function ActiveBakeSection() {
       <RecipePickerModal
         visible={showRecipePicker}
         recipes={recipes}
-        onSelect={(r) => { setSelectedRecipe(r); setShowRecipePicker(false); }}
+        onSelect={(r) => { handleStartBakeWithRecipe(r); setShowRecipePicker(false); }}
         onClose={() => setShowRecipePicker(false)}
       />
 

@@ -59,7 +59,7 @@ export function ReadingHint({
             accessibilityRole="link"
           >
             <Text style={[h.moreLinkText, { color: colors.accent }]}>
-              More in the Logbook Tab →
+              More in the Log Tab →
             </Text>
           </Pressable>
         </View>

@@ -22,15 +22,23 @@ import { fetchAffiliateItems, AffiliateItem } from "@/lib/affiliateItems";
 const INTERVAL_MS = 9000; // 9 seconds per card, up from 6
 const SLIDE_DURATION_MS = 280;
 const CARD_HEIGHT = 88; // adjust to taste
-export default function AffiliateCarousel() {
+
+interface Props {
+  tab?: "feed" | "runner";
+}
+
+export default function AffiliateCarousel({ tab }: Props) {
   const colors = useColors();
   const [items, setItems] = useState<AffiliateItem[]>([]);
   const [index, setIndex] = useState(0);
   const translateX = useRef(new Animated.Value(0)).current;
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);  // Fetch on mount — lightweight, no polling
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Fetch on mount or when tab changes
   useEffect(() => {
-    fetchAffiliateItems().then(setItems);
-  }, []);  // Slide transition: exit left, reset right, enter center
+    fetchAffiliateItems({ tab }).then(setItems);
+  }, [tab]);
+  // Slide transition: exit left, reset right, enter center
   const advanceTo = useCallback(
     (nextIndex: number) => {
       // Slide current card out to the left

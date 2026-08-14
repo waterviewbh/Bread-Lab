@@ -1,34 +1,27 @@
 // artifacts/sourdough/components/bench/ActiveFeedSection.tsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, AppState, View, StyleSheet, Text } from "react-native";
+import { Alert, View, StyleSheet, Modal, Text, Pressable } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api, type ApiFeedSession } from "@/lib/api";
+import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
-import type { SessionForAnalytics } from "@/lib/analytics";
 import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
 import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
 
 import AuthModal from "@/components/AuthModal";
-import NudgeBanner from "@/components/NudgeBanner";
 import FeedActiveSessionView from "@/components/feed/FeedActiveSessionView";
 import FeedSetupView from "@/components/feed/FeedSetupView";
 
 import { FeedSession, Reading, PeakData } from "@/types/feed";
-import { patchReadingsTempUnit, calcRatioStr } from "@/lib/feedUtils";
-import { fonts } from "@/constants/theme";
+import { calcRatioStr, checkGraduationEligibility } from "@/lib/feedUtils";
+import { usePreferences } from "@/contexts/PreferencesContext";
+import { Ionicons } from "@expo/vector-icons"; // Added for Day 2 button icon
 
 const STORAGE_KEY = "sourdough_feed_session_v1";
 const HISTORY_KEY = "sourdough_feed_history_v1";
-const NUDGE_KEY = "bread_lab_name_nudge_shown_v1";
-const SYNC_INTERVAL_MS = 15 * 60 * 1000;
-
-// STITCH: New Starter Bridge
-const NEW_STARTER_KEY = "bread_lab_is_new_starter_v1";
-const DAY_COUNTER_KEY = "bread_lab_current_day_v1";
 
 export function ActiveFeedSection({
   incomingStarter,
@@ -44,23 +37,35 @@ export function ActiveFeedSection({
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { reportSyncStart, reportSyncSuccess, reportSyncFailure } = useSyncStatus();
+  const {
+    starterTutorialMode, setStarterTutorialMode,
+    tutorialDay, setTutorialDay,
+    baselineVolume, setBaselineVolume,
+    tutorialMetadata, setTutorialMetadata
+  } = usePreferences();
+
+  const isEligibleForGraduation = checkGraduationEligibility(historyData);
+
+  useEffect(() => {
+    if (starterTutorialMode && isEligibleForGraduation && !showGraduationModal) {
+      setShowGraduationModal(true);
+    }
+  }, [starterTutorialMode, isEligibleForGraduation, showGraduationModal]);
 
   // --- Core State ---
   const [session, setSession] = useState<FeedSession | null>(null);
   const [historyData, setHistoryData] = useState<FeedSession[]>([]);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showNudge, setShowNudge] = useState(false);
-
-  // New Starter State
-  const [isNewStarter, setIsNewStarter] = useState(false);
-  const [currentDay, setCurrentDay] = useState(1);
+  const [showGraduationModal, setShowGraduationModal] = useState(false);
 
   const sessionRef = useRef<FeedSession | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
 
   // --- Sync Logic ---
   const syncActiveSession = useCallback(async (knownLocal?: FeedSession | null) => {
+    if (starterTutorialMode) return; // Skip remote sync in tutorial mode
+
     const local = knownLocal !== undefined ? knownLocal : sessionRef.current;
     try {
       const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
@@ -71,7 +76,6 @@ export function ActiveFeedSection({
           setSession(null);
           return;
         }
-        // Logic to pick freshest and push
         reportSyncStart();
         await api.history.feed.upsert({
           id: local.id,
@@ -86,16 +90,14 @@ export function ActiveFeedSection({
         reportSyncSuccess();
       }
     } catch (e) { reportSyncFailure(); }
-  }, [reportSyncStart, reportSyncSuccess, reportSyncFailure]);
+  }, [reportSyncStart, reportSyncSuccess, reportSyncFailure, starterTutorialMode]);
 
   useEffect(() => {
     const init = async () => {
-      const [stored, histRaw, user, starterMode, day] = await Promise.all([
+      const [stored, histRaw, user] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEY),
         AsyncStorage.getItem(HISTORY_KEY),
         getStoredUser(),
-        AsyncStorage.getItem(NEW_STARTER_KEY),
-        AsyncStorage.getItem(DAY_COUNTER_KEY)
       ]);
 
       let currentSession: FeedSession | null = null;
@@ -116,10 +118,15 @@ export function ActiveFeedSection({
       }
 
       if (currentSession) setSession(currentSession);
-      if (histRaw) setHistoryData(JSON.parse(histRaw));
+      if (histRaw) {
+        try {
+          const parsed = JSON.parse(histRaw);
+          if (Array.isArray(parsed)) setHistoryData(parsed);
+        } catch (e) {
+          console.warn("[Feed] Failed to parse history", e);
+        }
+      }
       if (user) setCurrentUser(user);
-      if (starterMode === "1") setIsNewStarter(true);
-      if (day) setCurrentDay(parseInt(day));
 
       if (currentSession) {
         syncActiveSession(currentSession);
@@ -128,45 +135,39 @@ export function ActiveFeedSection({
     init();
   }, [syncActiveSession]);
 
+  // --- Empty State Tutorial Prompt ---
+  useEffect(() => {
+    if (!starterTutorialMode && historyData.length === 0 && !session) {
+      Alert.alert(
+        "Would you like to start a new culture?",
+        "It looks like you your feed history is empty. Would you like a guided tutorial to establish a new starter?",
+        [
+          { text: "No thanks", style: "cancel" },
+          {
+            text: "Let's begin!",
+            onPress: () => {
+              setStarterTutorialMode(true);
+              setTutorialDay(1);
+            }
+          }
+        ]
+      );
+    }
+  }, [historyData.length, starterTutorialMode, session, setStarterTutorialMode, setTutorialDay]);
+
   // --- Handlers ---
   const handleStartFeed = async (data: any) => {
-    const sw = parseFloat(data.starterWeight);
     const now = Date.now();
+    const isNew = starterTutorialMode;
 
-    // Trigger "New Starter?" prompt if it's the very first feed ever
-    if (historyData.length === 0 && !isNewStarter) {
-        Alert.alert("New Starter?", "Are you starting a brand new culture from scratch?", [
-            { text: "No, established", onPress: () => startSession(data, false) },
-            { text: "Yes, Day 1", onPress: () => {
-                setIsNewStarter(true);
-                setCurrentDay(1);
-                AsyncStorage.setItem(NEW_STARTER_KEY, "1");
-                AsyncStorage.setItem(DAY_COUNTER_KEY, "1");
-                startSession({ ...data, starterWeight: "0", flourWeight: 50, waterWeight: 50 }, true);
-            }}
-        ]);
-    } else {
-        startSession(data, isNewStarter);
+    if (starterTutorialMode && tutorialDay === 1) {
+      setBaselineVolume(parseFloat(data.initialVolume) || 0);
     }
-  };
 
-  useEffect(() => {
-      if (autoStart && incomingStarter && !session) {
-        handleStartFeed({
-          starterWeight: incomingStarter,
-          flourWeight: parseFloat(incomingFlour || "0"),
-          waterWeight: parseFloat(incomingWater || "0"),
-          initialVolume: "100",
-        });
-      }
-    }, [autoStart, incomingStarter]);
-
-  const startSession = async (data: any, isNew: boolean) => {
-    const now = Date.now();
     const newSession: FeedSession = {
       id: now.toString() + Math.random().toString(36).substr(2, 9),
       ...data,
-      ratioStr: isNew ? "1:1" : calcRatioStr(parseFloat(data.starterWeight), data.flourWeight, data.waterWeight, data.sugarWeight),
+      ratioStr: isNew ? (tutorialDay === 1 ? "0:1:1" : "1:1:1") : calcRatioStr(parseFloat(data.starterWeight), data.flourWeight, data.waterWeight, data.sugarWeight),
       savedAt: now,
       updatedAt: now,
       readings: [],
@@ -177,84 +178,139 @@ export function ActiveFeedSection({
     syncActiveSession(newSession);
   };
 
+  const handleConfirmStir = async () => {
+    const now = Date.now();
+    const stirSession: FeedSession = {
+      id: "stir-" + now.toString(),
+      starterWeight: "N/A",
+      flourWeight: 0,
+      waterWeight: 0,
+      wwPercent: 0,
+      initialPH: "",
+      initialTemp: "",
+      initialTempUnit: "F",
+      initialVolume: String(baselineVolume),
+      fedPhoto: null,
+      ratioStr: "STIR PHASE",
+      savedAt: now,
+      updatedAt: now,
+      readings: [],
+    };
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(stirSession));
+    setSession(stirSession);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
   const handleSavePeak = async (peak: PeakData) => {
     if (!session) return;
-    if (isNewStarter) {
-        // "Progress Day" Logic
-        const nextDay = currentDay + 1;
-        setCurrentDay(nextDay);
-        await AsyncStorage.setItem(DAY_COUNTER_KEY, nextDay.toString());
 
-        // Save current day to history as a "snapshot"
-        const completed = { ...session, peak, completedAt: Date.now(), updatedAt: Date.now() };
-        const stored = await AsyncStorage.getItem(HISTORY_KEY);
-        const existing = stored ? JSON.parse(stored) : [];
-        existing.unshift(completed);
-        const historyTrimmed = existing.slice(0, 500);
-        setHistoryData(historyTrimmed);
-        await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(historyTrimmed));
+    // Save to local history as a snapshot
+    const completed = {
+      ...session,
+      peak,
+      completedAt: Date.now(),
+      updatedAt: Date.now(),
+      isTutorialSnapshot: starterTutorialMode
+    };
 
-        // Reset for next day instructions
-        const nextInstructions = {
-            starterWeight: "25",
-            flourWeight: 25,
-            waterWeight: 25,
-            initialVolume: "50", // placeholder
-        };
-        startSession(nextInstructions, true);
-        Alert.alert(`Day ${nextDay} Started`, "Discard down to 25g starter and add 25g flour + 25g water.");
-    } else {
-        // COMPLETION: Mark as closed and save to history
-        const completed = { ...session, peak, completedAt: Date.now(), updatedAt: Date.now(), savedToHistory: true };
-
-        // 1. Save to local history
-        const stored = await AsyncStorage.getItem(HISTORY_KEY);
-        const existing = stored ? JSON.parse(stored) : [];
-        existing.unshift(completed);
-        const historyTrimmed = existing.slice(0, 500);
-        setHistoryData(historyTrimmed);
-        await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(historyTrimmed));
-
-        // 2. Clear active local
-        await AsyncStorage.removeItem(STORAGE_KEY);
-        setSession(null);
-
-        // 3. Sync to remote (marked as completed with inProgress: false)
-        try {
-          const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
-          reportSyncStart();
-          await api.history.feed.upsert({
-            id: completed.id,
-            deviceId,
-            userId: userId ?? undefined,
-            savedAt: completed.savedAt,
-            startedAt: completed.savedAt,
-            updatedAt: completed.updatedAt,
-            inProgress: false, // CRITICAL: marks session as closed
-            data: completed as any,
-          });
-          reportSyncSuccess();
-        } catch (e) {
-          reportSyncFailure();
-        }
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const stored = await AsyncStorage.getItem(HISTORY_KEY);
+    let existing = [];
+    try {
+      const parsed = stored ? JSON.parse(stored) : [];
+      existing = Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.warn("[Feed] Failed to parse history during save", e);
     }
+
+    existing.unshift(completed);
+    const historyTrimmed = existing.slice(0, 500);
+    setHistoryData(historyTrimmed);
+    await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(historyTrimmed));
+
+    if (!starterTutorialMode) {
+      // Normal Mode: Persist to remote and clear active session
+      await AsyncStorage.removeItem(STORAGE_KEY);
+      setSession(null);
+
+      try {
+        const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
+        reportSyncStart();
+        await api.history.feed.upsert({
+          id: completed.id,
+          deviceId,
+          userId: userId ?? undefined,
+          savedAt: completed.savedAt,
+          startedAt: completed.savedAt,
+          updatedAt: completed.updatedAt,
+          inProgress: false,
+          data: completed as any,
+        });
+        reportSyncSuccess();
+      } catch (e) {
+        reportSyncFailure();
+      }
+    } else {
+      // Tutorial Mode: Keep session active until manual progression
+      const updated = { ...session, peak, updatedAt: Date.now() };
+      setSession(updated);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
+
+  const handleProgressDay = async () => {
+    // Mandate volume for Day 5+
+    if (starterTutorialMode && tutorialDay >= 5) {
+      const hasFinalVolume = session?.peak?.volume || (session?.readings && session.readings.length > 0 && session.readings[session.readings.length - 1].volume);
+      if (!hasFinalVolume) {
+        Alert.alert("Final Volume Required", "From Day 5 onwards, you must record the starter's volume just before discarding and feeding for the next day.");
+        return;
+      }
+    }
+
+    const nextDay = tutorialDay + 1;
+    setTutorialDay(nextDay);
+    await AsyncStorage.removeItem(STORAGE_KEY);
+    setSession(null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleGraduate = () => {
+    Alert.alert(
+      "Graduate Starter?",
+      "This will turn off Tutorial Mode and move you to established baker tracking.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Graduate",
+          onPress: () => {
+            setStarterTutorialMode(false);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+        }
+      ]
+    );
+  };
+
+  useEffect(() => {
+    if (autoStart && incomingStarter && !session) {
+      handleStartFeed({
+        starterWeight: incomingStarter,
+        flourWeight: parseFloat(incomingFlour || "0"),
+        waterWeight: parseFloat(incomingWater || "0"),
+        initialVolume: "100",
+      });
+    }
+  }, [autoStart, incomingStarter, session]);
 
   return (
     <View style={{ flex: 1 }}>
-      {isNewStarter && session && (
-          <View style={[s.dayBanner, { backgroundColor: colors.accent + "15", paddingTop: insets.top }]}>
-             <Text style={[s.dayText, { color: colors.accent }]}>New Culture: Day {currentDay}</Text>
-          </View>
-      )}
       {session ? (
         <FeedActiveSessionView
           session={session}
           historyData={historyData}
           onLogReading={(r) => {
             if (!session) return;
-            // PERSISTENCE: Update local state and sync reading
             const updated = {
               ...session,
               readings: [...(session.readings || []), r],
@@ -268,7 +324,6 @@ export function ActiveFeedSection({
           onClearSession={() => {
             const doClear = async () => {
               if (session) {
-                // CLEANUP: Remove from remote as well to avoid orphaning
                 const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
                 api.history.feed.delete(session.id, deviceId, userId ?? undefined).catch(() => {});
               }
@@ -277,22 +332,69 @@ export function ActiveFeedSection({
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             };
 
-            Alert.alert("Abandon Feed?", "This will remove the current active tracker. You can also 'Mark as Peak' to save it to history instead.", [
+            Alert.alert("Abandon Feed?", "This will remove the current active tracker.", [
               { text: "Cancel", style: "cancel" },
               { text: "Discard", style: "destructive", onPress: doClear }
             ]);
           }}
+          onProgressDay={handleProgressDay}
+          onGraduate={handleGraduate}
         />
       ) : (
-        <FeedSetupView onStartFeed={handleStartFeed} historyData={historyData} />
+        starterTutorialMode && tutorialDay === 2 ? (
+          <View style={[styles.stirContainer, { backgroundColor: colors.background, paddingTop: insets.top + 60 }]}>
+            <Ionicons name="reload" size={80} color={colors.primary} style={{ marginBottom: 24 }} />
+            <Text style={[styles.stirTitle, { color: colors.foreground }]}>Day 2: Stir Phase</Text>
+            <Text style={[styles.stirBody, { color: colors.mutedForeground }]}>
+              DO NOT FEED TODAY. Stir your mixture vigorously for 30 seconds to introduce fresh oxygen and disrupt mold. Re-cover loosely.
+            </Text>
+            <Pressable
+              onPress={handleConfirmStir}
+              style={({ pressed }) => [styles.stirBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 }]}
+            >
+              <Text style={[styles.stirBtnText, { color: colors.primaryForeground }]}>Confirm Vigorous Stir</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <FeedSetupView onStartFeed={handleStartFeed} historyData={historyData} />
+        )
       )}
 
       <AuthModal visible={showAuthModal} currentUser={currentUser} onClose={() => setShowAuthModal(false)} onAuthChange={setCurrentUser} />
+
+      <Modal visible={showGraduationModal} animationType="slide" transparent={true}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: colors.card, borderRadius: 24, padding: 32, alignItems: 'center' }}>
+            <Ionicons name="school-outline" size={80} color={colors.primary} style={{ marginBottom: 20 }} />
+            <Text style={{ fontSize: 24, fontWeight: '700', color: colors.foreground, textAlign: 'center', marginBottom: 12 }}>Congratulations! 🎓</Text>
+            <Text style={{ fontSize: 16, color: colors.mutedForeground, textAlign: 'center', lineHeight: 24, marginBottom: 32 }}>
+              Your starter has reliably doubled in height within 8 hours for 3 consecutive cycles. It is officially established and ready for baking!
+            </Text>
+            <View style={{ alignSelf: 'stretch', gap: 12 }}>
+              <Pressable
+                onPress={() => { setShowGraduationModal(false); handleGraduate(); }}
+                style={({ pressed }) => [{ backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center', opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Text style={{ color: colors.primaryForeground, fontWeight: '600', fontSize: 16 }}>Graduate & Unlock Full App</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setShowGraduationModal(false)}
+                style={({ pressed }) => [{ backgroundColor: colors.muted, borderRadius: 12, paddingVertical: 16, alignItems: 'center', opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Text style={{ color: colors.mutedForeground, fontWeight: '600', fontSize: 14 }}>Keep Tracking in Tutorial Mode</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  dayBanner: { padding: 12, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  dayText: { fontFamily: fonts.sansSemiBold, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 },
+const styles = StyleSheet.create({
+  stirContainer: { flex: 1, alignItems: 'center', paddingHorizontal: 40 },
+  stirTitle: { fontSize: 24, fontWeight: '700', marginBottom: 16 },
+  stirBody: { fontSize: 16, textAlign: 'center', lineHeight: 24, marginBottom: 40 },
+  stirBtn: { paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 },
+  stirBtnText: { fontSize: 16, fontWeight: '600' }
 });

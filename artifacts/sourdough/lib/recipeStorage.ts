@@ -88,6 +88,8 @@ export async function loadAll(): Promise<{
           ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing'),
           instructions: Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins'),
         })),
+        parentRecipeId: r.parent_recipe_id,
+        versionLabel: r.version_label,
       }));
     if (token || apiRecipes.length > 0) {
       recipes = mapped;
@@ -179,6 +181,8 @@ export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
           ingredients: p.ingredients,
           instructions: p.instructions,
         })),
+        parentRecipeId: recipe.parentRecipeId,
+        versionLabel: recipe.versionLabel,
       })
     )
     .then(() => undefined);

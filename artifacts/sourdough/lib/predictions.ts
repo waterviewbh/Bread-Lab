@@ -30,9 +30,12 @@ export interface PlannedRecipe {
  * Sourdough Time ~ Inoculation Ratio + Ambient Temp.
  */
 export function trainModel(history: FeedSession[]): PredictionModel {
-  const validEntries = history.filter(
-    (s) => s.peak?.timeToPeakMs && s.initialTemp && !isNaN(parseFloat(s.initialTemp))
-  );
+  const validEntries = history
+    .filter(
+      (s) => s.peak?.timeToPeakMs && s.initialTemp && !isNaN(parseFloat(s.initialTemp))
+    )
+    .sort((a, b) => b.savedAt - a.savedAt) // Sort newest first
+    .slice(0, 15); // Recency Window: 15 sessions
 
   // Biological "Slopes" (The physics of fermentation)
   // These stay relatively constant across starters.

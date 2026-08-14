@@ -20,7 +20,7 @@ const HISTORY_KEY = "sourdough_feed_history_v1";
 const { width } = Dimensions.get('window');
 
 // Reusable Artisan Icons (Extracted from (tabs)/_layout.tsx)
-function WelcomeIcon({ name, color }: { name: 'lab' | 'bench' | 'logbook', color: string }) {
+function WelcomeIcon({ name, color }: { name: 'lab' | 'bench' | 'log', color: string }) {
   if (name === 'bench') {
     return (
       <Svg width="32" height="32" viewBox="0 0 402 415.98" fill="none">
@@ -51,7 +51,7 @@ function WelcomeIcon({ name, color }: { name: 'lab' | 'bench' | 'logbook', color
     );
   }
 
-  if (name === 'logbook') {
+  if (name === 'log') {
     return (
       <Svg width="32" height="32" viewBox="0 0 394.81 403.2" fill="none">
         <G transform="translate(-1.1859 -.59294)">
@@ -137,10 +137,10 @@ export default function WelcomeHub() {
           colors={colors}
         />
         <HubPanel 
-          name="logbook"
-          title="The Logbook"
+          name="log"
+          title="The Log"
           description="Reflect, diagnose, and improve. Analyze crumb structures and crust color."
-          onPress={() => router.push('/logbook')}
+          onPress={() => router.push('/log')}
           colors={colors}
         />
       </View>
@@ -148,7 +148,7 @@ export default function WelcomeHub() {
       <View style={styles.quickActionsSection}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/logbook?section=resources')}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/log?section=resources')}>
             <Text style={[styles.seeAll, { color: colors.mutedForeground }]}>See all</Text>
           </TouchableOpacity>
         </View>

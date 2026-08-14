@@ -25,6 +25,12 @@ import { PhaseHighlight } from "@/components/recipe/PhaseHighlight";
 import { ReadingRow } from "@/components/recipe/ReadingRow";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const filterEmptyLines = (lines: any[]) => {
+  if (!lines) return [];
+  return lines.filter(l => l && typeof l.text === 'string' && l.text.trim() !== "");
+};
+
 // ─── Shared Component ────────────────────────────────────────────────────────
 const CheckRow = ({
   line,
@@ -81,7 +87,10 @@ export function PendingPhaseCard({
   sessionChecks,
   onToggleLineCheck,
 }: PendingPhaseCardProps) {
-  const hasPendingInfo = phase.ingredients.length > 0 || phase.instructions.length > 0;
+  const visibleIngredients = filterEmptyLines(phase.ingredients);
+  const visibleInstructions = filterEmptyLines(phase.instructions);
+  const hasPendingInfo = visibleIngredients.length > 0 || visibleInstructions.length > 0;
+
   return (
     <PhaseHighlight active={isNextHighlight} accentColor={colors.accent}>
       <View
@@ -106,18 +115,18 @@ export function PendingPhaseCard({
         </Pressable>
         {isExpanded && hasPendingInfo && (
           <View style={[s.expandedSection, { borderTopColor: colors.border }]}>
-            {phase.ingredients.length > 0 && (
+            {visibleIngredients.length > 0 && (
               <>
                 <Text style={s.recipeInfoLabel}>Ingredients</Text>
-                {phase.ingredients.map(line => (
+                {visibleIngredients.map(line => (
                   <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
                 ))}
               </>
             )}
-            {phase.instructions.length > 0 && (
+            {visibleInstructions.length > 0 && (
               <>
                 <Text style={[s.recipeInfoLabel, { marginTop: 8 }]}>Instructions</Text>
-                {phase.instructions.map(line => (
+                {visibleInstructions.map(line => (
                   <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
                 ))}
               </>
@@ -157,7 +166,10 @@ export function DonePhaseCard({
   sessionChecks,
   onToggleLineCheck,
 }: DonePhaseCardProps) {
-  const hasSpec = phase.ingredients.length > 0 || phase.instructions.length > 0;
+  const visibleIngredients = filterEmptyLines(phase.ingredients);
+  const visibleInstructions = filterEmptyLines(phase.instructions);
+  const hasSpec = visibleIngredients.length > 0 || visibleInstructions.length > 0;
+
   return (
     <Animated.View
       entering={isRecentlyCompleted ? FadeIn.duration(300) : undefined}
@@ -187,18 +199,18 @@ export function DonePhaseCard({
             </Pressable>
             {hasSpec && (
               <View style={{ marginTop: 12 }}>
-                {phase.ingredients.length > 0 && (
+                {visibleIngredients.length > 0 && (
                   <>
                     <Text style={s.recipeInfoLabel}>Ingredients</Text>
-                    {phase.ingredients.map(line => (
+                    {visibleIngredients.map(line => (
                       <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
                     ))}
                   </>
                 )}
-                {phase.instructions.length > 0 && (
+                {visibleInstructions.length > 0 && (
                   <>
                     <Text style={[s.recipeInfoLabel, { marginTop: 8 }]}>Instructions</Text>
-                    {phase.instructions.map(line => (
+                    {visibleInstructions.map(line => (
                       <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
                     ))}
                   </>
@@ -256,7 +268,9 @@ export function ActivePhaseCard({
   sessionChecks,
   onToggleLineCheck,
 }: ActivePhaseCardProps) {
-    const hasRecipeInfo = phase.ingredients.length > 0 || phase.instructions.length > 0;
+    const visibleIngredients = filterEmptyLines(phase.ingredients);
+    const visibleInstructions = filterEmptyLines(phase.instructions);
+    const hasRecipeInfo = visibleIngredients.length > 0 || visibleInstructions.length > 0;
     const isBulk = phase.key === "bulk_fermenting";
     const bulkTimer = useBulkFermentTimer(isBulk ? phase.bulkFermentState : undefined);
     const bulkTargetLabel = getBulkTargetLabel(phase.bulkFermentState);
@@ -266,13 +280,16 @@ export function ActivePhaseCard({
       <View style={[s.activeStrip, { backgroundColor: colors.accent }]} />
 
       <View style={s.activeHeader}>
-        <View style={s.compactRow}>
+        <Pressable
+          onPress={onToggleSpec}
+          style={({ pressed }) => [s.compactRow, { opacity: pressed ? 0.7 : 1 }]}
+        >
           <Ionicons name="radio-button-on" size={18} color={colors.accent} />
           <View style={{ flex: 1 }}>
             <Text style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansSemiBold }]}>{phase.name}</Text>
           </View>
           {!isBulk && <Text style={[s.timerLarge, { color: colors.accent }]}>{formatTimer(elapsedMs)}</Text>}
-        </View>
+        </Pressable>
       </View>
 
       {isBulk && (
@@ -343,7 +360,7 @@ export function ActivePhaseCard({
 
       {isSpecExpanded && (
         <View style={[s.recipeInfoSection, { borderTopColor: colors.border }]}>
-          {phase.ingredients.length > 0 && (
+          {visibleIngredients.length > 0 && (
             <>
               <View style={s.ingredientsLabelRow}>
                 <Text style={s.recipeInfoLabel}>Ingredients</Text>
@@ -352,15 +369,15 @@ export function ActivePhaseCard({
                   <Text style={s.copyBtnText}>{copiedIngredientsKey === phase.key ? "Copied ✓" : "Copy"}</Text>
                 </Pressable>
               </View>
-              {phase.ingredients.map(line => (
+              {visibleIngredients.map(line => (
                 <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
               ))}
             </>
           )}
-          {phase.instructions.length > 0 && (
+          {visibleInstructions.length > 0 && (
             <>
               <Text style={[s.recipeInfoLabel, { marginTop: 12 }]}>Instructions</Text>
-              {phase.instructions.map(line => (
+              {visibleInstructions.map(line => (
                 <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
               ))}
             </>

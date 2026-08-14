@@ -26,6 +26,7 @@ interface Props {
   onEditRecipe: (r: SavedRecipe) => void;
   onPrintRecipe: (r: SavedRecipe) => void;
   onShareRecipe: (r: SavedRecipe) => void;
+  onDuplicateRecipe: (r: SavedRecipe) => void;
   onSetLetterFilter: (letter: string | null) => void;
   onRefresh: () => void;
 }
@@ -42,6 +43,7 @@ export function RecipeBuilderListView({
   onEditRecipe,
   onPrintRecipe,
   onShareRecipe,
+  onDuplicateRecipe,
   onSetLetterFilter,
   onRefresh,
 }: Props) {
@@ -176,7 +178,14 @@ export function RecipeBuilderListView({
                     >
                       {r.name}
                     </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <Pressable
+                        onPress={(e) => { e.stopPropagation?.(); onDuplicateRecipe(r); }}
+                        hitSlop={8}
+                        style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+                      >
+                        <Feather name="copy" size={15} color={colors.mutedForeground} />
+                      </Pressable>
                       <Pressable
                         onPress={(e) => { e.stopPropagation?.(); onPrintRecipe(r); }}
                         hitSlop={8}

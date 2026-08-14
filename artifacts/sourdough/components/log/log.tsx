@@ -1,4 +1,4 @@
-// artifacts/sourdough/components/log/logBook.tsx
+// artifacts/sourdough/components/log/log.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";

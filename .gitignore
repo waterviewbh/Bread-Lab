@@ -36,6 +36,7 @@ npm-debug.log
 yarn-error.log
 testem.log
 /typings
+*.artifact.md
 
 # System Files
 .DS_Store
@@ -55,3 +56,7 @@ Thumbs.db
 .github/workflows/
 .vercel
 .env*
+
+# Wrongs
+/androidwrong/
+/.expowrong/

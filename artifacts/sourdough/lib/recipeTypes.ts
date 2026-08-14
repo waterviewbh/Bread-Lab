@@ -103,6 +103,8 @@ export interface SavedRecipe {
   yieldValue?: string;
   totalFlourG?: number;
   hydrationPct?: number;
+  parentRecipeId?: string;
+  versionLabel?: string;
 }
 
 // ─── Active bake phase (runner shape, extends builder config) ─────────────────
@@ -214,11 +216,11 @@ export const VOLUME_TRACKING_PHASE_KEYS = new Set([
 // Source: empirical sourdough bulk ferment combines guidance from Cucuzza's TSJ and Forkish's FWSY.
 // Cooler dough = longer bulk = more conservative rise target before shaping.
 export const BULK_TEMP_RISE_TABLE: { maxTempF: number; targetFraction: number }[] = [
-  { maxTempF: 68, targetFraction: 0.80 }, // Cool kitchen: 50% rise target
-  { maxTempF: 72, targetFraction: 0.60 },
-  { maxTempF: 76, targetFraction: 0.47 },
-  { maxTempF: 80, targetFraction: 0.32 },
-  { maxTempF: 84, targetFraction: 0.30 }, // Warm kitchen: 30% rise target
+  { maxTempF: 68, targetFraction: 1.00 }, // Cool: 100% rise
+  { maxTempF: 72, targetFraction: 0.75 },
+  { maxTempF: 76, targetFraction: 0.55 },
+  { maxTempF: 80, targetFraction: 0.40 },
+  { maxTempF: 84, targetFraction: 0.35 }, // Warm: 35% rise
 ];
 
 /** Minimum elapsed-time gap (ms) between readings before the derivative is trusted.

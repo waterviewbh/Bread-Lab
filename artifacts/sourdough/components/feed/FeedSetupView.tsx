@@ -52,6 +52,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { tempUnit } = usePreferences();
+  const { starterTutorialMode, tutorialDay } = usePreferences();
 
   // --- Local State ---
   const [starterWeight, setStarterWeight] = useState("");
@@ -81,15 +82,62 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
   }, [registerScrollView]);
 
   // --- Derived ---
-  const sw = parseFloat(starterWeight);
-  const fw = parseFloat(flourWeightStr);
-  const ww = parseFloat(waterWeightStr);
+  const sw = parseFloat(starterWeight) || 0;
+  const fw = parseFloat(flourWeightStr) || 0;
+  const ww = parseFloat(waterWeightStr) || 0;
   const flourWeight = fw > 0 ? fw : null;
   const sugarWeight = sugarEnabled ? parseFloat(sugarWeightStr) : undefined;
-  const derivedRatioStr =
-    sw > 0 && fw > 0 && ww > 0 ? calcRatioStr(sw, fw, ww, sugarWeight) : null;
 
-  const pickPhoto = (onPhoto: (uri: string) => void) => {
+  // Day 1 special case: Ratio 0:1:1 is valid
+  const isDay1 = starterTutorialMode && tutorialDay === 1;
+  const totalMass = sw + fw + ww;
+  const predictedVolume = Math.round(totalMass * 0.85);
+  const isVolumeInaccurate = starterTutorialMode && initialVolume !== "" && (parseFloat(initialVolume) < totalMass * 0.85 || parseFloat(initialVolume) > totalMass * 1.0);
+
+  const derivedRatioStr =
+    (isDay1 || (sw > 0)) && fw > 0 && ww > 0 ? calcRatioStr(sw, fw, ww, sugarWeight) : null;
+
+  // --- Tutorial Targets ---
+  useEffect(() => {
+    if (starterTutorialMode) {
+      if (tutorialDay === 1) {
+        setStarterWeight("0");
+        setFlourWeightStr("50");
+        setWaterWeightStr("50");
+      } else if (tutorialDay >= 2 && tutorialDay <= 7) {
+        setStarterWeight("25");
+        setFlourWeightStr("25");
+        setWaterWeightStr("25");
+      } else if (tutorialDay >= 8) {
+        // Prescription depends on current temp input
+        const temp = parseFloat(initialTemp);
+        const isWarm = tempUnit === "F" ? temp >= 74 : temp >= 23.3;
+        const target = isWarm ? "100" : "75";
+
+        setStarterWeight("25");
+        setFlourWeightStr(target);
+        setWaterWeightStr(target);
+      }
+    }
+  }, [starterTutorialMode, tutorialDay, initialTemp, tempUnit]);
+
+// --- Progressive Disclosure ---
+const isWeightDisabled = starterTutorialMode;
+const isPHHidden = starterTutorialMode && tutorialDay < 8;
+const isPHDisabled = starterTutorialMode && tutorialDay < 8;
+const isTempHidden = starterTutorialMode && tutorialDay < 4;
+const isTempDisabled = starterTutorialMode && tutorialDay < 4;
+const isVolDisabled = false; // Always editable
+
+// --- Instruction Text ---
+const getInstruction = () => {
+  if (!starterTutorialMode) return null;
+  if (tutorialDay === 1) return "Day 1: Combine the amounts of flour and water listed below. Cover loosely. Record the volume (height in mL).";
+  if (tutorialDay >= 2) return `Day ${tutorialDay}: Discard down to 25g. Add the amounts of flour and water listed. Mix well and cover loosely.`;
+  return null;
+};
+
+const pickPhoto = (onPhoto: (uri: string) => void) => {
     Alert.alert("Add Photo", "Choose source", [
       {
         text: "Camera",
@@ -130,13 +178,21 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
   };
 
   const handleStart = () => {
-    if (!sw || sw <= 0 || !fw || fw <= 0 || !ww || ww <= 0) {
+    // In Tutorial Mode, we trust the prescribed/disabled weights
+    const weightsValid = starterTutorialMode || (sw > 0 && fw > 0 && ww > 0);
+
+    if (!weightsValid) {
       Alert.alert("Missing info", "Enter valid starter, flour and water weights.");
       return;
     }
 
     if (!initialVolume.trim() || isNaN(parseFloat(initialVolume)) || parseFloat(initialVolume) <= 0) {
       Alert.alert("Missing Volume", "Please enter an initial volume (mL) to start tracking.");
+      return;
+    }
+
+    if (starterTutorialMode && tutorialDay >= 8 && (!initialTemp.trim() || parseFloat(initialTemp) <= 0)) {
+      Alert.alert("Temperature Required", "Starting from Day 8, recording temperature is required to calculate the correct feed prescription for your starter's activity level.");
       return;
     }
 
@@ -178,6 +234,13 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
             <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>Refreshes and Levains</Text>
           </Animated.View>
 
+          {starterTutorialMode && (
+            <Animated.View entering={FadeInDown.duration(400)} style={[styles.tutorialBanner, { backgroundColor: colors.accent + "15" }]}>
+              <Feather name="info" size={16} color={colors.accent} />
+              <Text style={[styles.tutorialBannerText, { color: colors.accent }]}>{getInstruction()}</Text>
+            </Animated.View>
+          )}
+
           {/* Feed Amounts */}
           <Animated.View entering={FadeInDown.delay(60).duration(400)}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Feed Amounts</Text>
@@ -187,34 +250,37 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                   <View style={{ flex: 1, marginRight: 8 }}>
                     <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Starter (g)</Text>
                     <TextInput
-                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                      style={[styles.input, { backgroundColor: isWeightDisabled ? colors.muted : colors.background, borderColor: colors.border, color: isWeightDisabled ? colors.mutedForeground : colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
                       placeholder="e.g., 10"
                       placeholderTextColor={colors.mutedForeground}
                       value={starterWeight}
                       onChangeText={setStarterWeight}
                       keyboardType="decimal-pad"
+                      editable={!isWeightDisabled}
                     />
                   </View>
                   <View style={{ flex: 1, marginRight: 8 }}>
                     <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Flour (g)</Text>
                     <TextInput
-                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                      style={[styles.input, { backgroundColor: isWeightDisabled ? colors.muted : colors.background, borderColor: colors.border, color: isWeightDisabled ? colors.mutedForeground : colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
                       placeholder="e.g., 75"
                       placeholderTextColor={colors.mutedForeground}
                       value={flourWeightStr}
                       onChangeText={setFlourWeightStr}
                       keyboardType="decimal-pad"
+                      editable={!isWeightDisabled}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none", textAlign: 'center' }]}>Water (g)</Text>
                     <TextInput
-                      style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                      style={[styles.input, { backgroundColor: isWeightDisabled ? colors.muted : colors.background, borderColor: colors.border, color: isWeightDisabled ? colors.mutedForeground : colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
                       placeholder="e.g., 75"
                       placeholderTextColor={colors.mutedForeground}
                       value={waterWeightStr}
                       onChangeText={setWaterWeightStr}
                       keyboardType="decimal-pad"
+                      editable={!isWeightDisabled}
                     />
                   </View>
                 </View>
@@ -278,32 +344,38 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
               <CopilotView>
                 <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={[styles.inputRow, { gap: 12 }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>pH</Text>
-                      <TextInput
-                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
-                        placeholder="e.g., 4.8"
-                        placeholderTextColor={colors.mutedForeground}
-                        value={initialPH}
-                        onChangeText={setInitialPH}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Temp (°{tempUnit})</Text>
-                      <TextInput
-                        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
-                        placeholder="e.g., 76"
-                        value={initialTemp}
-                        onChangeText={setInitialTemp}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
+                    {!isPHHidden && (
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>pH</Text>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: isPHDisabled ? colors.muted : colors.background, borderColor: colors.border, color: isPHDisabled ? colors.mutedForeground : colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                          placeholder="e.g., 4.8"
+                          placeholderTextColor={colors.mutedForeground}
+                          value={initialPH}
+                          onChangeText={setInitialPH}
+                          keyboardType="decimal-pad"
+                          editable={!isPHDisabled}
+                        />
+                      </View>
+                    )}
+                    {!isTempHidden && (
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Temp (°{tempUnit})</Text>
+                        <TextInput
+                          style={[styles.input, { backgroundColor: isTempDisabled ? colors.muted : colors.background, borderColor: colors.border, color: isTempDisabled ? colors.mutedForeground : colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
+                          placeholder="e.g., 76"
+                          value={initialTemp}
+                          onChangeText={setInitialTemp}
+                          keyboardType="decimal-pad"
+                          editable={!isTempDisabled}
+                        />
+                      </View>
+                    )}
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.fieldLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Volume (mL)</Text>
                       <TextInput
                         style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, borderRadius: colors.radius, fontFamily: fonts.mono }]}
-                        placeholder="e.g., 200"
+                        placeholder={starterTutorialMode ? String(predictedVolume) : "e.g., 200"}
                         placeholderTextColor={colors.mutedForeground}
                         value={initialVolume}
                         onChangeText={setInitialVolume}
@@ -311,6 +383,13 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
                       />
                     </View>
                   </View>
+                  {isDay1 && (
+                    <Text style={[styles.onboardingTip, { color: isVolumeInaccurate ? colors.accent : colors.primary }]}>
+                      {isVolumeInaccurate
+                        ? "That volume seems inaccurate for your ingredient mass. Are you using a standard narrow jar? Standard jars ensure accurate growth tracking."
+                        : `Based on your ingredients, your starting volume should be around ${predictedVolume}. Look at your jar's markings and enter the exact number you see to lock in your baseline!`}
+                    </Text>
+                  )}
                 </View>
               </CopilotView>
             </TourStep>
@@ -353,7 +432,7 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
             </TourStep>
           </Animated.View>
 
-          <AffiliateCarousel />
+          <AffiliateCarousel tab="feed" />
 
           <TourStep order={10} name="next-chapter-is-graph">
             <CopilotView>
@@ -488,5 +567,25 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     backgroundColor: "white",
+  },
+  tutorialBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: radius.md,
+    marginBottom: 20,
+    gap: 8,
+  },
+  tutorialBannerText: {
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+  },
+  onboardingTip: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    marginTop: 12,
+    lineHeight: 18,
+    fontStyle: 'italic',
   },
 });

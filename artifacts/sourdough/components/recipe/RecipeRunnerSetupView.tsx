@@ -18,186 +18,27 @@ import { YieldPill } from "@/components/YieldPill";
 import type { SavedRecipe } from "@/lib/recipeTypes";interface Props {
   // Whether any recipes exist at all (drives empty-state vs. select-button)
   hasRecipes: boolean;
-  // The recipe the user has tapped to confirm — null means "nothing selected yet"
-  selectedRecipe: SavedRecipe | null;
-  // Per-phase enabled toggle map (only relevant when selectedRecipe != null)
-  runPhaseEnabled: Record<string, boolean>;
   refreshing: boolean;
   onOpenRecipePicker: () => void;
   onGoToBuilder: () => void;
   onCreateRecipe: () => void;
-  onChangeRecipe: () => void;   // clears selectedRecipe back to landing
-  onTogglePhase: (key: string) => void;
-  onStartBake: () => void;
   onRefresh: () => void;
 }
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 
 export function RecipeRunnerSetupView({
   hasRecipes,
-  selectedRecipe,
-  runPhaseEnabled,
   refreshing,
   onOpenRecipePicker,
   onGoToBuilder,
   onCreateRecipe,
-  onChangeRecipe,
-  onTogglePhase,
-  onStartBake,
   onRefresh,
 }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const tabBarPad = Platform.OS === "web" ? 84 : 60;
-  // ── Pre-start confirm: recipe has been selected ───────────────────────────
-  if (selectedRecipe) {
-    return (
-      <ScrollView
-        contentContainerStyle={{
-          paddingTop: 24,
-          paddingBottom: insets.bottom + tabBarPad + 60,
-          paddingHorizontal: 20,
-        }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.mutedForeground}
-          />
-        }
-      >
-        <Animated.View entering={FadeIn.duration(300)}>
-          {/* ── Recipe name + Change button ──────────────────────────────── */}
-          <View style={s.preStartHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.preStartLabel, { color: colors.mutedForeground }]}>Baking from</Text>
-              <Text style={[s.preStartName, { color: colors.foreground }]} numberOfLines={2}>
-                {selectedRecipe.name}
-              </Text>
-            </View>
-            <Pressable
-              onPress={onChangeRecipe}
-              style={({ pressed }) => [
-                s.changeBtn,
-                { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
-              ]}
-            >
-              <Text style={[s.changeBtnText, { color: colors.mutedForeground }]}>Change</Text>
-            </Pressable>
-          </View>
 
-          {/* Always show yield — default to "1" when not explicitly set, matching startBake behaviour */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginBottom: 16
-          }}>
-            <YieldPill isBuilder={false} value={selectedRecipe.yieldValue || "1"} />
-            {/* Sub-caption microcopy inline with the pill */}
-            <Text style={{
-              fontSize: 13,
-              fontStyle: 'italic',
-              color: colors.mutedForeground,
-              marginLeft: 10 // Pushes the text slightly away from the right edge of the pill
-            }}>
-              You may scale ingredients on the next screen
-            </Text>
-          </View>
-
-          <Text style={[s.fieldLabel, { color: colors.mutedForeground, marginBottom: 10 }]}>
-            Confirm phases for this bake below
-          </Text>
-          <Text style={[s.preStartHint, { color: colors.mutedForeground, marginBottom: 14 }]}>
-            Toggle off any phases you want to skip today.
-          </Text>
-          {/* ── Phase toggle rows ────────────────────────────────────────── */}
-          <View style={{ gap: 8 }}>
-            {selectedRecipe.phases.map((phase) => {
-              const enabled = !!runPhaseEnabled[phase.key];
-              return (
-                <Pressable
-                  key={phase.key}
-                  onPress={() => onTogglePhase(phase.key)}
-                  style={({ pressed }) => [
-                    s.confirmPhaseRow,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: enabled ? colors.primary + "40" : colors.border,
-                      opacity: pressed ? 0.8 : 1,
-                    },
-                  ]}
-                >
-                  {/* Checkbox circle */}
-                  <View
-                    style={[
-                      s.confirmCheck,
-                      {
-                        borderColor: enabled ? colors.primary : colors.border,
-                        backgroundColor: enabled ? colors.primary : "transparent",
-                      },
-                    ]}
-                  >
-                    {enabled && (
-                      <Ionicons name="checkmark" size={12} color={colors.primaryForeground} />
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        s.confirmPhaseName,
-                        {
-                          color: enabled ? colors.foreground : colors.mutedForeground,
-                          fontFamily: enabled ? fonts.sansMedium : fonts.sans,
-                        },
-                      ]}
-                    >
-                      {phase.name}
-                    </Text>
-                    {!!phase.ingredients && (
-                      <Text
-                        style={[s.confirmPhaseSub, { color: colors.mutedForeground }]}
-                        numberOfLines={1}
-                      >
-                        {Array.isArray(phase.ingredients)
-                          ? phase.ingredients.map(i => i.text).join(", ")
-                          : phase.ingredients}
-                      </Text>
-                    )}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-          {/* ── Start Bake button ────────────────────────────────────────── */}
-          <Pressable
-            onPress={onStartBake}
-            style={({ pressed }) => [
-              s.primaryBtn,
-              {
-                backgroundColor: colors.primary,
-                borderRadius: 12,
-                opacity: pressed ? 0.85 : 1,
-                marginTop: 24,
-              },
-            ]}
-          >
-            <Feather name="play" size={16} color={colors.primaryForeground} />
-            <Text style={[s.primaryBtnText, { color: colors.primaryForeground }]}>
-              Start Bake
-            </Text>
-          </Pressable>
-        </Animated.View>
-        {/* Tour transition anchor — zero-height, end of recipe chapter */}
-        <TourStep order={16} name="next-chapter-is-history">
-          <CopilotView>
-            <View style={{ height: 0 }} />
-          </CopilotView>
-        </TourStep>
-      </ScrollView>
-    );
-  }
-  // ── Landing: no recipe selected yet ──────────────────────────────────────
+  // ── Landing: no active bake session ──────────────────────────────────────
   return (
     <ScrollView
       contentContainerStyle={{

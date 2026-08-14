@@ -19,7 +19,7 @@ const s = StyleSheet.create({
 });
 
 function HubIcon({ name, color, focused }: {
-  name: 'lab' | 'bench' | 'logbook',
+  name: 'lab' | 'bench' | 'log',
   color: string,
   focused: boolean
 }) {
@@ -61,7 +61,7 @@ function HubIcon({ name, color, focused }: {
     );
   }
 
-  if (name === 'logbook') {
+  if (name === 'log') {
     return (
       <View style={s.iconWrapper}>
         {focused && <View style={[s.activeBar, { backgroundColor: color }]} />}
@@ -134,11 +134,11 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="logbook"
+        name="log"
         options={{
-          title: "Logbook",
+          title: "Log",
           tabBarIcon: ({ color, focused }) => (
-            <HubIcon name="logbook" color={color} focused={focused} />
+            <HubIcon name="log" color={color} focused={focused} />
           ),
         }}
       />

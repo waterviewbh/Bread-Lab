@@ -54,14 +54,66 @@ CREATE INDEX IF NOT EXISTS bake_sessions_user_saved
 -- ── recipes ───────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS recipes (
-  id          TEXT        PRIMARY KEY,
-  device_id   TEXT        NOT NULL,
-  user_id     TEXT,
-  name        TEXT        NOT NULL,
-  phases      JSONB       NOT NULL DEFAULT '[]',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id               TEXT        PRIMARY KEY,
+  device_id        TEXT        NOT NULL,
+  user_id          TEXT,
+  name             TEXT        NOT NULL,
+  phases           JSONB       NOT NULL DEFAULT '[]',
+  recipe_data      JSONB,
+  yield_value      INT         DEFAULT 0,
+  total_flour_g    FLOAT,
+  hydration_pct    FLOAT,
+  parent_recipe_id TEXT        REFERENCES recipes(id) ON DELETE SET NULL,
+  version_label    TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ── recipe duplication function ──────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION duplicate_recipe(
+  target_id TEXT,
+  new_name TEXT,
+  new_device_id TEXT,
+  new_user_id TEXT DEFAULT NULL
+)
+RETURNS SETOF recipes AS $$
+BEGIN
+  RETURN QUERY
+  INSERT INTO recipes (
+    id,
+    device_id,
+    user_id,
+    name,
+    phases,
+    recipe_data,
+    yield_value,
+    total_flour_g,
+    hydration_pct,
+    parent_recipe_id,
+    version_label,
+    created_at,
+    updated_at
+  )
+  SELECT
+    encode(gen_random_bytes(12), 'hex'), -- Generate a unique short-ish ID string
+    new_device_id,
+    new_user_id,
+    new_name,
+    phases,
+    recipe_data,
+    yield_value,
+    total_flour_g,
+    hydration_pct,
+    target_id,
+    'Copy',
+    NOW(),
+    NOW()
+  FROM recipes
+  WHERE id = target_id
+  RETURNING *;
+END;
+$$ LANGUAGE plpgsql;
 
 CREATE INDEX IF NOT EXISTS recipes_device_created
   ON recipes (device_id, created_at DESC);

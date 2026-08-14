@@ -62,6 +62,8 @@ export type ApiRecipe = {
   yield_value: number;
   total_flour_g?: number;
   hydration_pct?: number;
+  parent_recipe_id?: string;
+  version_label?: string;
 };
 
 export type ApiFeedSession = {
@@ -132,6 +134,8 @@ interface RecipeRow {
   recipe_data?: any;
   total_flour_g?: number;
   hydration_pct?: number;
+  parent_recipe_id?: string | null;
+  version_label?: string | null;
 }
 
 interface FeedSessionRow {
@@ -190,6 +194,8 @@ function rowToApiRecipe(r: RecipeRow): ApiRecipe {
     yield_value: r.yield_value,
     total_flour_g: r.total_flour_g,
     hydration_pct: r.hydration_pct,
+    parent_recipe_id: r.parent_recipe_id ?? undefined,
+    version_label: r.version_label ?? undefined,
   };
 }
 
@@ -260,21 +266,64 @@ export const api = {
       if (!supabase) throw new Error("Supabase not configured");
       const fn = body.firstName.trim();
       const sn = body.starterName.trim();
+
+      // Modern Email Derivation (Lower + No Spaces)
       const sanitizedFn = fn.toLowerCase().replace(/\s/g, "");
       const sanitizedSn = sn.toLowerCase().replace(/\s/g, "");
       const email = `${sanitizedFn}.${sanitizedSn}@breadlab.user`;
-      const password = sanitizedSn.length >= 6 ? sanitizedSn : `${sanitizedSn}breadlab`.slice(0, 10);
 
-      // STITCH: authData as 'any' to bridge the Supabase union type mismatch
-      let authData: any;
-      let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-      authData = signInData;
+      const derivePassword = (source: string) => {
+        const s = source.replace(/^\s+|\s+$/g, ""); // trim outer only
+        return s.length >= 6 ? s : `${s}breadlab`.slice(0, 10);
+      };
 
-      if (signInError && signInError.message.includes("Invalid login credentials")) {
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email, password, options: { data: { first_name: fn, starter_name: sn } },
-        });
-        authData = signUpData;
+      // Strategies: [Password Source, Description]
+      const strategies = [
+        [sanitizedSn, "Modern (lowercase, no spaces)"],
+        [sn.toLowerCase(), "Legacy A (lowercase, with spaces)"],
+        [sn, "Legacy B (original case, with spaces)"],
+      ];
+
+      let authData: any = null;
+      let lastError: any = null;
+
+      for (const [source, desc] of strategies) {
+        const password = derivePassword(source);
+        console.log(`[Auth Debug] Trying strategy: ${desc}...`);
+
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+        if (!error && data?.user) {
+          console.log(`[Auth Debug] Success with strategy: ${desc}`);
+          authData = data;
+          break;
+        }
+
+        lastError = error;
+        console.log(`[Auth Debug] Strategy ${desc} failed:`, error?.message);
+      }
+
+      // If all sign-ins failed, check if we should sign up
+      if (!authData?.user) {
+        if (lastError && (lastError.message.includes("Invalid login credentials") || (lastError as any).status === 400)) {
+          console.log("[Auth Debug] All sign-in strategies failed. Attempting Sign-up as new user...");
+          // Use Modern strategy for new sign-ups
+          const password = derivePassword(sanitizedSn);
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email, password, options: { data: { first_name: fn, starter_name: sn } },
+          });
+
+          if (signUpError) {
+            console.log("[Auth Debug] Sign-up failed:", signUpError.message);
+            if (signUpError.message.includes("User already registered")) {
+              throw new Error("Account exists but recovery failed. Please check name spellings.");
+            }
+            throw signUpError;
+          }
+          authData = signUpData;
+        } else {
+          throw lastError || new Error("Authentication failed");
+        }
       }
 
       if (!authData?.user) throw new Error("Authentication failed");
@@ -323,8 +372,22 @@ export const api = {
         id: body.id, device_id: body.deviceId, user_id: body.userId ?? null, name: body.name,
         overview: body.overview ?? null, yield_value: body.yield_value,
         phases: flattenPhasesForLegacy(body.phases), recipe_data: body,
-        updated_at: new Date().toISOString(), total_flour_g: body.total_flour_g, hydration_pct: body.hydration_pct,
+        updated_at: new Date().toISOString(), total_flour_g: body.total_flour_g,
+        hydration_pct: body.hydration_pct, parent_recipe_id: body.parentRecipeId ?? null,
+        version_label: body.versionLabel ?? null,
       }).select().returns<RecipeRow[]>().single();
+      if (error) throw error;
+      return rowToApiRecipe(data);
+    },
+
+    duplicate: async (id: string, newName: string, deviceId: string, userId?: string): Promise<ApiRecipe> => {
+      if (!supabase) throw new Error("Supabase not configured");
+      const { data, error } = await supabase.rpc('duplicate_recipe', {
+        target_id: id,
+        new_name: newName,
+        new_device_id: deviceId,
+        new_user_id: userId ?? null
+      }).returns<RecipeRow[]>().single();
       if (error) throw error;
       return rowToApiRecipe(data);
     },

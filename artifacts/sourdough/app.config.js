@@ -61,7 +61,7 @@ module.exports = {
   ],
   experiments: {
     typedRoutes: true,
-    reactCompiler: true
+    reactCompiler: false
   },
   extra: {
     eas: {

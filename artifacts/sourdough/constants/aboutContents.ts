@@ -15,143 +15,92 @@ export type ChangelogVersion = {
 };
 
 export const HELP: HelpTab[] = [
-{
-    label: "Tab 1 — Feed",
+  {
+    label: "The Lab: Planning & Analytics",
     sections: [
       {
-        heading: "Feed",
+        heading: "Vitality Analytics",
         bullets: [
-          "Purpose: Used to track starter refreshes and audit the ongoing health of your sourdough starter. Once completed, each refresh is available for review or printing in the Calendar tab, pictures included.",
+          "Purpose: Found in the Lab, these charts show your starter's historical acidity and lifting curves to verify fermentation speeds and test variables like feed ratios or temperatures.",
+          "Acidification Index: Traces real-time pH drop velocity against elapsed hours, visualizing how quickly your culture settles into a stable rhythm.",
+          "Lifting Index: Maps hours-to-peak against expansion percentage, helping you diagnose yeast density and metabolic efficiency.",
+          "Metabolic Map: Tracks the 'stiffness' (FCS) of your feeds over time, especially useful for stiff levains or pasta madre styles.",
+          "Visual Indicators: Contrasts current feed data against your historical Vitality Average (last 5 refreshes).",
+        ],
+      },
+      {
+        heading: "Feed Planner",
+        bullets: [
+          "Purpose: Helps you build a levain that peaks on your schedule. It uses smart default estimates or your own history once you have logged 3 feeds.",
+          "Sleep Zone Protection: If a levain would peak overnight (8PM–5AM), the advisor suggests optimized feed ratios to shift the peak to a better time.",
+          "Automation: Once you have a schedule you like, hit 'Build this Levain' to transfer the data to the Bench and begin the tracker.",
+        ],
+      },
+      {
+        heading: "Recipe Builder",
+        bullets: [
+          "Purpose: Your master formula creation hub in the Lab.",
+          "Phase Selection: Select from 21 baking-related phases (scald, autolyse, bulk ferment, etc.), each with customizable ingredients and instructions.",
+          "Lineage Tracking: Recipes can be duplicated, allowing you to iterate on a formula while preserving the original version's data.",
+        ],
+      },
+    ],
+  },
+  {
+    label: "The Bench: Active Execution",
+    sections: [
+      {
+        heading: "Feed Tracker",
+        bullets: [
+          "Purpose: Located on the Bench, this tool is used to track starter refreshes and audit the ongoing health of your sourdough starter. Once completed, each refresh is available for review in the Log Hub.",
           "Feed Amount Inputs: Captures exact input weights in grams for starter inoculation, flour, and water, and provides a feeding ratio.",
           "Enriched Dough Toggle: A specialized sugar switch to log data variations when feeding sweet doughs or specialized cultures.",
           "Flour Blend Sliders: A slider to precisely record custom percentage ratios of All-Purpose (AP) versus Whole Wheat (WW) flours.",
-          "Initial Metric Logs: Records baseline numbers, including initial acidity (pH), temperature (preferred units), and starter volume (in mL), right after a fresh mix. Note: the starter volume is compared against the peak volume to give a rise percentage.",
+          "Initial Metric Logs: Records baseline numbers, including initial acidity (pH), temperature, and starter volume (in mL), right after a fresh mix. The starter volume is compared against the peak volume to give a rise percentage.",
           "Visual Baseline: Includes an integrated camera icon to instantly attach a 'Just Fed' photo, giving you a visual height benchmark to measure against the peak rise.",
           "Start Feed Timer: Starts a timer on the screen showing elapsed time since the most recent refresh.",
         ],
       },
       {
-        heading: "Feed — Track a Feed",
+        heading: "Track a Feed (Active Session)",
         bullets: [
           "Active Elapsed Timer: Features a prominent digital stopwatch at the top during active refresh sessions.",
-          "Active Metrics: A  '+ Log Reading' button allows you to log pH, temperature, current volume, and observations during the refresh. The data points are timestamped to the stopwatch.",
-          "Session Termination Target: A 'Mark as Peak' button allows for one final reading, and a picture. This saves session data to the Calendar.",
-        ],
-      },
-      {
-        heading: "Feed — Plan a Feed",
-        bullets: [
-          "Peak Window Advisor helps you build a levain (in general terms, a pre-ferment) that peaks on your schedule. It uses smart default estimates, or your own history once you have logged 3 feeds in the app.",
-          "Note: you should always set some of your parent starter aside to continue the culture; the recipe provided for this levain assumes that you will use all of the calculated feed.",
-          "Enter in your bake recipe's required levain mass and the expected temperature to receive a suggested feed ratio and amounts.",
-          "If the levain would peak overnight (between 8PM and 5AM), the app suggests optimized alternatives to avoid your 'Sleep Zone.' Tap the option to update your plan.",
-          "Once you have a schedule that you like, hit the 'Build this Levain' button and the data will be transferred to the Track a Feed page for you to begin.",
-        ],
-      },
-    ],
-  },
-  {
-    label: "Tab 2 — Graph",
-    sections: [
-      {
-        heading: "Graph",
-        bullets: [
-          "Purpose: A plot showing your starter's historical acidity curve over time to verify fermentation speeds, allowing you to test variables (e.g, feed ratios, temperatures, flour types, etc.). Note: correlated data is available by reviewing past refreshes in the Calendar tab.",
-          "pH Over Time Graph (requires a pH meter): Traces real-time data points against elapsed hours, visualizing how quickly your culture drops its pH levels.",
-          "Data Resolution Axis: Tracks timelines across a horizontal window that scales as time exceeds it, matched against vertical acidity metrics spanning from 5.8 down to 3.2.",
-          "Visual Indicators: Maps your current feed points with bright dots, contrasting them against a dashed line that represents your historical Vitality Average (last 5 refreshes).",
-          "Timeframe Filtering: Includes an 'All-Time' button toggle to show the all-time average (off by default).",
-        ],
-      },
-    ],
-  },
-  {
-    label: "Tab 3 — Recipe",
-    sections: [
-      {
-        heading: "Recipe",
-        bullets: [
-          "Purpose: Your master formula library and creation hub.",
-          "Empty State: Displays a centralized book icon and a call-to-action to build a recipe when no formulas exist.",
-          "Recipe Identity Cards: Summarizes saved formulas into compact cards showing the title, creation date, and phase pills.",
-          "Data Portability: Features an integrated export and share control button to easily back up or distribute recipe files.",
-        ],
-      },
-      {
-        heading: "Recipe Builder (+ New Recipe)",
-        bullets: [
-          "Purpose: Initial setup screen for naming and creating a recipe.",
-          "Title Input: Provides an open text field to name your recipe before selecting phases (e.g, scald, bulk ferment).",
-          "Add Phase: Select from 21 baking-related phases, with the option to add ingredients and instructions in each.",
-        ],
-      },
-      {
-        heading: "Recipe Builder — Phase Selection",
-        bullets: [
-          "Purpose: A comprehensive, categorized list to choose your specific baking steps.",
-          "Pre-Processing Category: Setup options like Building the Levain, Scalding, Dry Toasting, and Soaking Seeds/Grains.",
-          "Mixing Category: Precise physical choices, contrasting standard Autolysing with Fermentolysing, alongside advanced techniques like Bassinage and Delayed Salt.",
-          "Fermentation & Shaping Categories: Post-mix milestones including Stretching and Folding, Laminating, Preshaping, Bench Resting, and Stitching.",
-          "Proofing & Baking Categories: Concludes with Cold Retarding, Proofing, Scoring, and Baking.",
+          "Active Metrics: A '+ Log Reading' button allows you to log pH, temperature, current volume, and observations during the refresh. Data points are timestamped to the stopwatch.",
+          "Session Termination: A 'Mark as Peak' button allows for one final reading and photo before saving the data to the Log Hub.",
         ],
       },
       {
         heading: "Recipe Runner",
         bullets: [
-          "Purpose: dashboard for preparing and initiating a live bake session.",
-          "Dynamic Checklist: Pulls your master recipe phases into a vertical list with checkboxes.",
-          "Flexible Skipping: Lets you uncheck specific phases to dynamically skip them on today's live bake without changing your master template. Confirm the list to begin the bake.",
-          "Clean Condensed Rows: Automatically collapses rows with blank ingredient fields to keep your startup screen clear of clutter.",
-        ],
-      },
-      {
-        heading: "Recipe Runner — Active Session",
-        bullets: [
-          "Purpose: The active dashboard used while you are hands-on in the kitchen during a live bake.",
-          "Dynamic Scaling Controls: Provides instant global multiplier buttons (0.5× to 3×) that flash a reminder banner to help you scale your ingredient math.",
-          "Non-Linear Navigation: Features independent 'Start' buttons next to every step row, allowing you to jump around or execute steps out of order based on how your dough looks. Note: starting a new step stops the previous one.",
-          "Independent Step Timers: Tracks the real-time duration of your active step alongside a global phase counter and a segmented progress bar.",
-          "Phase Specs: Per-phase sections that act as read-only instructions from the Recipe Builder for that step.",
-        ],
-      },
-      {
-        heading: "Recipe Runner — Journal Overlay",
-        bullets: [
-          "Purpose: A full-screen scratchpad used to log reflections on how your active baking session went.",
-          "Global Logging Canvas: Provides an open text ledger at the top to record variables unique to today's bake. A dot on the overlay means that a note has been written.",
-          "Tokenized Phase Chips: Allows you to tag comments or reflections to the phase in which you were working when you made the note.",
+          "Purpose: The active dashboard on the Bench used while you are hands-on in the kitchen during a live bake.",
+          "Dynamic Scaling Controls: Provides instant global multiplier buttons (0.5× to 3×) that update all ingredient measurements automatically.",
+          "Non-Linear Navigation: Features independent 'Start' buttons next to every step, allowing you to jump around or execute steps out of order based on dough progression.",
+          "Independent Step Timers: Tracks the real-time duration of your active step alongside a global phase counter and progress bar.",
+          "Journal Overlay: A full-screen scratchpad to log reflections. You can tag comments to specific phases to help dial in your recipe for the next bake.",
         ],
       },
     ],
   },
   {
-    label: "Tab 4 — Calendar",
+    label: "The Log: History & Resources",
     sections: [
       {
-        heading: "Calendar",
+        heading: "Bake History",
         bullets: [
-          "Purpose: Your high-level monthly log and baking schedule journal.",
-          "Activity Metric Badges: Highlights three key statistics at the top: 'This Month' (total entries), 'Day Streak' (consecutive log history), and 'Total Feeds' (lifetime data sum).",
-          "Current Date Anchor: Automatically flags the current date with a circular badge to show your place in the month.",
-          "Data History Feed: Features a bottom activity ledger that populates with historical notes and logs when you select specific calendar days.",
-          "Cloud Synchronization: Displays an automated cloud icon and time stamp verifying successful profile data backups.",
+          "Purpose: Your high-level monthly log and baking schedule journal, located in the Log Hub.",
+          "Activity Metric Badges: Highlights key stats like your current Day Streak and monthly activity totals.",
+          "Data History Feed: Selecting a day on the calendar populates a ledger with your historical feed and bake logs.",
+          "Detailed Review: Tap any entry to see its full data set, including pH readings, photos, and bake notes.",
+          "Cloud Synchronization: Automated backups ensure your data is accessible across devices.",
         ],
       },
-    ],
-  },
-  {
-    label: "Tab 5 — About",
-    sections: [
       {
-        heading: "About & Legal",
+        heading: "Resources",
         bullets: [
-          "Purpose: Provides app information and customer support access.",
-          "Logo: Official branding for Waterview Bakehouse, the maker of this app.",
-          "Developer Contact: Email the developer to submit bugs, feature requests, or project feedback.",
-          "Documentation: This document.",
-          "Privacy Policy: https://privacy.bakersbench.app/",
-          "Changelog: a running list of updates and fixes.",
-          "Version: The current app version number and build code.",
+          "Purpose: Found under the Resources section of the Log Hub, providing app guides, documentation, and global settings.",
+          "Global Preferences: Set your preferred units for temperature (°F/°C) and manage accessibility font scaling.",
+          "Developer Contact: Email support for bugs, feature requests, or project feedback.",
+          "Legal: Access the Privacy Policy and app version information.",
         ],
       },
     ],
@@ -159,18 +108,25 @@ export const HELP: HelpTab[] = [
 ];
 
 export const CHANGELOG: ChangelogVersion[] = [
-
-    /*{
-      version: "v1.1.1", /* -- published 202607XX -- /
+    {
+      version: "v2.0.0", /* -- published 202608XX -- */
+      changes: [
+        { type: "Changed", content: "Architecture Overhaul: Features are now categorized into three distinct hubs: The Bench (Execution), The Lab (Planning), and The Log (History)." },
+        { type: "Added", content: "Bakers new to sourdough starters can complete a guided program to establish a new starter. Check in each day for instructions!" },
+        { type: "Changed", content: "The Log now acts as your baker's journal, showing recent bake notes and allowing recipe updates directly from history." },
+        { type: "Added", content: "Recipes may now be duplicated, and their lineage is tracked so you don't lose data when iterating." },
+      ],
+    },
+    {
+      version: "v1.1.1", /* -- published 20260807 -- */
       changes: [
         { type: "Fixed", content: "The print feature works again, including with checkboxes." },
         { type: "Fixed", content: "Some bakers had difficulty accessing or changing their name+name login. That has been resolved." },
       ],
-    },*/
+    },
     {
       version: "v1.1.0", /* -- published 20260727 -- */
       changes: [
-//        { type: "Changed", content: "We're now publicly findable in the Google Play Store! Thanks to all of the early supporters to help make this happen!" },
         { type: "Added", content: "On demand, you can take a tour of the app to see or be reminded of the many different ways that the Sourdough Bread Lab app can help turn bakers into scientists, and back again. Start your tour by clicking the Tour button in the About tab." },
         { type: "Changed", content: "Recipe cards are now structured differently, increasing their functionality. Both ingredients and instructions have checkboxes so that you always know where you are. This change, and the tour, are big enough to justify the rev jump to 1.1." },
         { type: "Changed", content: "Tweaked the Stiffness slider of the Plan a Feed page. The extreme limits are now more reasonable and a reset button has been added." },
@@ -293,8 +249,6 @@ export const CHANGELOG: ChangelogVersion[] = [
       ],
     },
 ];
-
-// ── constants/aboutContent.ts ──
 
 export const ACIDIFICATION_DATA = {
   title: "Acidification Index",
