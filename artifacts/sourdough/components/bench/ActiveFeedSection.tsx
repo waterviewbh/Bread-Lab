@@ -22,6 +22,8 @@ import { Ionicons } from "@expo/vector-icons"; // Added for Day 2 button icon
 
 const STORAGE_KEY = "sourdough_feed_session_v1";
 const HISTORY_KEY = "sourdough_feed_history_v1";
+const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
+const DECLINED_TUTORIAL_KEY = "bread_lab_declined_tutorial_v1";
 
 export function ActiveFeedSection({
   incomingStarter,
@@ -44,20 +46,22 @@ export function ActiveFeedSection({
     tutorialMetadata, setTutorialMetadata
   } = usePreferences();
 
-  const isEligibleForGraduation = checkGraduationEligibility(historyData);
+  // --- Core State ---
+  const [session, setSession] = useState<FeedSession | null>(null);
+  const [historyData, setHistoryData] = useState<FeedSession[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasDeclinedTutorial, setHasDeclinedTutorial] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showGraduationModal, setShowGraduationModal] = useState(false);
+
+  const isEligibleForGraduation = React.useMemo(() => checkGraduationEligibility(historyData), [historyData]);
 
   useEffect(() => {
     if (starterTutorialMode && isEligibleForGraduation && !showGraduationModal) {
       setShowGraduationModal(true);
     }
   }, [starterTutorialMode, isEligibleForGraduation, showGraduationModal]);
-
-  // --- Core State ---
-  const [session, setSession] = useState<FeedSession | null>(null);
-  const [historyData, setHistoryData] = useState<FeedSession[]>([]);
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showGraduationModal, setShowGraduationModal] = useState(false);
 
   const sessionRef = useRef<FeedSession | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
@@ -94,11 +98,15 @@ export function ActiveFeedSection({
 
   useEffect(() => {
     const init = async () => {
-      const [stored, histRaw, user] = await Promise.all([
+      const [stored, histRaw, bakeHistRaw, user, declined] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEY),
         AsyncStorage.getItem(HISTORY_KEY),
+        AsyncStorage.getItem(BAKE_HISTORY_KEY),
         getStoredUser(),
+        AsyncStorage.getItem(DECLINED_TUTORIAL_KEY),
       ]);
+
+      if (declined === "true") setHasDeclinedTutorial(true);
 
       let currentSession: FeedSession | null = null;
       if (stored) {
@@ -117,11 +125,14 @@ export function ActiveFeedSection({
         }
       }
 
-      if (currentSession) setSession(currentSession);
+      let historyArray: FeedSession[] = [];
       if (histRaw) {
         try {
           const parsed = JSON.parse(histRaw);
-          if (Array.isArray(parsed)) setHistoryData(parsed);
+          if (Array.isArray(parsed)) {
+            historyArray = parsed;
+            setHistoryData(parsed);
+          }
         } catch (e) {
           console.warn("[Feed] Failed to parse history", e);
         }
@@ -129,31 +140,54 @@ export function ActiveFeedSection({
       if (user) setCurrentUser(user);
 
       if (currentSession) {
+        setSession(currentSession);
         syncActiveSession(currentSession);
       }
+
+      // --- NEW: Robust Onboarding Check ---
+      // We only show the "New Culture" prompt if:
+      // 1. Not already in tutorial mode
+      // 2. Haven't declined it before
+      // 3. No active session exists
+      // 4. No feed history exists
+      // 5. No bake history exists (established baker)
+      // 6. User is not logged in (returning user)
+      const hasBakes = bakeHistRaw && JSON.parse(bakeHistRaw).length > 0;
+      const shouldPrompt = !starterTutorialMode &&
+                           declined !== "true" &&
+                           !currentSession &&
+                           historyArray.length === 0 &&
+                           !hasBakes &&
+                           !user;
+
+      if (shouldPrompt) {
+        Alert.alert(
+          "Would you like to start a new culture?",
+          "It looks like your feed history is empty. Would you like a guided tutorial to establish a new starter?",
+          [
+            {
+              text: "No thanks",
+              style: "cancel",
+              onPress: () => {
+                setHasDeclinedTutorial(true);
+                AsyncStorage.setItem(DECLINED_TUTORIAL_KEY, "true");
+              }
+            },
+            {
+              text: "Let's begin!",
+              onPress: () => {
+                setStarterTutorialMode(true);
+                setTutorialDay(1);
+              }
+            }
+          ]
+        );
+      }
+
+      setIsLoaded(true);
     };
     init();
   }, [syncActiveSession]);
-
-  // --- Empty State Tutorial Prompt ---
-  useEffect(() => {
-    if (!starterTutorialMode && historyData.length === 0 && !session) {
-      Alert.alert(
-        "Would you like to start a new culture?",
-        "It looks like you your feed history is empty. Would you like a guided tutorial to establish a new starter?",
-        [
-          { text: "No thanks", style: "cancel" },
-          {
-            text: "Let's begin!",
-            onPress: () => {
-              setStarterTutorialMode(true);
-              setTutorialDay(1);
-            }
-          }
-        ]
-      );
-    }
-  }, [historyData.length, starterTutorialMode, session, setStarterTutorialMode, setTutorialDay]);
 
   // --- Handlers ---
   const handleStartFeed = async (data: any) => {

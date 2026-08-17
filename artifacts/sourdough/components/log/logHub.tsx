@@ -5,22 +5,26 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { fonts, radius } from "@/constants/theme";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 // --- Sub-sections ---
 import { HistorySection } from "./log";
 import { ResourcesSection } from "./logManual";
+import { DiagnosticSection } from "./logDiagnostic";
+import { KnowledgeHubArticle } from "./KnowledgeHubArticle";
+import { Modal } from "react-native";
 
 /**
- * THE LOG: History and Learning
- * [ History ] [ Resources ]
+ * THE LOG: History, Diagnostics, and Learning
+ * [ History ] [ Diagnostic ] [ Resources ]
  */
 export function LogHub() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+  const router = useRouter();
 
- const [section, setSection] = useState<"history" | "resources">(
+  const [section, setSection] = useState<"history" | "diagnostic" | "resources">(
     (params.section as any) || "history"
   );
 
@@ -28,12 +32,16 @@ export function LogHub() {
     if (params.section) setSection(params.section as any);
   }, [params.section]);
 
+  const handleCloseArticle = () => {
+    router.setParams({ slug: undefined });
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Hub Toggle */}
       <View style={[s.toggleWrap, { paddingTop: insets.top + 16 }]}>
         <View style={[s.toggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          {(["history", "resources"] as const).map((sec) => (
+          {(["history", "diagnostic", "resources"] as const).map((sec) => (
             <Pressable
               key={sec}
               onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
@@ -54,7 +62,7 @@ export function LogHub() {
                   fontFamily: section === sec ? fonts.sansSemiBold : fonts.sans
                 }
               ]}>
-                {sec === "history" ? "Bake History" : "Resources"}
+                {sec.toUpperCase()}
               </Text>
             </Pressable>
           ))}
@@ -63,8 +71,23 @@ export function LogHub() {
 
       {/* Content */}
       <View style={{ flex: 1 }}>
-        {section === "history" ? <HistorySection /> : <ResourcesSection />}
+        {section === "history" && <HistorySection />}
+        {section === "diagnostic" && <DiagnosticSection />}
+        {section === "resources" && <ResourcesSection />}
       </View>
+
+      {/* Article Overlay */}
+      <Modal
+        visible={!!params.slug}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleCloseArticle}
+      >
+        <KnowledgeHubArticle
+          slug={params.slug as string}
+          onClose={handleCloseArticle}
+        />
+      </Modal>
     </View>
   );
 }

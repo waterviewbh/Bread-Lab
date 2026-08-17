@@ -33,7 +33,7 @@ import {
   loadAll as loadData,
   writeBakeLocal,
   upsertBakeRemote,
-  saveBakeToHistory,
+  archiveBakeWithDiagnostics,
 } from "@/lib/recipeStorage";
 import { computeBulkFermentState, estimateInoculationPercent } from "@/lib/bulkFermentEngine";
 import { scalePhaseText } from "@/lib/recipeUtils";
@@ -169,7 +169,7 @@ export function ActiveBakeSection() {
     Alert.alert("New Bake?", "Clear the current bake? This will save a snapshot to your history.", [
       { text: "Cancel", style: "cancel" },
       { text: "Reset", style: "destructive", onPress: async () => {
-          if (bake) await saveBakeToHistory(bake, { reportSyncStart, reportSyncSuccess, reportSyncFailure });
+          if (bake) await archiveBakeWithDiagnostics(bake, { reportSyncStart, reportSyncSuccess, reportSyncFailure });
           setBake(null);
           await AsyncStorage.removeItem(BAKE_KEY);
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

@@ -188,11 +188,8 @@ export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
     .then(() => undefined);
 }
 
-// ─── saveBakeToHistory ────────────────────────────────────────────────────────
-// Appends a completed bake to local history and upserts it to the API.
-// The sync callbacks (reportSyncStart etc.) are passed in explicitly so this
-// module never imports a hook or context.
-export async function saveBakeToHistory(
+// ─── archiveBakeWithDiagnostics ─────────────────────────────────────────────
+export async function archiveBakeWithDiagnostics(
   bake: ActiveBake,
   callbacks: {
     reportSyncStart: () => void;
@@ -201,52 +198,97 @@ export async function saveBakeToHistory(
   }
 ): Promise<void> {
   const savedAt = Date.now();
-  // Store full phase data so Calendar detail modal can display readings
-  // without a separate API round-trip.
-  const phases = bake.phases.map((p) => ({
-    key: p.key,
-    name: p.name,
-    ingredients: p.ingredients ?? [],
-    instructions: p.instructions ?? [],
-    yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
-    startedAt: p.startedAt,
-    completedAt: p.completedAt,
-    readings: p.readings,
-    startVolume: p.startVolume,
-    foldCount: p.foldCount,
-  }));
+
   // ── Local history append ───────────────────────────────────────────────────
   try {
     const stored = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
     const existing = stored ? JSON.parse(stored) : [];
-    existing.unshift({
-      id: bake.id,
-      recipeId: bake.recipeId,
-      recipeName: bake.recipeName,
+
+    const historyItem = {
+      ...bake,
       savedAt,
-      startedAt: bake.startedAt,
-      notes: bake.notes,
-      phases,
-    });
-    await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(existing.slice(0, 200)));
-  } catch {}
-  // ── Remote upsert (completed, inProgress: false) ───────────────────────────
+      status: bake.status === 'post_mortem' ? 'post_mortem' : 'completed',
+    };
+
+    existing.unshift(historyItem);
+    await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(existing.slice(0, 500)));
+  } catch (e) {
+    console.error("[recipeStorage] Archive failed local", e);
+  }
+
+  // ── Remote upsert ──────────────────────────────────────────────────────────
   callbacks.reportSyncStart();
-  Promise.all([getDeviceId(), getStoredToken().catch(() => null)])
-    .then(([deviceId, userId]) =>
-      api.history.bakes.upsert({
-        id: bake.id,
-        deviceId,
-        userId: userId ?? undefined,
-        recipeId: bake.recipeId,
-        recipeName: bake.recipeName,
-        yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
-        savedAt,
-        startedAt: bake.startedAt,
-        phases,
-        inProgress: false,
-      })
-    )
-    .then(() => callbacks.reportSyncSuccess())
-    .catch(() => callbacks.reportSyncFailure());
+  const deviceId = await getDeviceId();
+  const token = await getStoredToken().catch(() => null);
+
+  api.history.bakes.upsert({
+    id: bake.id,
+    deviceId,
+    userId: token ?? undefined,
+    recipeId: bake.recipeId,
+    recipeName: bake.recipeName,
+    yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
+    savedAt,
+    startedAt: bake.startedAt,
+    completedAt: bake.completedAt,
+    status: bake.status,
+    outcome: bake.outcome,
+    phases: bake.phases,
+    inProgress: false,
+  })
+  .then(() => callbacks.reportSyncSuccess())
+  .catch(() => callbacks.reportSyncFailure());
+}
+
+// ─── archiveIntermediateIterations ──────────────────────────────────────────
+// Enforces the "Stack of 3" rule: keep Master + 2 most recent iterations.
+// Archives (marks isArchived: true) instead of deleting intermediate versions.
+export async function archiveIntermediateIterations(masterId: string): Promise<void> {
+  try {
+    const recipeStr = await AsyncStorage.getItem(RECIPES_KEY);
+    if (!recipeStr) return;
+
+    let allRecipes: SavedRecipe[] = JSON.parse(recipeStr);
+
+    // 1. Find the master
+    const master = allRecipes.find(r => r.id === masterId);
+    if (!master) return;
+
+    // 2. Find all iterations belonging to this master lineage
+    const iterations = allRecipes.filter(r => r.parentRecipeId === masterId)
+      .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+
+    if (iterations.length <= 2) return; // Nothing to archive
+
+    // 3. Keep the 2 most recent, archive the rest
+    const toKeepIds = new Set([master.id, iterations[0].id, iterations[1].id]);
+
+    const updatedRecipes = allRecipes.map(r => {
+      if (r.parentRecipeId === masterId && !toKeepIds.has(r.id)) {
+        return { ...r, isArchived: true };
+      }
+      return r;
+    });
+
+    // 4. Update local storage
+    await writeRecipesLocal(updatedRecipes);
+
+    // 5. Update remote (isArchived property will be synced on next upsert)
+    const deviceId = await getDeviceId();
+    const token = await getStoredToken().catch(() => null);
+
+    const toArchive = iterations.slice(2);
+    for (const r of toArchive) {
+        api.recipes.upsert({
+            ...r,
+            id: r.id,
+            deviceId,
+            userId: token ?? undefined,
+            name: r.name,
+            is_archived: true // Assuming API supports this now
+        } as any).catch(() => {});
+    }
+  } catch (e) {
+    console.error("[recipeStorage] Archive failed", e);
+  }
 }

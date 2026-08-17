@@ -1,0 +1,38 @@
+{
+  "fools_crumb": {
+    "slug": "fools_crumb",
+    "displayName": "Fool's Crumb",
+    "category": "crumb_outcome",
+    "shortDefinition": "Large isolated caverns surrounded by dense, tight crumb. Usually indicates under-fermentation or weak starter."
+  },
+  "gummy_crumb": {
+    "slug": "gummy_crumb",
+    "displayName": "Gummy Crumb",
+    "category": "crumb_outcome",
+    "shortDefinition": "A dense, rubbery layer at the base of the loaf."
+  },
+  "dense_crumb": {
+    "slug": "dense_crumb",
+    "displayName": "Dense Crumb",
+    "category": "crumb_outcome",
+    "shortDefinition": "Lack of porosity and aeration throughout the loaf."
+  },
+  "over_fermentation": {
+    "slug": "over_fermentation",
+    "displayName": "Over-Fermentation",
+    "category": "process_driver",
+    "shortDefinition": "Excessive fermentation leading to gluten breakdown and sugar depletion."
+  },
+  "under_fermentation": {
+    "slug": "under_fermentation",
+    "displayName": "Under-Fermentation",
+    "category": "process_driver",
+    "shortDefinition": "Insufficient fermentation resulting in poor gas distribution and dense crumb."
+  },
+  "autolyse": {
+    "slug": "autolyse",
+    "displayName": "Autolyse",
+    "category": "process_driver",
+    "shortDefinition": "Resting flour and water to activate enzymes and develop gluten before mixing."
+  }
+}

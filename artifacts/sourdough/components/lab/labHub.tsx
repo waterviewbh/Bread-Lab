@@ -257,12 +257,13 @@ export function LabHub() {
               history={history}
               onApplyRecipe={(recipe) => {
                 router.push({
-                  pathname: "/",
+                  pathname: "/bench",
                   params: {
+                    section: "feed",
                     starter: recipe.starter.toString(),
                     flour: recipe.flour.toString(),
                     water: recipe.water.toString(),
-                    autoStart: "true"
+                    autoStart: "false"
                   }
                 });
               }}
@@ -271,7 +272,12 @@ export function LabHub() {
         </ScrollView>
       )}
 
-      <PhasePickerModal visible={showPhasePicker} availableCategories={PHASE_CATEGORIES} onConfirm={handleConfirmPhases} onClose={() => setShowPhasePicker(false)} />
+      <PhasePickerModal
+        visible={showPhasePicker}
+        availableCategories={PHASE_CATEGORIES}
+        onConfirm={handleConfirmPhases}
+        onClose={() => setShowPhasePicker(false)}
+      />
     </View>
   );
 }

@@ -105,6 +105,7 @@ export interface SavedRecipe {
   hydrationPct?: number;
   parentRecipeId?: string;
   versionLabel?: string;
+  isArchived?: boolean;         // Soft archiving for intermediate iterations
 }
 
 // ─── Active bake phase (runner shape, extends builder config) ─────────────────
@@ -120,15 +121,48 @@ export interface BakePhase extends RecipePhaseConfig {
   bulkFermentState?: BulkFermentState;
 }
 
+// ─── Bake Lifecycle & Diagnostics ──────────────────────────────────────────
+export type BakeStatus = 'active' | 'completed' | 'aborted' | 'post_mortem';
+
+export type BakeDefect =
+  | 'FOOLS_CRUMB'
+  | 'GUMMY_BOTTOM'
+  | 'DENSE_CRUMB'
+  | 'OVER_PROOFED'
+  | 'UNDER_PROOFED'
+  | 'PALE_CRUST'
+  | 'STUCK_BANNETON'
+  | 'WEAK_SPRING';
+
+export interface BakeOutcome {
+  crumbScore?: 1 | 2 | 3 | 4 | 5;
+  crustScore?: 1 | 2 | 3 | 4 | 5;
+  sournessScore?: 1 | 2 | 3 | 4 | 5;
+  overallScore?: 1 | 2 | 3 | 4 | 5;
+  defects: BakeDefect[];
+  reflectionNotes?: string;
+  iterationHypothesis?: string;
+  crumbShotUri?: string;
+  appliedDelta?: { variable: string, value: number }; // Persists the magnitude of the last step
+}
+
 // ─── Active bake (in-progress state) ─────────────────────────────────────────
 export interface ActiveBake {
   id: string;
   recipeId: string;
   recipeName: string;
   startedAt: number;
+  completedAt?: number;
+  status: BakeStatus;
   phases: BakePhase[];
   notes?: string;
   yieldValue?: string;
+  outcome?: BakeOutcome;
+}
+
+export interface BakeHistoryItem extends Omit<ActiveBake, 'status'> {
+  savedAt: number;
+  status: 'completed' | 'post_mortem';
 }
 
 // ─── Phase catalogue (hierarchical) ──────────────────────────────────────────

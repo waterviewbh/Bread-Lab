@@ -32,6 +32,7 @@ interface Props {
 }
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import { TourStep, CopilotView } from "@/components/TourStep";
+import { IterationStack } from "@/components/log/IterationStack";
 
 export function RecipeBuilderListView({
   recipes,
@@ -50,6 +51,18 @@ export function RecipeBuilderListView({
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const tabBarPad = Platform.OS === "web" ? 84 : 49;
+
+  // Group recipes by lineage, filtering out archived ones for the main view
+  const masterRecipes = displayedRecipes.filter(r => !r.parentRecipeId && !r.isArchived);
+  const iterationsMap = new Map<string, SavedRecipe[]>();
+  displayedRecipes.forEach(r => {
+    if (r.parentRecipeId && !r.isArchived) {
+      const list = iterationsMap.get(r.parentRecipeId) || [];
+      list.push(r);
+      iterationsMap.set(r.parentRecipeId, list);
+    }
+  });
+
   return (
     <ScrollView
       contentContainerStyle={{
@@ -87,10 +100,9 @@ export function RecipeBuilderListView({
             </Text>
           </Pressable>
         </View>
-        {/* A–Z index — keycap style, two rows */}
+        {/* A–Z index */}
         {recipes.length > 1 && populatedLetters.length > 1 && (
           <View style={{ marginBottom: 12 }}>
-            {/* Row 1: All key + first 13 letters */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -121,7 +133,6 @@ export function RecipeBuilderListView({
                 );
               })}
             </ScrollView>
-            {/* Row 2: overflow letters (> 13) */}
             {populatedLetters.length > 13 && (
               <ScrollView
                 horizontal
@@ -158,98 +169,116 @@ export function RecipeBuilderListView({
           </View>
         ) : (
           <View style={{ gap: 10 }}>
-            {displayedRecipes.map((r, i) => (
-              <Animated.View key={r.id} entering={FadeInDown.delay(i * 40).duration(300)}>
-                <Pressable
-                  onPress={() => onEditRecipe(r)}
-                  style={({ pressed }) => [
-                    s.recipeCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                      opacity: pressed ? 0.85 : 1,
-                    },
-                  ]}
-                >
-                  <View style={s.recipeCardTop}>
-                    <Text
-                      style={[s.recipeName, { color: colors.foreground }]}
-                      numberOfLines={1}
-                    >
-                      {r.name}
-                    </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                      <Pressable
-                        onPress={(e) => { e.stopPropagation?.(); onDuplicateRecipe(r); }}
-                        hitSlop={8}
-                        style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+            {masterRecipes.map((master, i) => {
+              const iterations = iterationsMap.get(master.id) || [];
+
+              if (iterations.length > 0) {
+                return (
+                  <Animated.View key={master.id} entering={FadeInDown.delay(i * 40).duration(300)}>
+                     <IterationStack
+                       master={master}
+                       iterations={iterations.sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0))}
+                       onSelect={onEditRecipe}
+                     />
+                  </Animated.View>
+                );
+              }
+
+              return (
+                <Animated.View key={master.id} entering={FadeInDown.delay(i * 40).duration(300)}>
+                  <Pressable
+                    onPress={() => onEditRecipe(master)}
+                    style={({ pressed }) => [
+                      s.recipeCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        opacity: pressed ? 0.85 : 1,
+                      },
+                    ]}
+                  >
+                    <View style={s.recipeCardTop}>
+                      <Text
+                        style={[s.recipeName, { color: colors.foreground }]}
+                        numberOfLines={1}
                       >
-                        <Feather name="copy" size={15} color={colors.mutedForeground} />
-                      </Pressable>
-                      <Pressable
-                        onPress={(e) => { e.stopPropagation?.(); onPrintRecipe(r); }}
-                        hitSlop={8}
-                        style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
-                      >
-                        <Feather name="printer" size={15} color={colors.mutedForeground} />
-                      </Pressable>
-                      <Pressable
-                        onPress={(e) => { e.stopPropagation?.(); onShareRecipe(r); }}
-                        hitSlop={8}
-                        style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
-                      >
-                        <Feather name="share-2" size={15} color={colors.mutedForeground} />
-                      </Pressable>
-                      <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-                    </View>
-                  </View>
-                  <View style={s.recipeCardMeta}>
-                    <View style={{ flexDirection: "row", gap: 2 }}>
-                      <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
-                        {r.phases.length} {r.phases.length === 1 ? "phase" : "phases"}
+                        {master.name}
                       </Text>
-                      <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
-                        · {formatDate(r.createdAt)}
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                        <Pressable
+                          onPress={(e) => { e.stopPropagation?.(); onDuplicateRecipe(master); }}
+                          hitSlop={8}
+                          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+                        >
+                          <Feather name="copy" size={15} color={colors.mutedForeground} />
+                        </Pressable>
+                        <Pressable
+                          onPress={(e) => { e.stopPropagation?.(); onPrintRecipe(master); }}
+                          hitSlop={8}
+                          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+                        >
+                          <Feather name="printer" size={15} color={colors.mutedForeground} />
+                        </Pressable>
+                        <Pressable
+                          onPress={(e) => { e.stopPropagation?.(); onShareRecipe(master); }}
+                          hitSlop={8}
+                          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+                        >
+                          <Feather name="share-2" size={15} color={colors.mutedForeground} />
+                        </Pressable>
+                        <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+                      </View>
                     </View>
-                    {!!r.yieldValue && (
-                      <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
-                        Yield: {r.yieldValue}
+                    <View style={s.recipeCardMeta}>
+                      <View style={{ flexDirection: "row", gap: 2 }}>
+                        <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
+                          {master.phases.length} {master.phases.length === 1 ? "phase" : "phases"}
+                        </Text>
+                        <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
+                          · {formatDate(master.createdAt)}
+                        </Text>
+                      </View>
+                      {!!master.yieldValue && (
+                        <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
+                          Yield: {master.yieldValue}
+                        </Text>
+                      )}
+                    </View>
+                    {!!master.overview && (
+                      <Text
+                        style={[s.recipeOverview, { color: colors.mutedForeground }]}
+                        numberOfLines={2}
+                      >
+                        {master.overview}
                       </Text>
                     )}
-                  </View>
-                  {/* Overview preview — only shown if the recipe has one */}
-                  {!!r.overview && (
-                    <Text
-                      style={[s.recipeOverview, { color: colors.mutedForeground }]}
-                      numberOfLines={2}
-                    >
-                      {r.overview}
-                    </Text>
-                  )}
-                  {r.phases.length > 0 && (
-                    <View style={s.phasePillRow}>
-                      {r.phases.map((p) => (
-                        <View
-                          key={p.key}
-                          style={[
-                            s.phasePill,
-                            {
-                              backgroundColor: colors.primary + "12",
-                              borderColor: colors.primary + "28",
-                            },
-                          ]}
-                        >
-                          <Text style={[s.phasePillText, { color: colors.primary }]}>
-                            {p.name}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </Pressable>
-              </Animated.View>
-            ))}
+                    {master.phases.length > 0 && (
+                      <View style={s.phasePillRow}>
+                        {master.phases.slice(0, 3).map((p) => (
+                          <View
+                            key={p.key}
+                            style={[
+                              s.phasePill,
+                              {
+                                backgroundColor: colors.primary + "12",
+                                borderColor: colors.primary + "28",
+                              },
+                            ]}
+                          >
+                            <Text style={[s.phasePillText, { color: colors.primary }]}>
+                              {p.name}
+                            </Text>
+                          </View>
+                        ))}
+                        {master.phases.length > 3 && (
+                          <Text style={{ fontSize: 10, color: colors.mutedForeground }}>+{master.phases.length - 3}</Text>
+                        )}
+                      </View>
+                    )}
+                  </Pressable>
+                </Animated.View>
+              );
+            })}
           </View>
         )}
        {/* Tour transition anchor — zero-height, sits just above tab bar.

@@ -99,15 +99,27 @@ export function formatDate(ts: number): string {
  * Supports both legacy strings and new CheckableLine arrays.
  */
 export function parseIngredientsForMetrics(phases: { ingredients: string | any[] }[]) {
-  let totals = { flour: 0, water: 0, starter: 0, yeast: 0, yeastType: "unknown" as "instant" | "dry" | "unknown" };
+  let totals = {
+    flour: 0,
+    water: 0,
+    starter: 0,
+    yeast: 0,
+    yeastType: "unknown" as "instant" | "dry" | "unknown",
+    // Smart hydration tracking
+    additionalWater: 0,
+    additionalSolids: 0,
+  };
+
   const weightRegex = /(\d+(?:\.\d+)?)\s*(?:g|gram|grams|kg|ml|l)/i;
 
-  phases.forEach(p => {
+  phases.forEach((p) => {
     const lines: string[] = Array.isArray(p.ingredients)
-      ? p.ingredients.map(i => i.text.toLowerCase())
-      : (typeof p.ingredients === 'string' ? p.ingredients.toLowerCase().split('\n') : []);
+      ? p.ingredients.map((i) => i.text.toLowerCase())
+      : typeof p.ingredients === "string"
+      ? p.ingredients.toLowerCase().split("\n")
+      : [];
 
-    lines.forEach(line => {
+    lines.forEach((line) => {
       const match = line.match(weightRegex);
       if (!match) return;
 
@@ -115,13 +127,39 @@ export function parseIngredientsForMetrics(phases: { ingredients: string | any[]
       const unit = line.match(/(?:kg|l)/i) ? 1000 : 1;
       weight *= unit;
 
-      if (line.includes("flour")) totals.flour += weight;
-      else if (line.includes("water") || line.includes("liquid")) totals.water += weight;
-      else if (line.includes("starter") || line.includes("levain")) totals.starter += weight;
-      else if (line.includes("yeast")) {
+      // 1. Core Flour / Water / Starter
+      if (line.includes("flour")) {
+        totals.flour += weight;
+      } else if (line.includes("water")) {
+        totals.water += weight;
+      } else if (line.includes("starter") || line.includes("levain")) {
+        totals.starter += weight;
+      } else if (line.includes("yeast")) {
         totals.yeast += weight;
         if (line.includes("instant") || line.includes("saf")) totals.yeastType = "instant";
         else if (line.includes("dry") || line.includes("active")) totals.yeastType = "dry";
+      }
+      // 2. Liquid Hydrators (Milk, Cream, Yogurt, Purees, Eggs)
+      else if (line.includes("milk")) {
+        totals.additionalWater += weight * 0.87;
+        totals.additionalSolids += weight * 0.13;
+      } else if (line.includes("egg")) {
+        totals.additionalWater += weight * 0.75;
+      } else if (line.includes("yogurt") || line.includes("sour cream")) {
+        totals.additionalWater += weight * 0.8;
+      } else if (line.includes("cream")) {
+        // Heavy cream ~60%, half-and-half ~80% — use 65% as middle ground
+        totals.additionalWater += weight * 0.65;
+      } else if (line.includes("puree") || line.includes("sauce")) {
+        totals.additionalWater += weight * 0.85;
+      }
+      // 3. Syrups & Fats (Honey, Butter, Oil)
+      else if (line.includes("honey") || line.includes("maple") || line.includes("molasses")) {
+        totals.additionalWater += weight * 0.18;
+      } else if (line.includes("butter")) {
+        totals.additionalWater += weight * 0.17;
+      } else if (line.includes("oil") || line.includes("lard")) {
+        // 0% water, but contributes to "liquidity" (though not baker's hydration)
       }
     });
   });
@@ -137,15 +175,17 @@ export function parseIngredientsForMetrics(phases: { ingredients: string | any[]
  * calculateRecipeMetrics — Returns total flour and hydration pct for Supabase.
  */
 export function calculateRecipeMetrics(phases: any[]) {
-  const { flour, water, starter, effectiveStarter } = parseIngredientsForMetrics(phases);
+  const { flour, water, starter, effectiveStarter, additionalWater, additionalSolids } =
+    parseIngredientsForMetrics(phases);
 
   // Recipe totals include starter components (assume 50/50)
-  const totalFlour = flour + (starter / 2);
-  const totalWater = water + (starter / 2);
+  // and solids from milk, etc.
+  const totalFlour = flour + starter / 2 + additionalSolids;
+  const totalWater = water + starter / 2 + additionalWater;
 
   return {
     totalFlourG: Math.round(totalFlour),
     hydrationPct: totalFlour > 0 ? Math.round((totalWater / totalFlour) * 100) : 0,
-    inoculationPct: totalFlour > 0 ? (effectiveStarter / totalFlour) * 100 : 20
+    inoculationPct: totalFlour > 0 ? (effectiveStarter / totalFlour) * 100 : 20,
   };
 }

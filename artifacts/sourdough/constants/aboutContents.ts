@@ -16,7 +16,7 @@ export type ChangelogVersion = {
 
 export const HELP: HelpTab[] = [
   {
-    label: "The Lab: Planning & Analytics",
+    label: "The Lab: Planning and Analytics",
     sections: [
       {
         heading: "Vitality Analytics",
@@ -82,7 +82,7 @@ export const HELP: HelpTab[] = [
     ],
   },
   {
-    label: "The Log: History & Resources",
+    label: "The Log: Review and Improve",
     sections: [
       {
         heading: "Bake History",
@@ -92,6 +92,16 @@ export const HELP: HelpTab[] = [
           "Data History Feed: Selecting a day on the calendar populates a ledger with your historical feed and bake logs.",
           "Detailed Review: Tap any entry to see its full data set, including pH readings, photos, and bake notes.",
           "Cloud Synchronization: Automated backups ensure your data is accessible across devices.",
+        ],
+      },
+      {
+        heading: "Diagnostic",
+        bullets: [
+          "Purpose: The scientific analysis engine under the Diagnostic tab of the Log Hub, translating post-bake outcomes into actionable single-variable recipe iterations.",
+          "Defect Identification & Rating: Tag structural or visual defects (e.g., Fool's Crumb, Over-Proofed) and provide 1-5 star ratings across Crumb, Crust, and Flavor.",
+          "Automated Diagnostic Analysis: Evaluated tagged defects against Bench telemetry (or smart fallback baselines) to isolate root-cause mechanisms and display recommendations.",
+          "Science Deep Dives: Embedded scientific guides explaining the physical and biological drivers behind each defect.",
+          "Single-Variable Iteration Loop: Generates isolated driver recommendations (+45 min bulk, -4 hrs cold retard) and hypothesis notes before committing the updated recipe to the Lab.",
         ],
       },
       {
@@ -108,12 +118,14 @@ export const HELP: HelpTab[] = [
 ];
 
 export const CHANGELOG: ChangelogVersion[] = [
-    /*{
-      version: "v2.0.1", /* -- published 202608XX -- /
+    {
+      version: "v2.1.0", /* -- published 20260816 -- */
       changes: [
-         { type: "Changed", content: "The Log now acts as your baker's journal, showing recent bake notes and allowing recipe updates directly from history." },
+        { type: "Changed", content: "The Log now acts as your baker's journal, showing recent bake notes and allowing recipe updates directly from history." },
+        { type: "Added", content: "Recipe Card Stacks: The Lab Hub now organizes recipes into stacks of 3 (Master + 2 recent), soft-archiving intermediate versions to keep your workspace clean while preserving historical grain for future trend analysis." },
+        { type: "Added", content: "Science Deep Dives: A new catalog of 8 detailed articles explaining the biochemistry of common bake defects (Fool's Crumb, Over-Proofed, etc.), accessible directly from Diagnostics and the Science Hub." },
      ],
-    },*/
+    },
     {
       version: "v2.0.0", /* -- published 20260814 -- */
       changes: [
@@ -328,6 +340,37 @@ export const LIFTING_DATA = {
       visual: "Both the bar and the triangle are low on the chart.",
       diagnostic: "Likely premature termination — the session ended before the starter reached true peak capacity.",
       insight: "The record was probably closed out early rather than at a natural stopping point. Check the baker's notes for this session — you may have logged a reason at the time."
+    }
+  ]
+};
+
+export const BULK_ENGINE_DATA = {
+  title: "Bulk Ferment Engine",
+  body: "The Bulk Ferment Engine is a Proportional-Derivative (PD) model designed to predict dough readiness based on real-time volumetric data, thermal kinetics, and biological priors. It shifts from theoretical models to real-time physics as your bake progresses, helping you time the transition from bulk to shaping with precision.",
+  sections: [
+    {
+      heading: "The Biological Prior",
+      visual: "The engine anchors its initial estimate to your recipe's inoculation percentage (mapped to 10%, 20%, or 30%).",
+      diagnostic: "Establishes the expected fermentation velocity based on Doughlab biological reference charts.",
+      insight: "Early in the bulk, the engine trusts the chart more than your readings. This prevents erratic 'Time Remaining' jumps caused by the dough settling or initial degassing during the mix."
+    },
+    {
+      heading: "Smart Hydration Scaling",
+      visual: "Recognizes the water content of Milk (87%), Eggs (75%), Honey (18%), and other hydrators.",
+      diagnostic: "Higher hydration reduces projected bulk time by -1.5% for every 1% hydration above 70%.",
+      insight: "High-hydration doughs offer less physical resistance to expansion and higher nutrient mobility for yeast. The engine automatically accelerates its baseline projections to account for this increased metabolic speed."
+    },
+    {
+      heading: "Thermal Target Rise",
+      visual: "The engine dynamically adjusts the target rise percentage (e.g., 50% vs 100%) based on dough temperature.",
+      diagnostic: "Warmer doughs (80°F+) target a smaller volumetric rise to account for continued fermentation during the cool-down phase in the fridge.",
+      insight: "Cooler doughs can safely rise further on the bench because they have less 'thermal momentum.' The engine ensures you don't over-proof warm doughs that will keep expanding after shaping."
+    },
+    {
+      heading: "The Complementary Filter (Alpha)",
+      visual: "A time-weighted 'Alpha' value that blends Baseline Velocity with Measured Velocity.",
+      diagnostic: "As bulk progresses, the engine trust your specific dough's measured expansion rate more and more.",
+      insight: "By the time you are near the target, the engine has virtually ignored the starting charts and is calculating your finish time based purely on the actual physics of your bowl."
     }
   ]
 };

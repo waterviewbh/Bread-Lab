@@ -56,7 +56,7 @@ import {
   writeBakeLocal,
   upsertBakeRemote,
   upsertRecipeRemote,
-  saveBakeToHistory as saveBakeToHistoryLib,
+  archiveBakeWithDiagnostics,
   addToRecipeTombstone,
   removeFromRecipeTombstone,
 } from "@/lib/recipeStorage";
@@ -209,11 +209,13 @@ const elapsed = useActiveBakeTimer(bake);
   useEffect(() => {
     if (bake) {
       const vols: Record<string, string> = {};
-      bake.phases.forEach((p) => { vols[p.key] = p.startVolume ?? ""; });
+      bake.phases.forEach((p) => {
+        vols[p.key] = p.startVolume ?? "";
+      });
       setPhaseStartVolumes(vols);
+      setBakeNotes(bake.notes ?? "");
     }
-    setBakeNotes(bake?.notes ?? "");
-  }, [bake?.id]);
+  }, [bake]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -256,7 +258,7 @@ const persistBake = async (updated: ActiveBake) => {
 };
 
 const saveBakeToHistory = async (b: ActiveBake) => {
-  await saveBakeToHistoryLib(b, { reportSyncStart, reportSyncSuccess, reportSyncFailure });
+  await archiveBakeWithDiagnostics(b, { reportSyncStart, reportSyncSuccess, reportSyncFailure });
 };
 
   const checkAndShowNudge = async () => {
@@ -492,7 +494,7 @@ const saveBakeToHistory = async (b: ActiveBake) => {
       return p;
     });
 
-    await persistBake({ ...bake, phases });
+    await persistBake({ ...bake, phases, status: 'active' });
 
     // 2. Auto-expand the "Phase Specs" panel if there is content to show
     const startedPhase = bake.phases.find((p) => p.key === key);
@@ -515,7 +517,13 @@ const saveBakeToHistory = async (b: ActiveBake) => {
     setRecentlyCompletedKey(key);
     setTimeout(() => setRecentlyCompletedKey(null), 800);
 
-    await persistBake({ ...bake, phases });
+    const isLastPhase = phases.every(p => !!p.completedAt);
+    await persistBake({
+      ...bake,
+      phases,
+      status: isLastPhase ? 'completed' : 'active',
+      completedAt: isLastPhase ? Date.now() : undefined
+    });
     setExpandedRecipeInfo((prev) => {
       const next = new Set(prev);
       next.delete(key);

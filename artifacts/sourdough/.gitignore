@@ -39,6 +39,9 @@ yarn-error.*
 .vercel
 
 .env
+*.artifact.md
+*.md
+.jpg
 
 # Generated app.json and local version overrides
 app.json

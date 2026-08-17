@@ -6,7 +6,7 @@
 //
 // All three are in one file because they share a StyleSheet and are only ever
 // used together in the same map() in RecipeRunnerActiveView / recipe.tsx.
-import React from "react";
+import React, { useState } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import {
   Pressable,
@@ -268,6 +268,7 @@ export function ActivePhaseCard({
   sessionChecks,
   onToggleLineCheck,
 }: ActivePhaseCardProps) {
+    const [expandedReadingIndex, setExpandedReadingIndex] = useState<number | null>(null);
     const visibleIngredients = filterEmptyLines(phase.ingredients);
     const visibleInstructions = filterEmptyLines(phase.instructions);
     const hasRecipeInfo = visibleIngredients.length > 0 || visibleInstructions.length > 0;
@@ -343,9 +344,68 @@ export function ActivePhaseCard({
             <Text style={s.bulkActionBtnText}>Bulk Check-In</Text>
           </Pressable>
 
-          {!phase.readings.some(r => (r as any).volume_ml) && (
-            <Text style={s.bulkHint}>Log your first volume reading to start the estimator.</Text>
-          )}
+          {/* Unified Bulk Readings Table */}
+          <View style={[s.readingsTable, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {/* Table Header */}
+            <View style={[s.tableHeaderRow, { backgroundColor: colors.secondary + "20", borderBottomColor: colors.border }]}>
+              <Text style={[s.headerCol, { color: colors.mutedForeground, width: 70 }]}>Time</Text>
+              <Text style={[s.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'center' }]}>pH</Text>
+              <Text style={[s.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'center' }]}>Temp</Text>
+              <Text style={[s.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'center' }]}>Vol (mL)</Text>
+            </View>
+
+            {/* Initial Reading Row (t=0) */}
+            <View style={[s.readRow, { borderBottomWidth: phase.readings.length > 0 ? 1 : 0, borderBottomColor: colors.border }]}>
+              <Text style={[s.readCol, { color: colors.mutedForeground, width: 70 }]}>0m</Text>
+              <Text style={[s.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>—</Text>
+              <Text style={[s.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>—</Text>
+              <Text style={[s.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.mono, textAlign: 'center' }]}>{startVolumeInput || "—"}</Text>
+            </View>
+
+            {/* Logged Readings */}
+            {phase.readings.length > 0 ? (
+              phase.readings.map((r, i) => {
+                const bulkReading = r as BulkFermentReading;
+                const readingElapsedMs = phase.startedAt ? r.loggedAt - phase.startedAt : 0;
+                const hh = Math.floor(readingElapsedMs / 3600000);
+                const mm = Math.floor((readingElapsedMs % 3600000) / 60000);
+                const timeStr = hh > 0 ? `${hh}h ${mm}m` : `${mm}m`;
+                const isExpanded = expandedReadingIndex === i;
+                const hasNote = !!r.note;
+                const isLast = i === phase.readings.length - 1;
+
+                // Support both numeric and string fields for bulk flexibility
+                const displayPH = r.pH || "—";
+                const displayTemp = bulkReading.doughTemp ? `${bulkReading.doughTemp}°` : (r.temp ? `${r.temp}°` : "—");
+                const displayVol = bulkReading.volume_ml ?? (r.volume || "—");
+
+                return (
+                  <View key={r.id || i} style={{ borderBottomWidth: isLast ? 0 : 1, borderBottomColor: colors.border }}>
+                    <Pressable
+                      onPress={hasNote ? () => setExpandedReadingIndex(isExpanded ? null : i) : undefined}
+                      style={s.readRowPressable}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Text style={[s.readCol, { color: hasNote ? colors.primary : colors.mutedForeground, width: 70 }]}>{timeStr}</Text>
+                        <Text style={[s.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{displayPH}</Text>
+                        <Text style={[s.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{displayTemp}</Text>
+                        <Text style={[s.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{displayVol}</Text>
+                      </View>
+                      {hasNote && (
+                        <Text numberOfLines={isExpanded ? undefined : 1} style={[s.noteText, { color: colors.mutedForeground, paddingLeft: 70 }]}>
+                          "{r.note}"
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                );
+              })
+            ) : (
+              !startVolumeInput && (
+                <Text style={s.bulkHint}>Log your first volume reading to start the estimator.</Text>
+              )
+            )}
+          </View>
         </View>
       )}
 
@@ -597,5 +657,41 @@ const s = StyleSheet.create({
     fontFamily: fonts.sansSemiBold,
     color: "#fff",
     fontSize: 15,
+  },
+  readingsTable: {
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+    marginTop: 8,
+  },
+  tableHeaderRow: {
+    flexDirection: "row",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
+  headerCol: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  readRow: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  readRowPressable: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  readCol: {
+    fontFamily: fonts.mono,
+    fontSize: 13,
+  },
+  noteText: {
+    fontSize: 11,
+    fontStyle: "italic",
+    marginTop: 4,
   },
 });

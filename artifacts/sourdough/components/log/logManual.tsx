@@ -18,9 +18,11 @@ import { useFontSize } from "@/contexts/FontSizeContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useTourSlideshow } from "@/contexts/TourSlideshowContext";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
+import { useRouter } from "expo-router";
+import { DIAGNOSTIC_SCIENCE } from "@/constants/diagnosticContents";
 
 // --- Data ---
-import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA } from "@/constants/aboutContents";
+import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA, BULK_ENGINE_DATA } from "@/constants/aboutContents";
 
 const SUPPORT_EMAIL = "waterviewbakehouse@gmail.com";
 const logo = require("@/assets/images/waterview-bakehouse-logo.jpg");
@@ -132,8 +134,51 @@ function InterpretationCard({ data, colors }: { data: any; colors: any }) {
   );
 }
 
+function ScienceDeepDivesCard({ colors, router }: { colors: any; router: any }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 16 }]}>
+      <Pressable
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => [
+          styles.accordionHeader,
+          { borderBottomWidth: open ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border },
+          pressed && { opacity: 0.7 }
+        ]}
+      >
+        <Text style={[styles.accordionTitle, { color: colors.foreground }]}>Science Deep Dives</Text>
+        <Feather name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
+      </Pressable>
+      {open && (
+        <View style={{ padding: 12 }}>
+          <Text style={[styles.interpretBody, { color: colors.mutedForeground, marginBottom: 16, paddingHorizontal: 4 }]}>
+            Detailed analysis of bake outcomes, mechanics, and interventions.
+          </Text>
+          {Object.entries(DIAGNOSTIC_SCIENCE).map(([slug, article]) => (
+            <Pressable
+              key={slug}
+              onPress={() => router.setParams({ slug })}
+              style={({ pressed }) => [
+                styles.deepDiveItem,
+                { borderBottomColor: colors.border, opacity: pressed ? 0.6 : 1 }
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                 <Text style={[styles.deepDiveTitle, { color: colors.foreground }]}>{article.title.replace('The Science of ', '')}</Text>
+                 <Text style={[styles.deepDiveSubtitle, { color: colors.mutedForeground }]} numberOfLines={1}>{article.primaryDriver}</Text>
+              </View>
+              <Feather name="arrow-right" size={14} color={colors.accent} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function ResourcesSection() {
   const colors = useColors();
+  const router = useRouter();
   const { fullFontSize, setFullFontSize } = useFontSize();
   const { showTour } = useTourSlideshow();
   const { tempUnit, setTempUnit, starterTutorialMode, setStarterTutorialMode } = usePreferences();
@@ -146,9 +191,12 @@ export function ResourcesSection() {
           <Text style={[styles.pageSubtitle, { color: colors.mutedForeground }]}>Guides, Settings, and Science</Text>
         </View>
 
-        <View style={styles.logoWrap}>
+        <Pressable
+          onPress={() => router.replace('/')}
+          style={({ pressed }) => [styles.logoWrap, { opacity: pressed ? 0.7 : 1 }]}
+        >
           <Image source={logo} style={styles.logo} resizeMode="contain" />
-        </View>
+        </Pressable>
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>Settings</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -199,8 +247,10 @@ export function ResourcesSection() {
         {HELP.map((tab, i) => <HelpAccordion key={i} tab={tab} colors={colors} />)}
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground, borderBottomColor: colors.border, marginTop: 24 }]}>Science Hub</Text>
+        <ScienceDeepDivesCard colors={colors} router={router} />
         <InterpretationCard data={ACIDIFICATION_DATA} colors={colors} />
         <InterpretationCard data={LIFTING_DATA} colors={colors} />
+        <InterpretationCard data={BULK_ENGINE_DATA} colors={colors} />
 
         <Text style={[styles.versionLabel, { color: colors.mutedForeground }]}>Version {versionData.version} ({versionData.versionCode})</Text>
       </Animated.View>
@@ -240,4 +290,20 @@ const styles = StyleSheet.create({
   interpretBody: { ...typography.bodySm },
   interpretLabel: { fontFamily: fonts.sansSemiBold },
   versionLabel: { ...typography.metaLabel, textAlign: "center", marginTop: 32 },
+  deepDiveItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  deepDiveTitle: {
+    fontSize: 15,
+    fontFamily: fonts.sansSemiBold,
+    marginBottom: 2,
+  },
+  deepDiveSubtitle: {
+    fontSize: 12,
+    fontFamily: fonts.sans,
+  },
 });
