@@ -212,51 +212,43 @@ export function getCorrelationAnalysis(
 
     if (slug === 'fools_crumb' || slug === 'under_proofed') {
       variable = 'bulk_duration';
+      delta = STEP_DELTAS.BULK_MINS;
       if (tempF < 72 && durationHours < 6) {
         confirmed = true;
         insight = "Correlates with short bulk duration for a cool dough temperature.";
         contributingFactors.push(`Bulk: ${durationHours.toFixed(1)}h @ ${tempF.toFixed(1)}°F`);
-        delta = STEP_DELTAS.BULK_MINS;
-      } else if (!bulkPhase?.startedAt) {
-        insight = "Assuming under-fermentation based on visual pattern.";
-        delta = STEP_DELTAS.BULK_MINS;
+      } else {
+        insight = "Analyzing potential under-fermentation baseline.";
       }
     }
 
     if (slug === 'over_proofed') {
       variable = 'bulk_duration';
+      delta = -STEP_DELTAS.BULK_MINS;
       if (durationHours > 7 || tempF > 78) {
         confirmed = true;
         insight = "Correlates with extended bulk time or high temperature.";
         contributingFactors.push(`Bulk: ${durationHours.toFixed(1)}h @ ${tempF.toFixed(1)}°F`);
-        delta = -STEP_DELTAS.BULK_MINS;
-      } else if (!bulkPhase?.startedAt) {
-        insight = "Assuming over-fermentation based on visual pattern.";
-        delta = -STEP_DELTAS.BULK_MINS;
+      } else {
+        insight = "Analyzing potential over-fermentation baseline.";
       }
     }
 
     if (slug === 'pale_crust') {
       variable = 'bulk_duration';
+      delta = -STEP_DELTAS.BULK_MINS;
       if (durationHours > 8 && tempF > 75) {
         confirmed = true;
         insight = "High temperature bulk likely depleted surface sugars.";
-        delta = -STEP_DELTAS.BULK_MINS;
+      } else {
+          insight = "Analyzing potential sugar exhaustion mechanisms.";
       }
     }
 
     if (slug === 'gummy_crumb') {
       variable = 'hydration';
       delta = -STEP_DELTAS.HYDRATION_PCT;
-      insight = "Analyzing starch gelatinization; reducing hydration to improve structure.";
-    }
-
-    // Retard Scaler Logic
-    if (slug === 'weak_spring' && retardHours > 0) {
-        variable = 'retard_duration';
-        const scaler = RETARD_LOOKUP.find(r => retardTemp >= r.tempMin && retardTemp <= r.tempMax);
-        delta = scaler?.stepDeltaHours || 4.0;
-        recommendation = `Extend Cold Retard by +${delta} hours (scaled for ${retardTemp}°F).`;
+      insight = "Reducing hydration to improve starch gelatinization and structure.";
     }
 
     // Binary Convergence (Half-Step) Logic
@@ -264,13 +256,25 @@ export function getCorrelationAnalysis(
         const prevAppliedDelta = previousBake?.outcome?.appliedDelta?.value || delta;
         const halvedDelta = Math.max(variable === 'hydration' ? 1 : 5, Math.round(Math.abs(prevAppliedDelta) * 0.5));
         delta = (delta > 0 ? 1 : -1) * halvedDelta;
-        recommendation = `Overshoot detected. Reversing direction with 50% damping: ${delta > 0 ? '+' : ''}${delta} ${variable === 'bulk_duration' ? 'mins' : variable}.`;
+        recommendation = `Overshoot detected. Reversing direction with 50% damping: ${delta > 0 ? 'Increase' : 'Reduce'} ${variable.replace('_', ' ')} by ${Math.abs(delta)} ${variable === 'bulk_duration' ? 'minutes' : variable === 'hydration' ? '%' : 'hours'}.`;
         terminationStatus = 'OVERSHOOT';
     } else if (delta !== 0 && !recommendation) {
         recommendation = `${delta > 0 ? 'Increase' : 'Reduce'} ${variable.replace('_', ' ')} by ${Math.abs(delta)} ${variable === 'bulk_duration' ? 'minutes' : variable === 'hydration' ? '%' : 'hours'}.`;
     }
 
-    // 4. Termination Evaluator (Overrides active recommendation)
+    // Retard Scaler Logic (Secondary pass if weak_spring is the main issue)
+    if (slug === 'weak_spring' && retardHours > 0) {
+        variable = 'retard_duration';
+        const scaler = RETARD_LOOKUP.find(r => retardTemp >= r.tempMin && retardTemp <= r.tempMax);
+        const step = scaler?.stepDeltaHours || 4.0;
+        recommendation = `Extend Cold Retard by +${step} hours (scaled for ${retardTemp}°F).`;
+        delta = step;
+    }
+
+    // Adjust recommendation based on assumptions if telemetry was missing
+    if (assumptionWarning && recommendation) {
+        recommendation = `${recommendation} (Note: Based on standard room temp assumptions)`;
+    }
     if (currentScore >= 4) {
       terminationStatus = 'TARGET_MET';
       recommendation = "Target reached (4/5+). Primary driver optimized.";

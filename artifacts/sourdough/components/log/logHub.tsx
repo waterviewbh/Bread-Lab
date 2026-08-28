@@ -72,7 +72,7 @@ export function LogHub() {
       {/* Content */}
       <View style={{ flex: 1 }}>
         {section === "history" && <HistorySection />}
-        {section === "diagnostic" && <DiagnosticSection />}
+        {section === "diagnostic" && <DiagnosticSection bakeId={params.bakeId as string} />}
         {section === "resources" && <ResourcesSection />}
       </View>
 

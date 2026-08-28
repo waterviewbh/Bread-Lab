@@ -1,22 +1,24 @@
 // artifacts/sourdough/components/log/logDiagnostic.tsx
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Alert, Image } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Alert, Image, KeyboardAvoidingView, Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BAKE_HISTORY_KEY, BakeHistoryItem, SavedRecipe, DefectSlug } from "@/lib/recipeTypes";
 import { DEFECT_LIBRARY, getCorrelationAnalysis, CorrelationResult } from "@/lib/diagnosticLogic";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { writeRecipesLocal, purgeIntermediateIterations, loadAll } from "@/lib/recipeStorage";
+import { useRouter, useFocusEffect } from "expo-router";
+import { writeRecipesLocal, archiveIntermediateIterations, loadAll, updateBakeOutcomeInHistory } from "@/lib/recipeStorage";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
 
-export function DiagnosticSection() {
+export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   const colors = useColors();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [history, setHistory] = useState<BakeHistoryItem[]>([]);
   const [selectedBake, setSelectedBake] = useState<BakeHistoryItem | null>(null);
 
@@ -33,13 +35,39 @@ export function DiagnosticSection() {
     if (raw) {
       const parsed: BakeHistoryItem[] = JSON.parse(raw);
       setHistory(parsed);
+
+      // If we have a bakeId, find it. Otherwise refresh the currently selected bake from history.
+      const targetId = bakeId || selectedBake?.id;
+      if (targetId) {
+        const found = parsed.find(b => b.id === targetId);
+        if (found) {
+            setSelectedBake(found);
+            return;
+        }
+      }
+
       if (parsed.length > 0 && !selectedBake) {
         setSelectedBake(parsed[0]);
       }
     }
-  }, [selectedBake]);
+  }, [selectedBake?.id, bakeId]);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+    }, [loadHistory])
+  );
+
+  // Sync evaluation state with selectedBake outcome when selection changes
+  useEffect(() => {
+    if (selectedBake) {
+      setCrumbScore(selectedBake.outcome?.crumbScore || 0);
+      setCrustScore(selectedBake.outcome?.crustScore || 0);
+      setFlavorScore(selectedBake.outcome?.flavorScore || 0);
+      setSelectedDefects(selectedBake.outcome?.defects || []);
+      setHypothesis(selectedBake.outcome?.reflectionNotes || selectedBake.outcome?.iterationHypothesis || "");
+    }
+  }, [selectedBake]);
 
   // Update analysis whenever scores, defects or selected bake changes
   useEffect(() => {
@@ -71,12 +99,24 @@ export function DiagnosticSection() {
     );
   };
 
+  const overallScore = Math.round((crumbScore + crustScore + flavorScore) / 3);
+  const isSuccessful = overallScore >= 4 && selectedDefects.length <= 1;
+  const isGraded = !!selectedBake?.outcome?.overallScore;
+
   const StarRating = ({ label, score, onSet }: { label: string, score: number, onSet: (s: number) => void }) => (
     <View style={s.ratingRow}>
       <Text style={[s.ratingLabel, { color: colors.mutedForeground }]}>{label}</Text>
       <View style={s.starRow}>
         {[1, 2, 3, 4, 5].map(star => (
-          <Pressable key={star} onPress={() => { onSet(star); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+          <Pressable
+            key={star}
+            onPress={() => {
+              if (isGraded) return;
+              onSet(star);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            disabled={isGraded}
+          >
             <Ionicons
               name={score >= star ? "star" : "star-outline"}
               size={24}
@@ -87,6 +127,30 @@ export function DiagnosticSection() {
       </View>
     </View>
   );
+
+  const handleLogOnly = async () => {
+    if (!selectedBake) return;
+    try {
+      const outcome = {
+        crumbScore: crumbScore as any,
+        crustScore: crustScore as any,
+        flavorScore: flavorScore as any,
+        overallScore: overallScore as any,
+        defects: selectedDefects as any,
+        reflectionNotes: hypothesis,
+      };
+
+      await updateBakeOutcomeInHistory(selectedBake.id, outcome);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Bake Logged", "Great work on this bake! It has been recorded in your history.", [
+        { text: "Done", onPress: () => router.push("/log") }
+      ]);
+    } catch (e) {
+      console.error("[Diagnostic] LogOnly failed", e);
+      Alert.alert("Error", "Failed to save bake log.");
+    }
+  };
 
   const handleIterate = async () => {
     if (!selectedBake) return;
@@ -107,6 +171,17 @@ export function DiagnosticSection() {
               const deviceId = await getDeviceId();
               const token = await getStoredToken().catch(() => null);
 
+              // 0. Update source bake outcome in history
+              const outcome = {
+                crumbScore: crumbScore as any,
+                crustScore: crustScore as any,
+                flavorScore: flavorScore as any,
+                overallScore: overallScore as any,
+                defects: selectedDefects as any,
+                reflectionNotes: hypothesis,
+              };
+              await updateBakeOutcomeInHistory(selectedBake.id, outcome);
+
               // 1. Duplicate via API
               const newName = sourceRecipe.parentRecipeId ? sourceRecipe.name : `${sourceRecipe.name} (Iterated)`;
               const duplicated = await api.recipes.duplicate(
@@ -125,7 +200,7 @@ export function DiagnosticSection() {
               const newSaved: SavedRecipe = {
                 id: duplicated.id,
                 name: duplicated.name,
-                overview: `Iteration Notes: ${hypothesis}\n\nObserved Defects: ${selectedDefects.map(d => DEFECT_LIBRARY[d].displayName).join(', ')}`,
+                overview: `Iteration Notes: ${hypothesis}${selectedBake.notes ? `\n\nBench Journal: ${selectedBake.notes}` : ''}\n\nObserved Defects: ${selectedDefects.map(d => DEFECT_LIBRARY[d].displayName).join(', ')}`,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 phases: duplicated.phases.map((p: any) => ({
@@ -173,8 +248,16 @@ export function DiagnosticSection() {
   }
 
   return (
-    <ScrollView contentContainerStyle={s.container}>
-      <Text style={s.title}>Diagnostic Review</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 140 : 20}
+    >
+      <ScrollView
+        contentContainerStyle={[s.container, { paddingBottom: insets.bottom + 100 }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={s.title}>Diagnostic Review</Text>
 
       {/* Bake Selector / Summary */}
       <View style={[s.card, { backgroundColor: colors.muted }]}>
@@ -289,27 +372,55 @@ export function DiagnosticSection() {
         </View>
       </View>
 
-      {/* Iteration Hypothesis */}
+      {/* Iteration Hypothesis / Final Notes */}
       <View style={s.section}>
-        <Text style={s.sectionTitle}>Iteration Hypothesis</Text>
+        <Text style={s.sectionTitle}>{isGraded ? "Bake Review" : (isSuccessful ? "Final Notes (Optional)" : "Iteration Hypothesis")}</Text>
         <TextInput
           style={[s.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-          placeholder={analysisResults[0]?.recommendation || "What will you change next time? (e.g., +3% hydration, +30min bulk)"}
+          placeholder={isGraded ? "No notes recorded." : (isSuccessful ? "Any final thoughts on this successful bake?" : (analysisResults.map(r => r.recommendation).filter(Boolean).join(' | ') || "What will you change next time?"))}
           placeholderTextColor={colors.mutedForeground}
           multiline
           value={hypothesis}
           onChangeText={setHypothesis}
+          editable={!isGraded}
         />
+        {!isGraded && !isSuccessful && analysisResults.some(r => r.recommendation) && (
+          <Text style={[s.hypothesisHint, { color: colors.mutedForeground }]}>
+            Hint: {analysisResults.find(r => r.recommendation)?.recommendation}
+          </Text>
+        )}
       </View>
 
-      <Pressable
-        style={[s.iterateBtn, { backgroundColor: colors.primary }]}
-        onPress={handleIterate}
-      >
-        <Text style={[s.iterateBtnText, { color: colors.primaryForeground }]}>COMMIT ITERATION</Text>
-      </Pressable>
+      {!isGraded && (
+        <View style={s.actionRow}>
+          {isSuccessful && (
+            <Pressable
+              style={[s.logBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+              onPress={handleLogOnly}
+            >
+              <Text style={[s.logBtnText, { color: colors.primary }]}>LOG & FINISH</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={[s.iterateBtn, { backgroundColor: colors.primary, flex: isSuccessful ? 1.5 : 1 }]}
+            onPress={handleIterate}
+          >
+            <Text style={[s.iterateBtnText, { color: colors.primaryForeground }]}>
+              {isSuccessful ? "ITERATE ANYWAY" : "COMMIT ITERATION"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {isGraded && (
+        <View style={[s.gradedBadge, { backgroundColor: colors.primary + '10', borderColor: colors.primary + '30' }]}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+            <Text style={[s.gradedBadgeText, { color: colors.primary }]}>DIAGNOSTIC COMPLETE</Text>
+        </View>
+      )}
 
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -330,8 +441,13 @@ const s = StyleSheet.create({
   defectChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full, borderWidth: 1 },
   defectChipText: { fontSize: 13, fontFamily: fonts.sansMedium },
   input: { padding: 16, borderRadius: radius.md, borderWidth: 1, minHeight: 100, textAlignVertical: 'top' },
-  iterateBtn: { paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center', marginTop: 12 },
+  actionRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  logBtn: { flex: 1, paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
+  logBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },
+  iterateBtn: { paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
   iterateBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },
+  gradedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: radius.lg, borderWidth: 1, marginTop: 12 },
+  gradedBadgeText: { fontSize: 14, fontFamily: fonts.sansBold, letterSpacing: 1 },
   analysisCard: { padding: 16, borderRadius: radius.md, borderWidth: 1, gap: 8 },
   analysisHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   analysisTitle: { fontSize: 12, fontFamily: fonts.sansBold, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -350,4 +466,5 @@ const s = StyleSheet.create({
   recommendationText: { fontSize: 13, fontFamily: fonts.sansSemiBold, flex: 1, lineHeight: 18 },
   warningBox: { flexDirection: 'row', gap: 8, padding: 10, borderRadius: radius.sm, marginTop: 4, alignItems: 'center' },
   warningText: { fontSize: 11, fontFamily: fonts.sansMedium, flex: 1 },
+  hypothesisHint: { fontSize: 12, fontFamily: fonts.sansMedium, marginTop: 8, fontStyle: 'italic' },
 });

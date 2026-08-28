@@ -66,11 +66,18 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
   const [initialVolume, setInitialVolume] = useState("");
   const [fedPhoto, setFedPhoto] = useState<string | null>(null);
 
-  // Auto-fill weights if they arrive via navigation from Lab Hub
+  // ── Param Seeding ────────────────────────────────────────────────────────
+  // Seeding weights from Lab Hub (Peak Advisor) should only happen once per
+  // incoming signal to avoid overwriting manual tweaks.
+  const lastParamsRef = useRef("");
   useEffect(() => {
-    if (params.starter) setStarterWeight(params.starter);
-    if (params.flour) setFlourWeightStr(params.flour);
-    if (params.water) setWaterWeightStr(params.water);
+    const currentParams = JSON.stringify(params);
+    if (currentParams !== lastParamsRef.current) {
+      if (params.starter) setStarterWeight(params.starter);
+      if (params.flour) setFlourWeightStr(params.flour);
+      if (params.water) setWaterWeightStr(params.water);
+      lastParamsRef.current = currentParams;
+    }
   }, [params]);
 
   const { registerScrollView } = useTour();
@@ -122,6 +129,8 @@ export default function FeedSetupView({ onStartFeed, historyData }: Props) {
   }, [starterTutorialMode, tutorialDay, initialTemp, tempUnit]);
 
 // --- Progressive Disclosure ---
+// Weights are only locked if we are actively in the Starter Tutorial.
+// Weights from the Peak Advisor (Lab Hub) are always editable recommendations.
 const isWeightDisabled = starterTutorialMode;
 const isPHHidden = starterTutorialMode && tutorialDay < 8;
 const isPHDisabled = starterTutorialMode && tutorialDay < 8;

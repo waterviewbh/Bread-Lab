@@ -20,7 +20,7 @@ import { api } from "@/lib/api";
 import { computeAcidificationSeries, computeLiftingSeries } from "@/lib/analytics";
 import { loadAll as loadRecipeData, writeRecipesLocal, upsertRecipeRemote, addToRecipeTombstone, removeFromRecipeTombstone } from "@/lib/recipeStorage";
 import { buildRecipeHtml, printHtml, shareHtmlAsPdf } from "@/lib/recipeHtml";
-import { PHASE_DEFINITIONS, PHASE_CATEGORIES } from "@/lib/recipeTypes";
+import { PHASE_DEFINITIONS, PHASE_CATEGORIES, BAKE_HISTORY_KEY } from "@/lib/recipeTypes";
 import { useSyncStatus } from "@/contexts/SyncContext";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
@@ -40,6 +40,7 @@ export function LabHub() {
   );
 
   const [history, setHistory] = useState<any[]>([]);
+  const [bakeHistory, setBakeHistory] = useState<any[]>([]);
   const [recipes, setRecipes] = useState<any[]>([]);
   const [editingRecipe, setEditingRecipe] = useState<any | null>(null);
   const [isNewRecipe, setIsNewRecipe] = useState(false);
@@ -50,8 +51,20 @@ export function LabHub() {
   const loadData = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [histRaw, recipeData] = await Promise.all([AsyncStorage.getItem(HISTORY_KEY), loadRecipeData()]);
-      if (histRaw) setHistory(JSON.parse(histRaw));
+      const [histRaw, bakeHistRaw, recipeData] = await Promise.all([
+        AsyncStorage.getItem(HISTORY_KEY),
+        AsyncStorage.getItem(BAKE_HISTORY_KEY),
+        loadRecipeData()
+      ]);
+      if (histRaw) {
+        const parsed = JSON.parse(histRaw);
+        // Ascending sort (Oldest First) ensures charts scroll to latest data naturally
+        const sorted = Array.isArray(parsed)
+          ? parsed.sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0))
+          : [];
+        setHistory(sorted);
+      }
+      if (bakeHistRaw) setBakeHistory(JSON.parse(bakeHistRaw));
       setRecipes(recipeData.recipes);
     } catch (e) {
       console.error("[LabHub] Load failed", e);
@@ -219,12 +232,12 @@ export function LabHub() {
         />
       ) : (
         <ScrollView
-          contentContainerStyle={[s.scrollContent, { paddingBottom: 100 + insets.bottom }]}
+          contentContainerStyle={s.scrollContent}
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.mutedForeground} />}
         >
           {section === "analytics" && (
-            <View>
+            <View style={{ paddingHorizontal: 20 }}>
               <Text style={s.hubTitle}>Vitality Analytics</Text>
               <ReadingHint body={ACIDIFICATION_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
               <AcidificationChart data={acidSeries} hasLivePoint={false} />
@@ -239,6 +252,7 @@ export function LabHub() {
             <RecipeBuilderListView
               recipes={recipes}
               displayedRecipes={displayedRecipes}
+              bakeHistory={bakeHistory}
               populatedLetters={populatedLetters}
               letterFilter={letterFilter}
               refreshing={refreshing}
@@ -253,21 +267,23 @@ export function LabHub() {
           )}
 
           {section === "feed planner" && (
-            <PeakWindowAdvisor
-              history={history}
-              onApplyRecipe={(recipe) => {
-                router.push({
-                  pathname: "/bench",
-                  params: {
-                    section: "feed",
-                    starter: recipe.starter.toString(),
-                    flour: recipe.flour.toString(),
-                    water: recipe.water.toString(),
-                    autoStart: "false"
-                  }
-                });
-              }}
-            />
+            <View style={{ paddingHorizontal: 20 }}>
+              <PeakWindowAdvisor
+                history={history}
+                onApplyRecipe={(recipe) => {
+                  router.push({
+                    pathname: "/bench",
+                    params: {
+                      section: "feed",
+                      starter: recipe.starter.toString(),
+                      flour: recipe.flour.toString(),
+                      water: recipe.water.toString(),
+                      autoStart: "false"
+                    }
+                  });
+                }}
+              />
+            </View>
           )}
         </ScrollView>
       )}
@@ -287,6 +303,6 @@ const s = StyleSheet.create({
   toggle: { flexDirection: "row", borderRadius: radius.lg, borderWidth: 1, padding: 3, gap: 3 },
   toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: radius.md, alignItems: "center" },
   toggleText: { fontSize: 11, fontFamily: fonts.sansSemiBold, letterSpacing: 0.5 },
-  scrollContent: { padding: 20, paddingBottom: 100 },
+  scrollContent: { paddingBottom: 120 },
   hubTitle: { ...typography.headlineLgMobile, marginBottom: 12 },
 });

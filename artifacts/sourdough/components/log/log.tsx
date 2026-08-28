@@ -6,7 +6,7 @@ import { getStoredUser, getStoredToken, type AuthUser } from "@/lib/auth";
 import { hasPendingMigration, migrateLocalDataToAccount } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system";
@@ -34,6 +34,7 @@ import { computeSessionAcidVelocity } from "@/lib/analytics";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 import { SafePrint } from "@/lib/printUtils";
+import { type BakeOutcome } from "@/lib/recipeTypes";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
@@ -105,6 +106,7 @@ interface BakeHistoryEntry {
     startVolume?: string;
     foldCount?: number;
   }[];
+  outcome?: BakeOutcome;
 }
 
 interface PeakData {
@@ -222,6 +224,7 @@ function entryMatchesFilter(entry: HistoryEntry, filter: FeedFilter): boolean {
 export function HistorySection() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { pendingCount } = useSyncStatus();
   const { isMigrationActive, startMigration, finishMigration } = useMigrationToast();
 
@@ -317,6 +320,7 @@ export function HistorySection() {
         recipeName: b.recipeName,
         savedAt: b.savedAt,
         startedAt: b.startedAt,
+        outcome: b.outcome, // Persist the diagnostic outcome
         phases: b.phases.map((p) => ({
           key: p.key,
           name: p.name,
@@ -332,14 +336,24 @@ export function HistorySection() {
 
       const localBakes: BakeHistoryEntry[] = localBakeRaw ? JSON.parse(localBakeRaw) : [];
       const supabaseBakeIds = new Set(apiMapped.map(b => b.id));
+
+      // SMART MERGE: Preserve local outcome if API version is missing it (sync lag)
+      const mergedBakes = apiMapped.map(apiBake => {
+        const local = localBakes.find(lb => lb.id === apiBake.id);
+        if (local?.outcome && !apiBake.outcome) {
+          return { ...apiBake, outcome: local.outcome };
+        }
+        return apiBake;
+      });
+
       const localOnlyBakes = localBakes.filter(b => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id));
-      const mergedBakes = [...apiMapped.filter(b => !deletedBakeIds.has(b.id)), ...localOnlyBakes].sort((a, b) => (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt));
+      const finalBakes = [...mergedBakes.filter(b => !deletedBakeIds.has(b.id)), ...localOnlyBakes].sort((a, b) => (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt));
 
       if (token || apiBakes.length > 0) {
-        await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(mergedBakes));
+        await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(finalBakes));
       }
       const [finalActiveStored] = await Promise.all([AsyncStorage.getItem(ACTIVE_BAKE_KEY)]);
-      setBakeHistory(mergeActiveBake(mergedBakes, finalActiveStored));
+      setBakeHistory(mergeActiveBake(finalBakes, finalActiveStored));
       setLastSynced(Date.now());
     } catch {}
   }, []);
@@ -595,7 +609,9 @@ export function HistorySection() {
                 if (day === null) return <View key={di} style={styles.dayCell} />;
                 const hasFeed = !!displayFeedDayMap[day.toString()];
                 const feedCount = displayFeedDayMap[day.toString()]?.length ?? 0;
-                const hasBake = (bakeDayMap[day.toString()]?.length ?? 0) > 0;
+                const bakeEntries = bakeDayMap[day.toString()] ?? [];
+                const hasBake = bakeEntries.length > 0;
+                const hasGradedBake = bakeEntries.some(b => b.outcome?.overallScore);
                 const isToday = now.getDate() === day && now.getMonth() === displayMonth && now.getFullYear() === displayYear;
                 const isSelected = day === selectedDay;
                 return (
@@ -603,8 +619,10 @@ export function HistorySection() {
                     <View style={[styles.dayInner, isSelected && { backgroundColor: colors.primary, borderRadius: 20 }, isToday && !isSelected && { borderWidth: 1.5, borderColor: colors.primary, borderRadius: 20 }]}><Text style={[styles.dayNumber, { color: isSelected ? colors.primaryForeground : isToday ? colors.primary : colors.foreground, fontFamily: isToday ? fonts.sansSemiBold : fonts.sans }]}>{day}</Text></View>
                     {(hasFeed || hasBake) && (
                       <View style={styles.dotRow}>
-                        {Array.from({ length: Math.min(feedCount, 2) }).map((_, i) => <View key={`f${i}`} style={[styles.dot, { backgroundColor: isSelected ? colors.primaryForeground : colors.accent }]} />)}
-                        {hasBake && <View style={[styles.dot, { backgroundColor: isSelected ? colors.primaryForeground : colors.primary }]} />}
+                        {Array.from({ length: Math.min(feedCount, 2) }).map((_, i) => (
+                          <View key={`feed-${i}`} style={[styles.dot, { backgroundColor: isSelected ? colors.primaryForeground : colors.accent }]} />
+                        ))}
+                        {hasBake && <View key="bake-dot" style={[styles.dot, { backgroundColor: isSelected ? colors.primaryForeground : (hasGradedBake ? "#F59E0B" : colors.primary) }]} />}
                       </View>
                     )}
                   </Pressable>
@@ -641,7 +659,21 @@ export function HistorySection() {
               ))}
               {selectedBakeEntries.map((bake, idx) => (
                 <Pressable key={`${bake.id}-${idx}`} onPress={() => openBakeDetail(bake)} style={({ pressed }) => [styles.entryCard, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 12, opacity: pressed ? 0.92 : 1 }]}>
-                  <View style={styles.entryHeader}><View style={{ flex: 1 }}><Text style={[styles.entryTime, { color: colors.foreground }]}>{bake.recipeName}</Text><Text style={[styles.flourNote, { color: colors.mutedForeground, marginTop: 0 }]}>{formatTime(bake.savedAt)}</Text></View><Pressable onPress={() => deleteBakeEntry(bake.id)} hitSlop={8}><Feather name="trash-2" size={14} color={colors.mutedForeground} /></Pressable></View>
+                  <View style={styles.entryHeader}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={[styles.entryTime, { color: colors.foreground }]}>{bake.recipeName}</Text>
+                        {bake.outcome?.overallScore && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="star" size={12} color="#F59E0B" />
+                            <Text style={{ fontSize: 12, fontFamily: fonts.mono, color: "#F59E0B", marginLeft: 2 }}>{bake.outcome.overallScore}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.flourNote, { color: colors.mutedForeground, marginTop: 0 }]}>{formatTime(bake.savedAt)}</Text>
+                    </View>
+                    <Pressable onPress={() => deleteBakeEntry(bake.id)} hitSlop={8}><Feather name="trash-2" size={14} color={colors.mutedForeground} /></Pressable>
+                  </View>
                 </Pressable>
               ))}
               </>
@@ -712,6 +744,35 @@ export function HistorySection() {
               <View style={{ flexDirection: "row", gap: 16 }}><Pressable onPress={() => shareBakeDetail(selectedBakeDetail)}><Feather name="share" size={20} color={colors.primary} /></Pressable><Pressable onPress={() => printBakeDetail(selectedBakeDetail)}><Feather name="printer" size={20} color={colors.primary} /></Pressable></View>
             </View>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 40 }}>
+              {selectedBakeDetail.outcome?.overallScore ? (
+                <View style={[styles.scoreSummaryCard, { backgroundColor: colors.card, borderColor: "#F59E0B" + "40" }]}>
+                   <View style={styles.scoreSummaryHeader}>
+                      <Text style={[styles.scoreSummaryTitle, { color: colors.foreground }]}>Diagnostic Outcome</Text>
+                      <View style={styles.scoreStars}>
+                        {[1, 2, 3, 4, 5].map(s => (
+                          <Ionicons key={s} name={selectedBakeDetail.outcome!.overallScore! >= s ? "star" : "star-outline"} size={16} color="#F59E0B" />
+                        ))}
+                      </View>
+                   </View>
+                   {selectedBakeDetail.outcome.defects.length > 0 && (
+                     <Text style={[styles.scoreSummaryDefects, { color: colors.mutedForeground }]}>
+                       Defects: {selectedBakeDetail.outcome.defects.join(', ')}
+                     </Text>
+                   )}
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => {
+                    setSelectedBakeDetail(null);
+                    router.push({ pathname: "/log", params: { section: "diagnostic", bakeId: selectedBakeDetail.id } });
+                  }}
+                  style={[styles.reviewAction, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                >
+                  <Feather name="activity" size={16} color={colors.primaryForeground} />
+                  <Text style={[styles.reviewActionText, { color: colors.primaryForeground }]}>SCORE & REVIEW BAKE</Text>
+                </Pressable>
+              )}
+
               {selectedBakeDetail.notes ? <View style={[styles.entryCard, { marginBottom: 16 }]}><Text style={styles.detailNoteText}>{selectedBakeDetail.notes}</Text></View> : null}
               <Text style={styles.detailSectionLabel}>Phases</Text>
               {selectedBakeDetail.phases.map((p, i) => {
@@ -800,4 +861,11 @@ const styles = StyleSheet.create({
   detailReadingPH: { fontFamily: fonts.mono, fontSize: 15 },
   detailReadingNote: { fontFamily: fonts.sans, fontSize: 12 },
   detailNoteText: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20 },
+  reviewAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: radius.md, marginBottom: 20, borderWidth: 1 },
+  reviewActionText: { fontFamily: fonts.sansBold, fontSize: 13, letterSpacing: 0.5 },
+  scoreSummaryCard: { padding: 16, borderRadius: radius.lg, borderWidth: 1, marginBottom: 20 },
+  scoreSummaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  scoreSummaryTitle: { fontFamily: fonts.sansBold, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 },
+  scoreStars: { flexDirection: 'row', gap: 2 },
+  scoreSummaryDefects: { fontFamily: fonts.sans, fontSize: 12 },
 });

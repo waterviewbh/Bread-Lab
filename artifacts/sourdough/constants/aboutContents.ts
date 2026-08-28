@@ -119,6 +119,15 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
+      version: "v2.2.0", /* -- published 20260816 -- */
+      changes: [
+        { type: "Fixed", content: "Stale Sync Mapping: Fixed a bug where the outcome object was being omitted during API-to-local storage mapping, causing reviews to disappear after a manual refresh." },
+        { type: "Added", content: "Optional Log & Finish: Bakers can now record scores and defects for a successful bake without being forced to create a new recipe iteration in the Lab." },
+        { type: "Added", content: "Stars Rating in History: Graded bakes now feature indicators in the History Calendar and star ratings (1-5) directly in the history list for quick performance tracking." },
+        { type: "Added", content: "Past Bake Review: Added a 'Score & Review Bake' button in the bake history details, allowing users to deep-link into a diagnostic post-mortem for any past session" },
+      ],
+    },
+    {
       version: "v2.1.0", /* -- published 20260816 -- */
       changes: [
         { type: "Changed", content: "The Log now acts as your baker's journal, showing recent bake notes and allowing recipe updates directly from history." },

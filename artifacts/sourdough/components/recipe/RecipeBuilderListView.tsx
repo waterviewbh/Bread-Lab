@@ -19,6 +19,7 @@ import type { SavedRecipe } from "@/lib/recipeTypes";
 interface Props {
   recipes: SavedRecipe[];
   displayedRecipes: SavedRecipe[];
+  bakeHistory?: any[];
   populatedLetters: string[];
   letterFilter: string | null;
   refreshing: boolean;
@@ -37,6 +38,7 @@ import { IterationStack } from "@/components/log/IterationStack";
 export function RecipeBuilderListView({
   recipes,
   displayedRecipes,
+  bakeHistory = [],
   populatedLetters,
   letterFilter,
   refreshing,
@@ -68,7 +70,6 @@ export function RecipeBuilderListView({
       contentContainerStyle={{
         paddingTop: 24,
         paddingBottom: insets.bottom + tabBarPad + 60,
-        paddingHorizontal: 20,
       }}
       keyboardShouldPersistTaps="handled"
       automaticallyAdjustKeyboardInsets={true}
@@ -83,7 +84,7 @@ export function RecipeBuilderListView({
     >
       <Animated.View entering={FadeIn.duration(300)}>
       {/* Header row */}
-        <View style={s.listHeader}>
+        <View style={[s.listHeader, { paddingHorizontal: 20 }]}>
           <Text style={[s.sectionTitle, { color: colors.foreground }]}>
             Recipes
           </Text>
@@ -160,7 +161,7 @@ export function RecipeBuilderListView({
         )}
         {/* Empty state */}
         {recipes.length === 0 ? (
-          <View style={[s.emptyCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+          <View style={[s.emptyCard, { borderColor: colors.border, backgroundColor: colors.card, marginHorizontal: 20 }]}>
             <Feather name="book-open" size={28} color={colors.mutedForeground} />
             <Text style={[s.emptyTitle, { color: colors.foreground }]}>No recipes yet</Text>
             <Text style={[s.emptyBody, { color: colors.mutedForeground }]}>
@@ -178,6 +179,7 @@ export function RecipeBuilderListView({
                      <IterationStack
                        master={master}
                        iterations={iterations.sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0))}
+                       bakeHistory={bakeHistory}
                        onSelect={onEditRecipe}
                      />
                   </Animated.View>
@@ -185,7 +187,7 @@ export function RecipeBuilderListView({
               }
 
               return (
-                <Animated.View key={master.id} entering={FadeInDown.delay(i * 40).duration(300)}>
+                <Animated.View key={master.id} entering={FadeInDown.delay(i * 40).duration(300)} style={{ paddingHorizontal: 20 }}>
                   <Pressable
                     onPress={() => onEditRecipe(master)}
                     style={({ pressed }) => [

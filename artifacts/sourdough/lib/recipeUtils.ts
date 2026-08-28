@@ -104,13 +104,14 @@ export function parseIngredientsForMetrics(phases: { ingredients: string | any[]
     water: 0,
     starter: 0,
     yeast: 0,
+    salt: 0,
     yeastType: "unknown" as "instant" | "dry" | "unknown",
     // Smart hydration tracking
     additionalWater: 0,
     additionalSolids: 0,
   };
 
-  const weightRegex = /(\d+(?:\.\d+)?)\s*(?:g|gram|grams|kg|ml|l)/i;
+  const weightRegex = /(\d+(?:\.\d+)?)\s*(g|gram|grams|kg|ml|l|oz|lbs)/gi;
 
   phases.forEach((p) => {
     const lines: string[] = Array.isArray(p.ingredients)
@@ -120,47 +121,57 @@ export function parseIngredientsForMetrics(phases: { ingredients: string | any[]
       : [];
 
     lines.forEach((line) => {
-      const match = line.match(weightRegex);
-      if (!match) return;
+      // Split line by common conjunctions to isolate ingredient contexts
+      const parts = line.split(/\s+(?:and|&|,)\s+/);
 
-      let weight = parseFloat(match[1]);
-      const unit = line.match(/(?:kg|l)/i) ? 1000 : 1;
-      weight *= unit;
+      parts.forEach(part => {
+        let match;
+        // We use a fresh regex or reset it to ensure we catch all matches in this part
+        const partRegex = new RegExp(weightRegex.source, weightRegex.flags);
 
-      // 1. Core Flour / Water / Starter
-      if (line.includes("flour")) {
-        totals.flour += weight;
-      } else if (line.includes("water")) {
-        totals.water += weight;
-      } else if (line.includes("starter") || line.includes("levain")) {
-        totals.starter += weight;
-      } else if (line.includes("yeast")) {
-        totals.yeast += weight;
-        if (line.includes("instant") || line.includes("saf")) totals.yeastType = "instant";
-        else if (line.includes("dry") || line.includes("active")) totals.yeastType = "dry";
-      }
-      // 2. Liquid Hydrators (Milk, Cream, Yogurt, Purees, Eggs)
-      else if (line.includes("milk")) {
-        totals.additionalWater += weight * 0.87;
-        totals.additionalSolids += weight * 0.13;
-      } else if (line.includes("egg")) {
-        totals.additionalWater += weight * 0.75;
-      } else if (line.includes("yogurt") || line.includes("sour cream")) {
-        totals.additionalWater += weight * 0.8;
-      } else if (line.includes("cream")) {
-        // Heavy cream ~60%, half-and-half ~80% — use 65% as middle ground
-        totals.additionalWater += weight * 0.65;
-      } else if (line.includes("puree") || line.includes("sauce")) {
-        totals.additionalWater += weight * 0.85;
-      }
-      // 3. Syrups & Fats (Honey, Butter, Oil)
-      else if (line.includes("honey") || line.includes("maple") || line.includes("molasses")) {
-        totals.additionalWater += weight * 0.18;
-      } else if (line.includes("butter")) {
-        totals.additionalWater += weight * 0.17;
-      } else if (line.includes("oil") || line.includes("lard")) {
-        // 0% water, but contributes to "liquidity" (though not baker's hydration)
-      }
+        while ((match = partRegex.exec(part)) !== null) {
+          let weight = parseFloat(match[1]);
+          const unitLabel = match[2].toLowerCase();
+
+          if (unitLabel === "kg" || unitLabel === "l") weight *= 1000;
+          else if (unitLabel === "oz") weight *= 28.35;
+          else if (unitLabel === "lbs") weight *= 453.59;
+
+          // Priority context: Starter > Flour > Water
+          if (part.includes("starter") || part.includes("levain") || part.includes("leaven") || part.includes("preferment") || part.includes("poolish") || part.includes("biga")) {
+            totals.starter += weight;
+          } else if (part.includes("flour") || part.includes("meal") || part.includes("wheat") || part.includes("rye") || part.includes("spelt")) {
+            totals.flour += weight;
+          } else if (part.includes("water") || part.includes("h2o")) {
+            totals.water += weight;
+          } else if (part.includes("salt")) {
+            totals.salt += weight;
+          } else if (part.includes("yeast")) {
+            totals.yeast += weight;
+            if (part.includes("instant") || part.includes("saf")) totals.yeastType = "instant";
+            else if (part.includes("dry") || part.includes("active")) totals.yeastType = "dry";
+          }
+          // Liquid Hydrators
+          else if (part.includes("milk")) {
+            totals.additionalWater += weight * 0.87;
+            totals.additionalSolids += weight * 0.13;
+          } else if (part.includes("egg")) {
+            totals.additionalWater += weight * 0.75;
+          } else if (part.includes("yogurt") || part.includes("sour cream")) {
+            totals.additionalWater += weight * 0.8;
+          } else if (part.includes("cream")) {
+            totals.additionalWater += weight * 0.65;
+          } else if (part.includes("puree") || part.includes("sauce")) {
+            totals.additionalWater += weight * 0.85;
+          }
+          // Syrups & Fats
+          else if (part.includes("honey") || part.includes("maple") || part.includes("molasses") || part.includes("sugar") || part.includes("sucrose")) {
+            totals.additionalWater += weight * 0.18;
+          } else if (part.includes("butter")) {
+            totals.additionalWater += weight * 0.17;
+          }
+        }
+      });
     });
   });
 
@@ -175,7 +186,7 @@ export function parseIngredientsForMetrics(phases: { ingredients: string | any[]
  * calculateRecipeMetrics — Returns total flour and hydration pct for Supabase.
  */
 export function calculateRecipeMetrics(phases: any[]) {
-  const { flour, water, starter, effectiveStarter, additionalWater, additionalSolids } =
+  const { flour, water, starter, effectiveStarter, additionalWater, additionalSolids, salt } =
     parseIngredientsForMetrics(phases);
 
   // Recipe totals include starter components (assume 50/50)
@@ -187,5 +198,6 @@ export function calculateRecipeMetrics(phases: any[]) {
     totalFlourG: Math.round(totalFlour),
     hydrationPct: totalFlour > 0 ? Math.round((totalWater / totalFlour) * 100) : 0,
     inoculationPct: totalFlour > 0 ? (effectiveStarter / totalFlour) * 100 : 20,
+    saltPct: totalFlour > 0 ? (salt / totalFlour) * 100 : 0,
   };
 }

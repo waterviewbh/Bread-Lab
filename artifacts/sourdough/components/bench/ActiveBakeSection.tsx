@@ -100,6 +100,7 @@ export function ActiveBakeSection() {
     setBake(data.bake);
 
     if (data.bake) {
+      setBakeNotes(data.bake.notes ?? "");
       const active = data.bake.phases.find(p => p.startedAt && !p.completedAt);
       if (active) {
         setExpandedRecipeInfo(new Set([active.key]));
@@ -287,6 +288,20 @@ export function ActiveBakeSection() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const handleOverlayDraftChange = (text: string) => {
+    setOverlayDraft(text);
+  };
+
+  const handleSaveNotesOverlay = async () => {
+    if (!bake) return;
+    const updatedBake = { ...bake, notes: overlayDraft };
+    setBake(updatedBake);
+    setBakeNotes(overlayDraft);
+    await writeBakeLocal(updatedBake);
+    upsertBakeRemote(updatedBake).catch(() => {});
+    setShowNotesOverlay(false);
+  };
+
   // --- Render ---
   return (
     <View style={{ flex: 1 }}>
@@ -332,10 +347,10 @@ export function ActiveBakeSection() {
         onShareSpec={() => {}}
         onPrint={() => {}}
         onSharePdf={() => {}}
-        onOpenNotesOverlay={() => setShowNotesOverlay(true)}
-        onSaveNotesOverlay={() => setShowNotesOverlay(false)}
+        onOpenNotesOverlay={() => { setOverlayDraft(bakeNotes); setShowNotesOverlay(true); }}
+        onSaveNotesOverlay={handleSaveNotesOverlay}
         onCloseNotesOverlay={() => setShowNotesOverlay(false)}
-        onOverlayDraftChange={setOverlayDraft}
+        onOverlayDraftChange={handleOverlayDraftChange}
         sessionChecks={sessionChecks}
         onToggleLineCheck={handleToggleLineCheck}
       />

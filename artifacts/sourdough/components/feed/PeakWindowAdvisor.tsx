@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View, ScrollView, TextInput, Platform } from "react-native";
+import { Pressable, StyleSheet, Text, View, ScrollView, TextInput, Platform, KeyboardAvoidingView } from "react-native";
 import Animated, { FadeIn, FadeInDown, Layout } from "react-native-reanimated";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 import { FeedSession } from "@/types/feed";
@@ -32,6 +33,7 @@ interface Props {
 export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp }: Props) {
   const isWeb = Platform.OS === 'web';
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const { tempUnit } = usePreferences(); // Get the global unit
 
   // --- State ---
@@ -109,185 +111,191 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
   };
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1 }}
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
+      keyboardVerticalOffset={Platform.OS === "ios" ? 120 : 0}
     >
-      <Animated.View entering={isWeb ? undefined : FadeIn.duration(400)} layout={isWeb ? undefined : Layout}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Peak Window Advisor</Text>
-        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          {model.isHeuristic
-            ? "Using standard sourdough curves. Log more feeds to personalize."
-            : "Calibrated to your starter's history."}
-        </Text>
-
-        <View style={[styles.usageTip, { backgroundColor: colors.muted + "30" }]}>
-          <Text style={[styles.usageText, { color: colors.foreground }]}>
-            Calculate the exact weights needed to make your levain peak exactly when you're ready to mix.
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 100 }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Animated.View entering={isWeb ? undefined : FadeIn.duration(400)} layout={isWeb ? undefined : Layout}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Peak Window Advisor</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            {model.isHeuristic
+              ? "Using standard sourdough curves. Log more feeds to personalize."
+              : "Calibrated to your starter's history."}
           </Text>
-        </View>
 
-        <View style={[styles.warningBox, { borderColor: colors.border }]}>
-          <Ionicons name="alert-circle-outline" size={18} color={colors.primary} />
-          <Text style={[styles.warningText, { color: colors.mutedForeground }]}>
-            <Text style={{ fontFamily: fonts.serifBold, color: colors.foreground }}>Note: </Text>
-            This tool is for building <Text style={{ fontStyle: "italic" }}>levains</Text>. Ensure you have reserved your mother starter separately before mixing these amounts.
-          </Text>
-        </View>
-      </Animated.View>
+          <View style={[styles.usageTip, { backgroundColor: colors.muted + "30" }]}>
+            <Text style={[styles.usageText, { color: colors.foreground }]}>
+              Calculate the exact weights needed to make your levain peak exactly when you're ready to mix.
+            </Text>
+          </View>
 
-            {/* --- Inputs --- */}
-            <View style={[styles.inputGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.inputRow}>
-                <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={[styles.label, { color: colors.mutedForeground, textAlign: 'center' }]}>Total Mass (g)</Text>
-                  <TextInput
-                    style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, borderRadius: colors.radius }]}
-                    value={totalMass}
-                    onChangeText={setTotalMass}
-                    keyboardType="decimal-pad"
-                    placeholder="e.g., 100"
-                    placeholderTextColor={colors.mutedForeground}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.label, { color: colors.mutedForeground, textAlign: 'center' }]}>Temp (°{tempUnit})</Text>
-                  <TextInput
-                    style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, borderRadius: colors.radius }]}
-                    value={temp}
-                    onChangeText={setTemp}
-                    keyboardType="decimal-pad"
-                    placeholder={`e.g., ${unitDefault}`}
-                    placeholderTextColor={colors.mutedForeground}
-                  />
+          <View style={[styles.warningBox, { borderColor: colors.border }]}>
+            <Ionicons name="alert-circle-outline" size={18} color={colors.primary} />
+            <Text style={[styles.warningText, { color: colors.mutedForeground }]}>
+              <Text style={{ fontFamily: fonts.serifBold, color: colors.foreground }}>Note: </Text>
+              This tool is for building <Text style={{ fontStyle: "italic" }}>levains</Text>. Ensure you have reserved your mother starter separately before mixing these amounts.
+            </Text>
+          </View>
+        </Animated.View>
+
+              {/* --- Inputs --- */}
+              <View style={[styles.inputGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.inputRow}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={[styles.label, { color: colors.mutedForeground, textAlign: 'center' }]}>Total Mass (g)</Text>
+                    <TextInput
+                      style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.md }]}
+                      value={totalMass}
+                      onChangeText={setTotalMass}
+                      keyboardType="decimal-pad"
+                      placeholder="e.g., 100"
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.label, { color: colors.mutedForeground, textAlign: 'center' }]}>Temp (°{tempUnit})</Text>
+                    <TextInput
+                      style={[styles.input, { color: colors.foreground, backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.md }]}
+                      value={temp}
+                      onChangeText={setTemp}
+                      keyboardType="decimal-pad"
+                      placeholder={`e.g., ${unitDefault}`}
+                      placeholderTextColor={colors.mutedForeground}
+                    />
+                  </View>
                 </View>
               </View>
+
+        {/* --- The Current Plan --- */}
+        <Animated.View style={[styles.planCard, {
+            backgroundColor: colors.primary + "08", borderColor: colors.primary + "20" }]}
+            layout={isWeb ? undefined : Layout}>
+          {/* Sleep zone / target peak header */}
+          <View style={styles.planHeader}>
+            <MaterialCommunityIcons
+              name={isInSleepWindow ? "moon-waning-crescent" : "clock-outline"}
+              size={20}
+              color={isInSleepWindow ? "#f59e0b" : colors.primary}
+            />
+            <Text style={[styles.planTitle, { color: isInSleepWindow ? "#92400e" : colors.primary }]}>
+              {isInSleepWindow ? "Peaks in the Sleep Zone" : "Target Peak"}
+            </Text>
+            <View style={[styles.timeBadge, { backgroundColor: isInSleepWindow ? "#f59e0b" : colors.primary }]}>
+              <Text style={styles.timeBadgeText}>{formatTime(currentPlan.peakTime)}</Text>
+            </View>
+          </View>
+          {/* Duration stepper */}
+          <View style={styles.hoursRow}>
+            <Pressable
+              onPress={() => {
+                  setTargetHours(Math.max(2, targetHours - 0.5));
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              style={styles.stepBtn}
+            ><Feather name="minus" size={20} color={colors.primary} />
+            </Pressable>
+            <View style={{ alignItems: "center" }}>
+              <Text style={[styles.hoursValue, {
+                  color: colors.foreground }]}>
+                  {targetHours % 1 === 0 ? targetHours : targetHours.toFixed(1)}h</Text>
+              <Text style={[styles.hoursLabel, { color: colors.mutedForeground }]}>duration</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                  setTargetHours(Math.min(24, targetHours + 0.5));
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              style={styles.stepBtn}
+            ><Feather name="plus" size={20} color={colors.primary} /></Pressable>
+          </View>
+          {/* ── Levain Builder — stiffness slider + output tiles ─────────────── */}
+          <View style={[styles.levainSection, { borderTopColor: colors.border + "40" }]}>
+          <View style={styles.levainLabelRow}>
+            <Text style={[styles.levainSectionLabel, { color: colors.mutedForeground }]}>
+              Levain Hydration
+            </Text>
+            {/* Quick-reset to 100% hydration — standard 1:1:1 (equal flour and water) */}
+            <Pressable
+              onPress={() => {
+                setLevainHydration(100);
+                Haptics.selectionAsync();
+              }}
+              style={styles.resetBtn}
+            >
+              <Feather name="rotate-ccw" size={11} color={colors.mutedForeground} />
+              <Text style={[styles.resetBtnText, { color: colors.mutedForeground }]}>Reset 1:1</Text>
+            </Pressable>
+          </View>
+            <LevainSlider
+              value={levainBreakdown.clampedHydration}
+              onChange={setLevainHydration}
+              ratioStr={levainBreakdown.ratioStr}
+              minValue={levainBreakdown.minHydration}
+              maxValue={levainBreakdown.maxHydration}
+            />
+            {/* Single set of output weights */}
+            <View style={styles.breakdownRow}>
+              <LevainTile label="Starter"  value={levainBreakdown.addedStarter} colors={colors} />
+              <LevainTile label="+ Flour"  value={levainBreakdown.addedFlour}   colors={colors} />
+              <LevainTile label="+ Water"  value={levainBreakdown.addedWater}   colors={colors} />
+            </View>
+          </View>
+          {/* Apply button — passes hydration-adjusted weights to Track a Feed */}
+          <Pressable
+            onPress={() => onApplyRecipe({
+              ...currentPlan,
+              starter:  levainBreakdown.addedStarter,
+              flour:    levainBreakdown.addedFlour,
+              water:    levainBreakdown.addedWater,
+              ratioStr: levainBreakdown.ratioStr,
+            })}
+            style={({ pressed }) => [styles.applyBtn, {
+              backgroundColor: colors.primary,
+              opacity: pressed ? 0.8 : 1,
+              marginTop: 16
+            }]}
+          >
+            <Text style={[styles.applyBtnText, { color: colors.primaryForeground }]}>Build this Levain</Text>
+            <Feather name="arrow-right" size={16} color={colors.primaryForeground} />
+          </Pressable>
+        </Animated.View>
+
+        {/* --- Smart Nudges --- */}
+        {nudges.length > 0 && (
+          <Animated.View entering={isWeb ? undefined : FadeInDown.delay(200)} style={styles.nudgeSection} layout={isWeb ? undefined : Layout}>
+            <View style={styles.nudgeHeader}>
+              <Ionicons name="bulb-outline" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.nudgeHeaderText, { color: colors.mutedForeground }]}>Better Option(s):</Text>
             </View>
 
-      {/* --- The Current Plan --- */}
-      <Animated.View style={[styles.planCard, {
-          backgroundColor: colors.primary + "08", borderColor: colors.primary + "20" }]}
-          layout={isWeb ? undefined : Layout}>
-        {/* Sleep zone / target peak header */}
-        <View style={styles.planHeader}>
-          <MaterialCommunityIcons
-            name={isInSleepWindow ? "moon-waning-crescent" : "clock-outline"}
-            size={20}
-            color={isInSleepWindow ? "#f59e0b" : colors.primary}
-          />
-          <Text style={[styles.planTitle, { color: isInSleepWindow ? "#92400e" : colors.primary }]}>
-            {isInSleepWindow ? "Peaks in the Sleep Zone" : "Target Peak"}
-          </Text>
-          <View style={[styles.timeBadge, { backgroundColor: isInSleepWindow ? "#f59e0b" : colors.primary }]}>
-            <Text style={styles.timeBadgeText}>{formatTime(currentPlan.peakTime)}</Text>
-          </View>
-        </View>
-        {/* Duration stepper */}
-        <View style={styles.hoursRow}>
-          <Pressable
-            onPress={() => {
-                setTargetHours(Math.max(2, targetHours - 0.5));
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-            style={styles.stepBtn}
-          ><Feather name="minus" size={20} color={colors.primary} />
-          </Pressable>
-          <View style={{ alignItems: "center" }}>
-            <Text style={[styles.hoursValue, {
-                color: colors.foreground }]}>
-                {targetHours % 1 === 0 ? targetHours : targetHours.toFixed(1)}h</Text>
-            <Text style={[styles.hoursLabel, { color: colors.mutedForeground }]}>duration</Text>
-          </View>
-          <Pressable
-            onPress={() => {
-                setTargetHours(Math.min(24, targetHours + 0.5));
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-            style={styles.stepBtn}
-          ><Feather name="plus" size={20} color={colors.primary} /></Pressable>
-        </View>
-        {/* ── Levain Builder — stiffness slider + output tiles ─────────────── */}
-        <View style={[styles.levainSection, { borderTopColor: colors.border + "40" }]}>
-        <View style={styles.levainLabelRow}>
-          <Text style={[styles.levainSectionLabel, { color: colors.mutedForeground }]}>
-            Levain Hydration
-          </Text>
-          {/* Quick-reset to 100% hydration — standard 1:1:1 (equal flour and water) */}
-          <Pressable
-            onPress={() => {
-              setLevainHydration(100);
-              Haptics.selectionAsync();
-            }}
-            style={styles.resetBtn}
-          >
-            <Feather name="rotate-ccw" size={11} color={colors.mutedForeground} />
-            <Text style={[styles.resetBtnText, { color: colors.mutedForeground }]}>Reset 1:1</Text>
-          </Pressable>
-        </View>
-          <LevainSlider
-            value={levainBreakdown.clampedHydration}
-            onChange={setLevainHydration}
-            ratioStr={levainBreakdown.ratioStr}
-            minValue={levainBreakdown.minHydration}
-            maxValue={levainBreakdown.maxHydration}
-          />
-          {/* Single set of output weights */}
-          <View style={styles.breakdownRow}>
-            <LevainTile label="Starter"  value={levainBreakdown.addedStarter} colors={colors} />
-            <LevainTile label="+ Flour"  value={levainBreakdown.addedFlour}   colors={colors} />
-            <LevainTile label="+ Water"  value={levainBreakdown.addedWater}   colors={colors} />
-          </View>
-        </View>
-        {/* Apply button — passes hydration-adjusted weights to Track a Feed */}
-        <Pressable
-          onPress={() => onApplyRecipe({
-            ...currentPlan,
-            starter:  levainBreakdown.addedStarter,
-            flour:    levainBreakdown.addedFlour,
-            water:    levainBreakdown.addedWater,
-            ratioStr: levainBreakdown.ratioStr,
-          })}
-          style={({ pressed }) => [styles.applyBtn, {
-            backgroundColor: colors.primary,
-            opacity: pressed ? 0.8 : 1,
-            marginTop: 16
-          }]}
-        >
-          <Text style={[styles.applyBtnText, { color: colors.primaryForeground }]}>Build this Levain</Text>
-          <Feather name="arrow-right" size={16} color={colors.primaryForeground} />
-        </Pressable>
-      </Animated.View>
-
-      {/* --- Smart Nudges --- */}
-      {nudges.length > 0 && (
-        <Animated.View entering={isWeb ? undefined : FadeInDown.delay(200)} style={styles.nudgeSection} layout={isWeb ? undefined : Layout}>
-          <View style={styles.nudgeHeader}>
-            <Ionicons name="bulb-outline" size={16} color={colors.mutedForeground} />
-            <Text style={[styles.nudgeHeaderText, { color: colors.mutedForeground }]}>Better Option(s):</Text>
-          </View>
-
-          {nudges.map((nudge) => (
-            <Pressable
-              key={nudge.type}
-              onPress={() => { setTargetHours(nudge.estimatedHours); Haptics.selectionAsync(); }}
-              style={({ pressed }) => [
-                styles.nudgeCard,
-                { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 }
-              ]}
-            >
-              <View style={styles.nudgeInfo}>
-                <Text style={[styles.nudgeType, { color: colors.foreground }]}>
-                  {nudge.type === "early" ? "Early Bird" : "Morning Fresh"}
-                </Text>
-                <Text style={[styles.nudgeDesc, { color: colors.mutedForeground }]}>
-                  {'Peak by {formatTime(nudge.peakTime)} ({nudge.ratioStr})'}
-                </Text>
-              </View>
-              <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
-            </Pressable>
-          ))}
-        </Animated.View>
-      )}
-    </ScrollView>
+            {nudges.map((nudge) => (
+              <Pressable
+                key={nudge.type}
+                onPress={() => { setTargetHours(nudge.estimatedHours); Haptics.selectionAsync(); }}
+                style={({ pressed }) => [
+                  styles.nudgeCard,
+                  { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 }
+                ]}
+              >
+                <View style={s.nudgeInfo}>
+                  <Text style={[styles.nudgeType, { color: colors.foreground }]}>
+                    {nudge.type === "early" ? "Early Bird" : "Morning Fresh"}
+                  </Text>
+                  <Text style={[styles.nudgeDesc, { color: colors.mutedForeground }]}>
+                    {'Peak by {formatTime(nudge.peakTime)} ({nudge.ratioStr})'}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+              </Pressable>
+            ))}
+          </Animated.View>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -310,19 +318,10 @@ function LevainTile({
   );
 }
 
-function RecipeItem({ label, value }: { label: string, value: number }) {
-  const colors = useColors();
-  return (
-    <View style={styles.recipeItem}>
-      <Text style={[styles.recipeValue, { color: colors.foreground }]}>{value}g</Text>
-      <Text style={[styles.recipeLabel, { color: colors.mutedForeground }]}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     paddingBottom: 100,
+    paddingHorizontal: 20,
   },
   title: {
     fontFamily: fonts.serifBold,             // LibreCaslonText_700Bold — advisor title as editorial serif
@@ -532,18 +531,10 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,                // JetBrainsMono_500Medium — gram weights are data
     fontSize: 16,
   },
-  recipeItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  recipeValue: {
-    fontFamily: fonts.mono,
-    fontSize: 16,
-  },
-  recipeLabel: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
+});
+
+const s = StyleSheet.create({
+  nudgeInfo: {
+    flex: 1,
   },
 });

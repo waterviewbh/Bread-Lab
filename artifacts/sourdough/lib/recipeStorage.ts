@@ -9,6 +9,7 @@ import { getStoredToken } from "@/lib/auth";
 import {
   type SavedRecipe,
   type ActiveBake,
+  type BakeOutcome,
   RECIPES_KEY,
   BAKE_KEY,
   BAKE_HISTORY_KEY,
@@ -291,4 +292,44 @@ export async function archiveIntermediateIterations(masterId: string): Promise<v
   } catch (e) {
     console.error("[recipeStorage] Archive failed", e);
   }
+}
+
+/**
+ * Updates the outcome of a bake already in history.
+ * Used for "Log & Finish" flow where no iteration is created.
+ */
+export async function updateBakeOutcomeInHistory(
+    bakeId: string,
+    outcome: BakeOutcome
+): Promise<void> {
+    try {
+        const stored = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
+        if (!stored) return;
+
+        let history: ActiveBake[] = JSON.parse(stored);
+        const index = history.findIndex(h => h.id === bakeId);
+
+        if (index !== -1) {
+            history[index] = {
+                ...history[index],
+                outcome: outcome
+            };
+            await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(history));
+
+            // Sync with remote if possible
+            const deviceId = await getDeviceId();
+            const token = await getStoredToken().catch(() => null);
+
+            api.history.bakes.upsert({
+                id: bakeId,
+                deviceId,
+                userId: token ?? undefined,
+                outcome: outcome,
+                inProgress: false
+            } as any).catch(() => {});
+        }
+    } catch (e) {
+        console.error("[recipeStorage] updateBakeOutcomeInHistory failed", e);
+        throw e;
+    }
 }
