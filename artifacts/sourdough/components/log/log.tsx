@@ -233,7 +233,7 @@ export function HistorySection() {
   const [bakeHistory, setBakeHistory] = useState<BakeHistoryEntry[]>([]);
   const [displayMonth, setDisplayMonth] = useState(now.getMonth());
   const [displayYear, setDisplayYear] = useState(now.getFullYear());
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [selectedDay, setSelectedDay] = useState<number | null>(now.getDate());
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [localDeviceId, setLocalDeviceId] = useState("");

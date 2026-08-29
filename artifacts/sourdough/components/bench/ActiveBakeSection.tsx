@@ -274,6 +274,37 @@ export function ActiveBakeSection() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
+  const handleToggleFold = async (key: string, idx: number) => {
+    if (!bake) return;
+    const phases = bake.phases.map((p) => {
+      if (p.key !== key) return p;
+      const current = p.foldCount ?? 0;
+      const next = current === idx + 1 ? idx : idx + 1;
+      return { ...p, foldCount: next };
+    });
+
+    const updatedBake = { ...bake, phases };
+    setBake(updatedBake);
+    await writeBakeLocal(updatedBake);
+    upsertBakeRemote(updatedBake).catch(() => {});
+    Haptics.selectionAsync();
+  };
+
+  const handleDeleteReading = async (phaseKey: string, readingId: string) => {
+    if (!bake) return;
+    const phases = bake.phases.map((p) =>
+      p.key === phaseKey
+        ? { ...p, readings: p.readings.filter((r) => r.id !== readingId) }
+        : p
+    );
+
+    const updatedBake = { ...bake, phases };
+    setBake(updatedBake);
+    await writeBakeLocal(updatedBake);
+    upsertBakeRemote(updatedBake).catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleToggleLineCheck = async (id: string) => {
     if (!bake) return;
     const phases = bake.phases.map(p => ({
@@ -339,8 +370,8 @@ export function ActiveBakeSection() {
         onToggleExpandDone={handleToggleExpandDone}
         onToggleExpandRecipeInfo={handleToggleExpandRecipeInfo}
         onToggleExpandPending={handleToggleExpandPending}
-        onDeleteReading={() => {}}
-        onIncrementFold={() => {}}
+        onDeleteReading={handleDeleteReading}
+        onIncrementFold={handleToggleFold}
         onStartVolumeChange={handleStartVolumeChange}
         onStartVolumeCommit={handleStartVolumeCommit}
         onCopyIngredients={() => {}}

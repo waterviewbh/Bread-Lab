@@ -276,6 +276,11 @@ export function ActivePhaseCard({
     const bulkTimer = useBulkFermentTimer(isBulk ? phase.bulkFermentState : undefined);
     const bulkTargetLabel = getBulkTargetLabel(phase.bulkFermentState);
 
+    // FOLD TRACKER LOGIC: Show if specific key OR name match (e.g., custom recipes)
+    const isFoldPhase = phase.key === "stretching_folding" ||
+                        /fold|stretch/i.test(phase.name);
+    const currentFolds = phase.foldCount ?? 0;
+
   return (
     <View style={[s.activeCard, { backgroundColor: colors.card, borderColor: colors.accent }]} onLayout={(e) => onLayout(e.nativeEvent.layout.y)}>
       <View style={[s.activeStrip, { backgroundColor: colors.accent }]} />
@@ -292,6 +297,28 @@ export function ActivePhaseCard({
           {!isBulk && <Text style={[s.timerLarge, { color: colors.accent }]}>{formatTimer(elapsedMs)}</Text>}
         </Pressable>
       </View>
+
+      {/* Fold Tracker Section */}
+      {isFoldPhase && (
+        <View style={[s.foldTracker, { borderTopColor: colors.border + "40" }]}>
+          <Text style={[s.foldLabel, { color: colors.mutedForeground }]}>Folds Completed</Text>
+          <View style={s.foldRow}>
+            {[0, 1, 2, 3].map((i) => (
+              <Pressable
+                key={i}
+                onPress={() => onToggleFold(i)}
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+              >
+                <Ionicons
+                  name={i < currentFolds ? "radio-button-on" : "radio-button-off"}
+                  size={28}
+                  color={i < currentFolds ? colors.accent : colors.border}
+                />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
 
       {isBulk && (
         <View style={s.bulkDashboard}>
@@ -486,6 +513,24 @@ const s = StyleSheet.create({
   activeActions: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: 14, paddingLeft: 17, paddingBottom: 12, paddingTop: 8 },
   actionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: spacing.sm, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1 },
   actionBtnText: { fontFamily: fonts.sansSemiBold, fontSize: 13 },
+  foldTracker: {
+    paddingHorizontal: 17,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    gap: 10,
+  },
+  foldLabel: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  foldRow: {
+    flexDirection: "row",
+    gap: 16,
+    paddingBottom: 2,
+  },
   bulkTimerSub: { fontFamily: fonts.sansMedium, fontSize: 11, marginTop: 1 },
   bulkDashboard: {
     paddingHorizontal: 17,

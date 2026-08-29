@@ -123,6 +123,9 @@ export const CHANGELOG: ChangelogVersion[] = [
       changes: [
         { type: "Fixed", content: "Reliable Saves: Fixed a freeze when saving bake reviews on physical devices; saves are now instantaneous locally with background sync." },
         { type: "Fixed", content: "Smoother Save Experience: Reviews immediately switch to read-only mode, dismiss the keyboard, and show a saving indicator to prevent double-submits." },
+        { type: "Fixed", content: "The Fold Counter in Recipe Runner disappeared for a time; it's back now." },
+        { type: "Fixed", content: "Navigating to the History page in the Log now correctly highlights today, rather than no day." },
+        { type: "Fixed", content: "Lingering visual fixes." },
       ],
     },
     {
