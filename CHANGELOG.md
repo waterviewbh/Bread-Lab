@@ -6,7 +6,20 @@ All notable changes to Bread Lab are recorded here.
 
 ## [Unreleased]
 
-_Changes staged but not yet deployed._
+---
+
+## 2026-08-29 — Diagnostic Stability & Responsiveness (v2.2.1)
+
+### Fixed
+- **Diagnostic Review Hang** — Resolved an issue where saving a bake review could hang on physical devices due to blocking network and device ID lookups.
+- **Save Resilience** — Refactored data persistence to use non-blocking background synchronization, ensuring local saves are prioritized and instantaneous regardless of network latency.
+- **Fold Counter Restoration** — Restored the Fold Counter UI in the Recipe Runner for phases containing "fold" or "stretch" in their names.
+
+### Changed
+- **Optimistic UI Updates** — Post-bake reviews now transition to the \"Locked\" state (read-only mode) immediately upon saving, providing instant visual confirmation that your review is complete.
+- **Keyboard Management** — The keyboard now automatically dismisses when a bake is logged or iterated, ensuring a clean \"read-only\" state and removing the flashing cursor immediately.
+- **Action Feedback** — Added \"SAVING...\" indicators to the Diagnostic buttons to prevent accidental duplicate submissions and provide better responsiveness during background syncs.
+- **History Default Selection** — The History calendar now defaults to today's date upon opening, providing an immediate overview of the current day's bakes and feeds.
 
 ---
 
