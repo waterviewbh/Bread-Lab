@@ -310,23 +310,32 @@ export async function updateBakeOutcomeInHistory(
         const index = history.findIndex(h => h.id === bakeId);
 
         if (index !== -1) {
-            history[index] = {
+            const updatedBake = {
                 ...history[index],
                 outcome: outcome
             };
+            history[index] = updatedBake;
             await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(history));
 
-            // Sync with remote if possible
-            const deviceId = await getDeviceId();
-            const token = await getStoredToken().catch(() => null);
+            // FIRE-AND-FORGET REMOTE SYNC:
+            // We do NOT await this, so that slow device metadata fetching or API
+            // latency doesn't hang the critical local save path.
+            (async () => {
+                try {
+                    const deviceId = await getDeviceId();
+                    const token = await getStoredToken().catch(() => null);
 
-            api.history.bakes.upsert({
-                id: bakeId,
-                deviceId,
-                userId: token ?? undefined,
-                outcome: outcome,
-                inProgress: false
-            } as any).catch(() => {});
+                    await api.history.bakes.upsert({
+                        id: bakeId,
+                        deviceId,
+                        userId: token ?? undefined,
+                        outcome: outcome,
+                        inProgress: false
+                    } as any);
+                } catch (remoteError) {
+                    console.warn("[recipeStorage] Remote sync failed, but local save succeeded", remoteError);
+                }
+            })();
         }
     } catch (e) {
         console.error("[recipeStorage] updateBakeOutcomeInHistory failed", e);

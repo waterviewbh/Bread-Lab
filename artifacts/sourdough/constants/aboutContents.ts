@@ -119,7 +119,14 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
-      version: "v2.2.0", /* -- published 20260816 -- */
+      version: "v2.2.1", /* -- published 20260829 -- */
+      changes: [
+        { type: "Fixed", content: "Reliable Saves: Fixed a freeze when saving bake reviews on physical devices; saves are now instantaneous locally with background sync." },
+        { type: "Fixed", content: "Smoother Save Experience: Reviews immediately switch to read-only mode, dismiss the keyboard, and show a saving indicator to prevent double-submits." },
+      ],
+    },
+    {
+      version: "v2.2.0", /* -- published 20260828 -- */
       changes: [
         { type: "Fixed", content: "Stale Sync Mapping: Fixed a bug where the outcome object was being omitted during API-to-local storage mapping, causing reviews to disappear after a manual refresh." },
         { type: "Added", content: "Optional Log & Finish: Bakers can now record scores and defects for a successful bake without being forced to create a new recipe iteration in the Lab." },

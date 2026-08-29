@@ -1,6 +1,6 @@
 // artifacts/sourdough/components/log/logDiagnostic.tsx
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Alert, Image, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Alert, Image, KeyboardAvoidingView, Platform, Keyboard } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,6 +21,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   const insets = useSafeAreaInsets();
   const [history, setHistory] = useState<BakeHistoryItem[]>([]);
   const [selectedBake, setSelectedBake] = useState<BakeHistoryItem | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Evaluation State
   const [crumbScore, setCrumbScore] = useState<number>(0);
@@ -129,7 +130,10 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   );
 
   const handleLogOnly = async () => {
-    if (!selectedBake) return;
+    if (!selectedBake || isSaving) return;
+    setIsSaving(true);
+    Keyboard.dismiss();
+
     try {
       const outcome = {
         crumbScore: crumbScore as any,
@@ -142,6 +146,9 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
       await updateBakeOutcomeInHistory(selectedBake.id, outcome);
 
+      // OPTIMISTIC UI: Lock the screen immediately by updating local state
+      setSelectedBake(prev => prev ? { ...prev, outcome } : null);
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Bake Logged", "Great work on this bake! It has been recorded in your history.", [
         { text: "Done", onPress: () => router.push("/log") }
@@ -149,11 +156,13 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
     } catch (e) {
       console.error("[Diagnostic] LogOnly failed", e);
       Alert.alert("Error", "Failed to save bake log.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleIterate = async () => {
-    if (!selectedBake) return;
+    if (!selectedBake || isSaving) return;
     Alert.alert(
       "Commit Iteration?",
       "Create a new recipe version in Lab based on these notes?",
@@ -162,6 +171,8 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
         {
           text: "Commit",
           onPress: async () => {
+            setIsSaving(true);
+            Keyboard.dismiss();
             try {
               const { recipes } = await loadAll();
               const sourceRecipe = recipes.find(r => r.id === selectedBake.recipeId);
@@ -232,6 +243,8 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
             } catch (e) {
               console.error("[Diagnostic] Iterate failed", e);
               Alert.alert("Error", "Failed to create iteration.");
+            } finally {
+              setIsSaving(false);
             }
           }
         }
@@ -395,18 +408,20 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
         <View style={s.actionRow}>
           {isSuccessful && (
             <Pressable
-              style={[s.logBtn, { borderColor: colors.primary, borderWidth: 1 }]}
+              style={[s.logBtn, { borderColor: colors.primary, borderWidth: 1, opacity: isSaving ? 0.5 : 1 }]}
               onPress={handleLogOnly}
+              disabled={isSaving}
             >
-              <Text style={[s.logBtnText, { color: colors.primary }]}>LOG & FINISH</Text>
+              <Text style={[s.logBtnText, { color: colors.primary }]}>{isSaving ? "SAVING..." : "LOG & FINISH"}</Text>
             </Pressable>
           )}
           <Pressable
-            style={[s.iterateBtn, { backgroundColor: colors.primary, flex: isSuccessful ? 1.5 : 1 }]}
+            style={[s.iterateBtn, { backgroundColor: colors.primary, flex: isSuccessful ? 1.5 : 1, opacity: isSaving ? 0.5 : 1 }]}
             onPress={handleIterate}
+            disabled={isSaving}
           >
             <Text style={[s.iterateBtnText, { color: colors.primaryForeground }]}>
-              {isSuccessful ? "ITERATE ANYWAY" : "COMMIT ITERATION"}
+              {isSaving ? "SAVING..." : (isSuccessful ? "ITERATE ANYWAY" : "COMMIT ITERATION")}
             </Text>
           </Pressable>
         </View>
