@@ -81,6 +81,7 @@ export async function loadAll(): Promise<{
         name: r.name,
         overview: r.overview ?? undefined,
         createdAt: new Date(r.createdAt).getTime(),
+        updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : new Date(r.createdAt).getTime(),
         // yieldValue lives on the recipe root, not per-phase
         yieldValue: (r.yield_value && r.yield_value > 0) ? r.yield_value.toString() : "",
         phases: r.phases.map((p) => ({

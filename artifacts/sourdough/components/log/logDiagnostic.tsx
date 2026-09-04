@@ -1,19 +1,22 @@
 // artifacts/sourdough/components/log/logDiagnostic.tsx
-import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Alert, Image, KeyboardAvoidingView, Platform, Keyboard } from "react-native";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { View, Text, ScrollView, StyleSheet, Pressable, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BAKE_HISTORY_KEY, BakeHistoryItem, SavedRecipe, DefectSlug } from "@/lib/recipeTypes";
-import { DEFECT_LIBRARY, getCorrelationAnalysis, CorrelationResult } from "@/lib/diagnosticLogic";
+import { DEFECT_LIBRARY, generateDiagnosticSummary, DiagnosticPayload, GlossaryCategory } from "@/lib/diagnosticLogic";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { writeRecipesLocal, archiveIntermediateIterations, loadAll, updateBakeOutcomeInHistory } from "@/lib/recipeStorage";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
+
+const CATEGORY_ORDER: GlossaryCategory[] = ['crumb', 'shape', 'crust', 'volume'];
 
 export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   const colors = useColors();
@@ -29,7 +32,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   const [flavorScore, setFlavorScore] = useState<number>(0);
   const [selectedDefects, setSelectedDefects] = useState<DefectSlug[]>([]);
   const [hypothesis, setHypothesis] = useState("");
-  const [analysisResults, setAnalysisResults] = useState<CorrelationResult[]>([]);
+  const [summary, setSummary] = useState<DiagnosticPayload | null>(null);
 
   const loadHistory = useCallback(async () => {
     const raw = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
@@ -37,7 +40,6 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       const parsed: BakeHistoryItem[] = JSON.parse(raw);
       setHistory(parsed);
 
-      // If we have a bakeId, find it. Otherwise refresh the currently selected bake from history.
       const targetId = bakeId || selectedBake?.id;
       if (targetId) {
         const found = parsed.find(b => b.id === targetId);
@@ -59,7 +61,6 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
     }, [loadHistory])
   );
 
-  // Sync evaluation state with selectedBake outcome when selection changes
   useEffect(() => {
     if (selectedBake) {
       setCrumbScore(selectedBake.outcome?.crumbScore || 0);
@@ -70,28 +71,21 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
     }
   }, [selectedBake]);
 
-  // Update analysis whenever scores, defects or selected bake changes
+  // Determine if telemetry is authentic (user logged readings or set specific times)
+  const isTelemetryAuthentic = useMemo(() => {
+    if (!selectedBake) return false;
+    const bulk = selectedBake.phases.find(p => p.key === 'bulk_fermenting');
+    if (!bulk) return false;
+    // Authentic if readings exist OR startedAt/completedAt were actually set (not null)
+    return (bulk.readings && bulk.readings.length > 0) || (!!bulk.startedAt && !!bulk.completedAt);
+  }, [selectedBake]);
+
   useEffect(() => {
     if (selectedBake) {
-      // Find previous bake in history for delta calculation
-      const idx = history.findIndex(h => h.id === selectedBake.id);
-      const previousBake = history[idx + 1];
-
-      // Merge current local evaluation state into the selectedBake object for analysis
-      const bakeWithOutcome = {
-          ...selectedBake,
-          outcome: {
-              ...selectedBake.outcome,
-              crumbScore,
-              crustScore,
-              flavorScore,
-              overallScore: Math.round((crumbScore + crustScore + flavorScore) / 3) as any
-          }
-      };
-
-      setAnalysisResults(getCorrelationAnalysis(bakeWithOutcome as any, selectedDefects, previousBake as any));
+      const payload = generateDiagnosticSummary(selectedBake as any, selectedDefects, isTelemetryAuthentic);
+      setSummary(payload);
     }
-  }, [selectedDefects, selectedBake, crumbScore, crustScore, flavorScore, history]);
+  }, [selectedDefects, selectedBake, isTelemetryAuthentic]);
 
   const toggleDefect = (key: DefectSlug) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -145,8 +139,6 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       };
 
       await updateBakeOutcomeInHistory(selectedBake.id, outcome);
-
-      // OPTIMISTIC UI: Lock the screen immediately by updating local state
       setSelectedBake(prev => prev ? { ...prev, outcome } : null);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -182,7 +174,6 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               const deviceId = await getDeviceId();
               const token = await getStoredToken().catch(() => null);
 
-              // 0. Update source bake outcome in history
               const outcome = {
                 crumbScore: crumbScore as any,
                 crustScore: crustScore as any,
@@ -193,7 +184,6 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               };
               await updateBakeOutcomeInHistory(selectedBake.id, outcome);
 
-              // 1. Duplicate via API
               const newName = sourceRecipe.parentRecipeId ? sourceRecipe.name : `${sourceRecipe.name} (Iterated)`;
               const duplicated = await api.recipes.duplicate(
                 sourceRecipe.id,
@@ -202,16 +192,13 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
                 token ?? undefined
               );
 
-              // 2. Map to SavedRecipe and apply metadata
               const iterations = recipes.filter(r => r.parentRecipeId === masterId);
-              const versionNumber = iterations.length + 2; // +1 for new, +1 for Master vs Iteration start
-
-              const currentAnalysis = analysisResults.find(r => r.defect === selectedDefects[0]); // Using prioritized first
+              const versionNumber = iterations.length + 2;
 
               const newSaved: SavedRecipe = {
                 id: duplicated.id,
                 name: duplicated.name,
-                overview: `Iteration Notes: ${hypothesis}${selectedBake.notes ? `\n\nBench Journal: ${selectedBake.notes}` : ''}\n\nObserved Defects: ${selectedDefects.map(d => DEFECT_LIBRARY[d].displayName).join(', ')}`,
+                overview: `Iteration Notes: ${hypothesis}${selectedBake.notes ? `\n\nBench Journal: ${selectedBake.notes}` : ''}\n\nObserved Traits: ${selectedDefects.map(d => DEFECT_LIBRARY[d].displayName).join(', ')}`,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 phases: duplicated.phases.map((p: any) => ({
@@ -225,17 +212,8 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
                 yieldValue: sourceRecipe.yieldValue,
               };
 
-              // Persist the recommendation context if any
-              if (currentAnalysis?.appliedDelta) {
-                  // We store this in the bake outcome when the NEXT bake is saved
-                  // But for now, we just pass the info to Lab
-              }
-
-              // 3. Update Local
               const updated = [newSaved, ...recipes];
               await writeRecipesLocal(updated);
-
-              // 4. Archive intermediate versions (Stack of 3 logic)
               await archiveIntermediateIterations(masterId);
 
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -251,6 +229,16 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       ]
     );
   };
+
+  const groupedDefects = useMemo(() => {
+    const groups: Record<GlossaryCategory, DefectSlug[]> = {
+      crust: [], crumb: [], shape: [], volume: []
+    };
+    (Object.keys(DEFECT_LIBRARY) as DefectSlug[]).forEach(slug => {
+      groups[DEFECT_LIBRARY[slug].category].push(slug);
+    });
+    return groups;
+  }, []);
 
   if (!selectedBake) {
     return (
@@ -270,115 +258,132 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
         contentContainerStyle={[s.container, { paddingBottom: insets.bottom + 100 }]}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={s.title}>Diagnostic Review</Text>
+        <Text style={[s.title, { color: colors.foreground }]}>Diagnostic Review</Text>
 
       {/* Bake Selector / Summary */}
-      <View style={[s.card, { backgroundColor: colors.muted }]}>
+      <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
         <Text style={[s.eyebrow, { color: colors.mutedForeground }]}>{new Date(selectedBake.startedAt).toLocaleDateString()}</Text>
-        <Text style={s.bakeName}>{selectedBake.recipeName}</Text>
+        <Text style={[s.bakeName, { color: colors.foreground }]}>{selectedBake.recipeName}</Text>
       </View>
 
       {/* Bench Notes Integration */}
-      {selectedBake.notes && (
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>Bench Notes (Overlay Journal)</Text>
-          <View style={[s.notesBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={{ color: colors.foreground, fontFamily: fonts.sans }}>{selectedBake.notes}</Text>
-          </View>
-        </View>
-      )}
-
-      {/* Defect Tagging */}
       <View style={s.section}>
-        <Text style={s.sectionTitle}>Structural Defects</Text>
-        <View style={s.defectGrid}>
-          {(Object.keys(DEFECT_LIBRARY) as DefectSlug[]).map(key => (
-            <Pressable
-              key={key}
-              onPress={() => toggleDefect(key)}
-              style={[
-                s.defectChip,
-                {
-                  backgroundColor: selectedDefects.includes(key) ? colors.primary : colors.muted,
-                  borderColor: selectedDefects.includes(key) ? colors.primary : colors.border
-                }
-              ]}
-            >
-              <Text style={[
-                s.defectChipText,
-                { color: selectedDefects.includes(key) ? colors.primaryForeground : colors.foreground }
-              ]}>
-                {DEFECT_LIBRARY[key].displayName}
-              </Text>
-            </Pressable>
-          ))}
+        <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>Bench Notes</Text>
+        <View style={[s.notesBox, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+          {selectedBake.notes ? (
+            <Text style={{ color: colors.foreground, fontFamily: fonts.sans }}>{selectedBake.notes}</Text>
+          ) : (
+            <Text style={{ color: colors.mutedForeground, fontFamily: fonts.sans, fontStyle: 'italic', fontSize: 13 }}>
+              No bench notes recorded for this session.
+            </Text>
+          )}
         </View>
       </View>
 
-      {/* Analysis Insights & Recommendation */}
-      {analysisResults.length > 0 && (
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>Diagnostic Analysis</Text>
-          {analysisResults.map((res, i) => (
-            <View key={i} style={[
-              s.analysisCard,
-              {
-                backgroundColor: res.confirmed ? colors.accent + '10' : colors.card,
-                borderColor: res.confirmed ? colors.accent : colors.border,
-                marginBottom: 12
-              }
-            ]}>
-              <View style={s.analysisHeader}>
-                <Feather name={res.confirmed ? "activity" : "search"} size={16} color={res.confirmed ? colors.accent : colors.mutedForeground} />
-                <Text style={[s.analysisTitle, { color: res.confirmed ? colors.accent : colors.foreground }]}>
-                  {DEFECT_LIBRARY[res.defect].displayName}
-                </Text>
-                {res.terminationStatus && res.terminationStatus !== 'CONTINUE' && (
-                  <View style={[s.statusBadge, { backgroundColor: res.terminationStatus === 'OVERSHOOT' ? colors.accent : colors.primary }]}>
-                    <Text style={[s.statusBadgeText, { color: colors.primaryForeground }]}>{res.terminationStatus}</Text>
-                  </View>
-                )}
-              </View>
+      {/* Trait Tagging (Grouped) */}
+      {CATEGORY_ORDER.map(cat => {
+        const categorySelected = groupedDefects[cat].filter(slug => selectedDefects.includes(slug));
 
-              <Text style={[s.analysisText, { color: colors.foreground }]}>{res.insight}</Text>
+        return (
+          <View key={cat} style={s.section}>
+            <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>{cat.toUpperCase()}</Text>
+            <View style={s.defectGrid}>
+              {groupedDefects[cat].map(slug => {
+                const term = DEFECT_LIBRARY[slug];
+                const isSelected = selectedDefects.includes(slug);
+                const isBenchmark = term.isBenchmark;
 
-              {res.assumptionWarning && (
-                <View style={[s.warningBox, { backgroundColor: colors.primary + '10' }]}>
-                   <Feather name="info" size={14} color={colors.primary} />
-                   <Text style={[s.warningText, { color: colors.primary }]}>
-                     {res.assumptionWarning} {res.recommendation ? "Analysis relies on these baselines for the recommendation." : ""}
-                   </Text>
-                </View>
-              )}
-
-              {res.recommendation && (
-                <View style={[s.recommendationBox, { backgroundColor: colors.muted }]}>
-                   <Feather name="zap" size={14} color={colors.accent} />
-                   <View style={{ flex: 1 }}>
-                     <Text style={[s.recommendationLabel, { color: colors.mutedForeground }]}>RECOMMENDED INTERVENTION</Text>
-                     <Text style={[s.recommendationText, { color: colors.foreground }]}>{res.recommendation}</Text>
-                   </View>
-                </View>
-              )}
-
-              {res.contributingFactors.map((factor, j) => (
-                <View key={j} style={s.factorRow}>
-                  <View style={[s.factorDot, { backgroundColor: colors.accent }]} />
-                  <Text style={[s.factorText, { color: colors.mutedForeground }]}>{factor}</Text>
-                </View>
-              ))}
-              <Pressable style={s.learnMore} onPress={() => router.push({ pathname: "/log", params: { section: "resources", slug: res.defect } })}>
-                <Text style={[s.learnMoreText, { color: colors.accent }]}>Science Deep Dive →</Text>
-              </Pressable>
+                return (
+                  <Pressable
+                    key={slug}
+                    onPress={() => !isGraded && toggleDefect(slug)}
+                    disabled={isGraded}
+                    style={[
+                      s.defectChip,
+                      {
+                        backgroundColor: isSelected ? (isBenchmark ? colors.accent : colors.primary) : colors.muted,
+                        borderColor: isSelected ? (isBenchmark ? colors.accent : colors.primary) : colors.border
+                      }
+                    ]}
+                  >
+                    <Text style={[
+                      s.defectChipText,
+                      { color: isSelected ? (isBenchmark ? colors.accentForeground : colors.primaryForeground) : colors.foreground }
+                    ]}>
+                      {term.displayName}
+                    </Text>
+                    {isBenchmark && !isSelected && <Ionicons name="sparkles" size={10} color={colors.accent} style={{ marginLeft: 4 }} />}
+                  </Pressable>
+                );
+              })}
             </View>
-          ))}
+
+            {/* Field Notes Stack for Category */}
+            {categorySelected.length > 0 && (
+              <Animated.View entering={FadeIn.duration(300)} style={s.fieldNotesStack}>
+                {categorySelected.map(slug => (
+                  <View key={slug} style={s.fieldNoteItem}>
+                    <Text style={[s.fieldNoteBullet, { color: colors.primary }]}>—</Text>
+                    <Text style={[s.fieldNoteText, { color: colors.mutedForeground }]}>
+                      <Text style={s.fieldNoteName}>{DEFECT_LIBRARY[slug].displayName}:</Text>{" "}
+                      {DEFECT_LIBRARY[slug].shortDefinition}
+                    </Text>
+                  </View>
+                ))}
+              </Animated.View>
+            )}
+          </View>
+        );
+      })}
+
+      {/* Unified Diagnostic Summary */}
+      {summary && (
+        <View style={s.section}>
+          <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>Analysis Results</Text>
+          <View style={[s.summaryCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+            <View style={s.summaryHeader}>
+              <Text style={[s.summaryHeaderText, { color: colors.foreground }]}>─── DIAGNOSTIC SUMMARY ───</Text>
+            </View>
+
+            <View style={s.statusRowWrap}>
+              <View style={[s.statusBadge, { backgroundColor: summary.bulkStatus.includes('OPTIMAL') ? colors.accent : colors.primary }]}>
+                <Text style={[s.statusBadgeText, { color: colors.primaryForeground }]}>{summary.bulkStatus.replace('FERMENTATION', 'FERM')}</Text>
+              </View>
+              <View style={[s.statusBadge, { backgroundColor: summary.proofStatus.includes('OPTIMAL') ? colors.accent : colors.primary }]}>
+                <Text style={[s.statusBadgeText, { color: colors.primaryForeground }]}>{summary.proofStatus}</Text>
+              </View>
+            </View>
+
+            <Text style={[s.summarySectionTitle, { color: colors.foreground }]}>1. ROOT CAUSE ANALYSIS</Text>
+            <Text style={[s.summaryBody, { color: colors.foreground }]}>{summary.rootCause}</Text>
+
+            <Text style={[s.summarySectionTitle, { color: colors.foreground }]}>2. TRIGGERING SYMPTOMS</Text>
+            {summary.triggeringSymptoms.length > 0 ? (
+              summary.triggeringSymptoms.map((symptom, i) => (
+                <View key={i} style={s.symptomItem}>
+                  <Text style={[s.symptomBullet, { color: colors.primary }]}>•</Text>
+                  <Text style={[s.summaryBody, { color: colors.mutedForeground }]}>{symptom}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={[s.summaryBody, { color: colors.mutedForeground, fontStyle: 'italic' }]}>No specific traits tagged.</Text>
+            )}
+
+            <Text style={[s.summarySectionTitle, { color: colors.foreground }]}>3. ACTIONS FOR NEXT BAKE</Text>
+            {summary.actions.map((action, i) => (
+              <View key={i} style={s.actionItem}>
+                <Text style={[s.actionBullet, { color: colors.accent }]}>•</Text>
+                <Text style={[s.summaryBody, { color: colors.foreground }]}>{action}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       )}
 
       {/* Scoring Section */}
       <View style={s.section}>
-        <Text style={s.sectionTitle}>Outcome Scoring</Text>
-        <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>Outcome Scoring</Text>
+        <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
           <StarRating label="Crumb Structure" score={crumbScore} onSet={setCrumbScore} />
           <StarRating label="Crust & Volume" score={crustScore} onSet={setCrustScore} />
           <StarRating label="Flavor Profile" score={flavorScore} onSet={setFlavorScore} />
@@ -387,21 +392,16 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
       {/* Iteration Hypothesis / Final Notes */}
       <View style={s.section}>
-        <Text style={s.sectionTitle}>{isGraded ? "Bake Review" : (isSuccessful ? "Final Notes (Optional)" : "Iteration Hypothesis")}</Text>
+        <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>{isGraded ? "Bake Review" : (isSuccessful ? "Final Notes (Optional)" : "Iteration Hypothesis")}</Text>
         <TextInput
-          style={[s.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-          placeholder={isGraded ? "No notes recorded." : (isSuccessful ? "Any final thoughts on this successful bake?" : (analysisResults.map(r => r.recommendation).filter(Boolean).join(' | ') || "What will you change next time?"))}
+          style={[s.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderWidth: 1 }]}
+          placeholder={isGraded ? "No notes recorded." : (isSuccessful ? "Any final thoughts on this successful bake?" : "What will you change next time?") }
           placeholderTextColor={colors.mutedForeground}
           multiline
           value={hypothesis}
           onChangeText={setHypothesis}
           editable={!isGraded}
         />
-        {!isGraded && !isSuccessful && analysisResults.some(r => r.recommendation) && (
-          <Text style={[s.hypothesisHint, { color: colors.mutedForeground }]}>
-            Hint: {analysisResults.find(r => r.recommendation)?.recommendation}
-          </Text>
-        )}
       </View>
 
       {!isGraded && (
@@ -428,7 +428,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       )}
 
       {isGraded && (
-        <View style={[s.gradedBadge, { backgroundColor: colors.primary + '10', borderColor: colors.primary + '30' }]}>
+        <View style={[s.gradedBadge, { backgroundColor: colors.primary + '10', borderColor: colors.primary + '30', borderWidth: 1 }]}>
             <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
             <Text style={[s.gradedBadgeText, { color: colors.primary }]}>DIAGNOSTIC COMPLETE</Text>
         </View>
@@ -447,39 +447,95 @@ const s = StyleSheet.create({
   eyebrow: { fontSize: 12, fontFamily: fonts.sans, textTransform: 'uppercase', marginBottom: 4 },
   bakeName: { fontSize: 20, fontFamily: fonts.serifBold },
   section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 14, fontFamily: fonts.sansSemiBold, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-  suggestionBox: { flexDirection: 'row', gap: 12, padding: 16, borderRadius: radius.md, borderWidth: 1, marginBottom: 24 },
-  suggestionText: { fontSize: 13, fontFamily: fonts.sansMedium, lineHeight: 18 },
+  sectionTitle: { fontSize: 11, fontFamily: fonts.sansSemiBold, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
   notesBox: { padding: 16, borderRadius: radius.md, borderWidth: 1 },
   starRow: { flexDirection: 'row', gap: 12 },
   defectGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  defectChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full, borderWidth: 1 },
+  defectChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full, borderWidth: 1, flexDirection: 'row', alignItems: 'center' },
   defectChipText: { fontSize: 13, fontFamily: fonts.sansMedium },
-  input: { padding: 16, borderRadius: radius.md, borderWidth: 1, minHeight: 100, textAlignVertical: 'top' },
+  input: { padding: 16, borderRadius: radius.md, minHeight: 100, textAlignVertical: 'top' },
   actionRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
   logBtn: { flex: 1, paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
   logBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },
   iterateBtn: { paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
   iterateBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },
-  gradedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: radius.lg, borderWidth: 1, marginTop: 12 },
+  gradedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: radius.lg, marginTop: 12 },
   gradedBadgeText: { fontSize: 14, fontFamily: fonts.sansBold, letterSpacing: 1 },
-  analysisCard: { padding: 16, borderRadius: radius.md, borderWidth: 1, gap: 8 },
-  analysisHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  analysisTitle: { fontSize: 12, fontFamily: fonts.sansBold, textTransform: 'uppercase', letterSpacing: 0.5 },
-  analysisText: { fontSize: 14, fontFamily: fonts.sans, lineHeight: 20 },
-  factorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4 },
-  factorDot: { width: 4, height: 4, borderRadius: 2 },
-  factorText: { fontSize: 12, fontFamily: fonts.mono },
-  learnMore: { marginTop: 4 },
-  learnMoreText: { fontSize: 13, fontFamily: fonts.sansSemiBold },
   ratingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   ratingLabel: { fontSize: 13, fontFamily: fonts.sansMedium, textTransform: 'uppercase' },
-  statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.xs },
-  statusBadgeText: { fontSize: 9, fontFamily: fonts.sansBold },
-  recommendationBox: { flexDirection: 'row', gap: 8, padding: 12, borderRadius: radius.md, marginTop: 8, alignItems: 'center' },
-  recommendationLabel: { fontSize: 9, fontFamily: fonts.sansBold, letterSpacing: 0.5, marginBottom: 2 },
-  recommendationText: { fontSize: 13, fontFamily: fonts.sansSemiBold, flex: 1, lineHeight: 18 },
-  warningBox: { flexDirection: 'row', gap: 8, padding: 10, borderRadius: radius.sm, marginTop: 4, alignItems: 'center' },
-  warningText: { fontSize: 11, fontFamily: fonts.sansMedium, flex: 1 },
-  hypothesisHint: { fontSize: 12, fontFamily: fonts.sansMedium, marginTop: 8, fontStyle: 'italic' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.xs, marginRight: 8 },
+  statusBadgeText: { fontSize: 10, fontFamily: fonts.sansBold, letterSpacing: 0.5 },
+  fieldNotesStack: {
+    marginTop: 12,
+    gap: 6,
+    paddingLeft: 4,
+  },
+  fieldNoteItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  fieldNoteBullet: {
+    fontSize: 14,
+    lineHeight: 18,
+    marginTop: -1,
+  },
+  fieldNoteText: {
+    fontSize: 13,
+    fontFamily: fonts.sans,
+    lineHeight: 18,
+    flex: 1,
+  },
+  fieldNoteName: {
+    fontFamily: fonts.sansSemiBold,
+  },
+  summaryCard: {
+    padding: 20,
+    borderRadius: radius.lg,
+    gap: 16,
+  },
+  summaryHeader: {
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  summaryHeaderText: {
+    fontFamily: fonts.serifBold,
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  statusRowWrap: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  summarySectionTitle: {
+    fontFamily: fonts.serifBold,
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 8,
+  },
+  summaryBody: {
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  symptomItem: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  symptomBullet: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  actionItem: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  actionBullet: {
+    fontSize: 16,
+    lineHeight: 22,
+  },
 });

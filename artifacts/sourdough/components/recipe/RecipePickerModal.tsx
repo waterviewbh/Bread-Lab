@@ -44,7 +44,9 @@ export function RecipePickerModal({ visible, recipes, onSelect, onClose }: Props
         </View>
         {/* Recipe list */}
         <ScrollView contentContainerStyle={{ paddingVertical: 8, paddingBottom: insets.bottom + 24 }}>
-          {recipes.map((r) => (
+          {recipes
+            .sort((a, b) => (Math.max(b.updatedAt || 0, b.createdAt)) - (Math.max(a.updatedAt || 0, a.createdAt)))
+            .map((r) => (
             <Pressable
               key={r.id}
               onPress={() => onSelect(r)}
@@ -57,9 +59,16 @@ export function RecipePickerModal({ visible, recipes, onSelect, onClose }: Props
               ]}
             >
               <View style={{ flex: 1 }}>
-                <Text style={[s.sheetRowName, { color: colors.foreground }]}>{r.name}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <Text style={[s.sheetRowName, { color: colors.foreground, marginBottom: 0 }]}>{r.name}</Text>
+                  {r.versionLabel && (
+                    <View style={[s.versionBadge, { backgroundColor: colors.muted }]}>
+                      <Text style={[s.versionText, { color: colors.mutedForeground }]}>{r.versionLabel}</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={[s.sheetRowHint, { color: colors.mutedForeground }]}>
-                  {r.phases.length} phase{r.phases.length !== 1 ? "s" : ""} · {formatDate(r.createdAt)}
+                  {r.phases.length} phase{r.phases.length !== 1 ? "s" : ""} · {r.updatedAt && r.updatedAt > r.createdAt ? `Updated ${formatDate(r.updatedAt)}` : `Created ${formatDate(r.createdAt)}`}
                 </Text>
               </View>
               <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
@@ -100,5 +109,15 @@ const s = StyleSheet.create({
   sheetRowHint: {
     fontFamily: fonts.sans, // HankenGrotesk_400Regular — phase count + date
     fontSize: 12,
+  },
+  versionBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  versionText: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    fontWeight: "600",
   },
 });

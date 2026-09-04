@@ -20,6 +20,8 @@ import { useTourSlideshow } from "@/contexts/TourSlideshowContext";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 import { useRouter } from "expo-router";
 import { DIAGNOSTIC_SCIENCE } from "@/constants/diagnosticContents";
+import { DEFECT_LIBRARY, GlossaryCategory, DefectSlug } from "@/lib/diagnosticLogic";
+import { Ionicons } from "@expo/vector-icons";
 
 // --- Data ---
 import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA, BULK_ENGINE_DATA } from "@/constants/aboutContents";
@@ -176,6 +178,59 @@ function ScienceDeepDivesCard({ colors, router }: { colors: any; router: any }) 
   );
 }
 
+const CATEGORY_ORDER: GlossaryCategory[] = ['crumb', 'shape', 'crust', 'volume'];
+
+function TraitGlossaryCard({ colors }: { colors: any }) {
+  const [open, setOpen] = useState(false);
+
+  const grouped = React.useMemo(() => {
+    const groups: Record<GlossaryCategory, DefectSlug[]> = {
+      crust: [], crumb: [], shape: [], volume: []
+    };
+    (Object.keys(DEFECT_LIBRARY) as DefectSlug[]).forEach(slug => {
+      groups[DEFECT_LIBRARY[slug].category].push(slug);
+    });
+    return groups;
+  }, []);
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 16 }]}>
+      <Pressable
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => [
+          styles.accordionHeader,
+          { borderBottomWidth: open ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border },
+          pressed && { opacity: 0.7 }
+        ]}
+      >
+        <Text style={[styles.accordionTitle, { color: colors.foreground }]}>Trait Glossary</Text>
+        <Feather name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
+      </Pressable>
+      {open && (
+        <View style={{ padding: 12 }}>
+          {CATEGORY_ORDER.map(cat => (
+            <View key={cat} style={{ marginBottom: 16 }}>
+              <Text style={[styles.subHeading, { color: colors.mutedForeground, marginBottom: 8 }]}>{cat.toUpperCase()}</Text>
+              {grouped[cat].map(slug => {
+                const term = DEFECT_LIBRARY[slug];
+                return (
+                  <View key={slug} style={styles.glossaryItem}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <Text style={[styles.glossaryTitle, { color: colors.foreground }]}>{term.displayName}</Text>
+                      {term.isBenchmark && <Ionicons name="sparkles" size={10} color={colors.accent} />}
+                    </View>
+                    <Text style={[styles.glossaryText, { color: colors.mutedForeground }]}>{term.shortDefinition}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function ResourcesSection() {
   const colors = useColors();
   const router = useRouter();
@@ -247,6 +302,7 @@ export function ResourcesSection() {
         {HELP.map((tab, i) => <HelpAccordion key={i} tab={tab} colors={colors} />)}
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground, borderBottomColor: colors.border, marginTop: 24 }]}>Science Hub</Text>
+        <TraitGlossaryCard colors={colors} />
         <ScienceDeepDivesCard colors={colors} router={router} />
         <InterpretationCard data={ACIDIFICATION_DATA} colors={colors} />
         <InterpretationCard data={LIFTING_DATA} colors={colors} />
@@ -305,5 +361,18 @@ const styles = StyleSheet.create({
   deepDiveSubtitle: {
     fontSize: 12,
     fontFamily: fonts.sans,
+  },
+  glossaryItem: {
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  glossaryTitle: {
+    fontSize: 14,
+    fontFamily: fonts.sansSemiBold,
+  },
+  glossaryText: {
+    fontSize: 12,
+    fontFamily: fonts.sans,
+    lineHeight: 16,
   },
 });

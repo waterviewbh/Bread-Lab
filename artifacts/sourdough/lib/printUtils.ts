@@ -9,9 +9,32 @@ import * as Sharing from "expo-sharing";
  */
 class SafePrintManager {
   private isBusy = false;
+  private lockTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  private acquireLock() {
+    if (this.isBusy) return false;
+    this.isBusy = true;
+    // Safety fallback: auto-release lock after 15 seconds if it gets stuck
+    this.lockTimeout = setTimeout(() => {
+      this.isBusy = false;
+      this.lockTimeout = null;
+    }, 15000);
+    return true;
+  }
+
+  private releaseLock() {
+    if (this.lockTimeout) {
+      clearTimeout(this.lockTimeout);
+      this.lockTimeout = null;
+    }
+    // Adding a small delay helps the OS spooler settle
+    setTimeout(() => {
+      this.isBusy = false;
+    }, 800);
+  }
 
   async printHtml(html: string): Promise<void> {
-    if (this.isBusy) {
+    if (!this.acquireLock()) {
       console.warn("[SafePrint] A print request is already in progress. Ignoring.");
       return;
     }
@@ -23,28 +46,26 @@ class SafePrintManager {
         w.document.close();
         w.print();
       }
+      this.releaseLock();
       return;
     }
 
     try {
-      this.isBusy = true;
       await Print.printAsync({ html });
     } catch (e: any) {
       if (e.message?.includes("already in progress")) {
-        // Silently ignore if the OS/Expo already thinks we're printing
+        // Silently ignore
       } else {
+        console.error("[SafePrint] Print error", e);
         Alert.alert("Print Error", "Could not open print dialog. Please try again.");
       }
     } finally {
-      // Adding a small delay helps the Android spooler settle
-      setTimeout(() => {
-        this.isBusy = false;
-      }, 500);
+      this.releaseLock();
     }
   }
 
   async sharePdf(html: string, dialogTitle: string): Promise<void> {
-    if (this.isBusy) {
+    if (!this.acquireLock()) {
       console.warn("[SafePrint] A share/print request is already in progress. Ignoring.");
       return;
     }
@@ -56,11 +77,11 @@ class SafePrintManager {
         w.document.close();
         w.print();
       }
+      this.releaseLock();
       return;
     }
 
     try {
-      this.isBusy = true;
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
         Alert.alert("Sharing not available", "Sharing is not supported on this device.");
@@ -77,12 +98,11 @@ class SafePrintManager {
       if (e.message?.includes("already in progress")) {
         // Ignore
       } else {
+        console.error("[SafePrint] Share error", e);
         Alert.alert("Error", "Could not generate PDF. Please try again.");
       }
     } finally {
-      setTimeout(() => {
-        this.isBusy = false;
-      }, 500);
+      this.releaseLock();
     }
   }
 }

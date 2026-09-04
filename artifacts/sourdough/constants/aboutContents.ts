@@ -119,6 +119,16 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
+      version: "v2.3.0", /* -- published 20260904 -- */
+      changes: [
+        { type: "Changed", content: "Professional Diagnostic RCA: Overhauled the diagnostic engine with a 19-trait dictionary and logic trees to intelligently infer root causes for Bulk Fermentation and Final Proofing." },
+        { type: "Changed", content: "Unified Diagnostic Summary: Replaced symptom cards with a consolidated summary featuring `Live Math` telemetry injection to explain yeast activity and structural results." },
+        { type: "Added", content: "Instant Review Flow: Added a `Review & Log` button to completed bakes for instant rating and archiving to prevent backlogs." },
+        { type: "Added", content: "Trait Glossary: Added a comprehensive, categorized Trait Glossary to the Resources page for permanent reference." },
+        { type: "Fixed", content: "Print/Share Stability: Hardened the printing engine with lock-safety and UTF-8 encoding to resolve physical device hangs." },
+      ],
+    },
+    {
       version: "v2.2.1", /* -- published 20260829 -- */
       changes: [
         { type: "Fixed", content: "Reliable Saves: Fixed a freeze when saving bake reviews on physical devices; saves are now instantaneous locally with background sync." },

@@ -2,300 +2,323 @@
 import { ActiveBake } from "./recipeTypes";
 
 export type GlossaryCategory =
-  | 'process_driver'
-  | 'crumb_outcome'
-  | 'crust_outcome'
-  | 'flavor_profile';
+  | 'crust'
+  | 'crumb'
+  | 'shape'
+  | 'volume';
 
 export type DefectSlug =
-  | 'fools_crumb'
-  | 'gummy_crumb'
-  | 'dense_crumb'
-  | 'over_proofed'
-  | 'under_proofed'
   | 'pale_crust'
-  | 'stuck_banneton'
-  | 'weak_spring';
+  | 'torn_crust'
+  | 'matte_surface'
+  | 'blistered_skin'
+  | 'fools_crumb'
+  | 'dense_crumb'
+  | 'gummy_bottom'
+  | 'fragile_webbing'
+  | 'wild_pockets'
+  | 'pancake_profile'
+  | 'flat_top'
+  | 'asymmetric_rise'
+  | 'burst_score'
+  | 'collapsed_score'
+  | 'jagged_ear'
+  | 'sharp_edges'
+  | 'explosive_spring'
+  | 'zero_spring';
 
 export type DefectPriority = 1 | 2 | 3; // 1 = Structural, 2 = Texture, 3 = Cosmetic
 
 export interface GlossaryTerm {
-  slug: string;
+  slug: DefectSlug;
   displayName: string;
   category: GlossaryCategory;
   shortDefinition: string;
   priority: DefectPriority;
-  isDefect?: boolean;
-  defaultRootCauses?: string[];
+  isDefect: boolean;
+  isBenchmark?: boolean;
 }
 
 export const DEFECT_LIBRARY: Record<DefectSlug, GlossaryTerm> = {
+  // CRUST
+  pale_crust: {
+    slug: 'pale_crust',
+    displayName: "Pale Crust",
+    category: 'crust',
+    priority: 3,
+    isDefect: true,
+    shortDefinition: "Dull, blonde coloration indicating insufficient Maillard reaction.",
+  },
+  torn_crust: {
+    slug: 'torn_crust',
+    displayName: "Torn Crust",
+    category: 'crust',
+    priority: 3,
+    isDefect: true,
+    shortDefinition: "Ragged, involuntary ruptures away from the score line.",
+  },
+  matte_surface: {
+    slug: 'matte_surface',
+    displayName: "Matte Surface",
+    category: 'crust',
+    priority: 3,
+    isDefect: true,
+    shortDefinition: "Chalky, dull finish lacking shine, indicating low ambient steam.",
+  },
+  blistered_skin: {
+    slug: 'blistered_skin',
+    displayName: "Blistered Skin",
+    category: 'crust',
+    priority: 3,
+    isDefect: false,
+    isBenchmark: true,
+    shortDefinition: "Tiny crisp surface bubbles. Sign of excellent steam and long retard.",
+  },
+  // CRUMB
   fools_crumb: {
     slug: 'fools_crumb',
     displayName: "Fool's Crumb",
-    category: 'crumb_outcome',
+    category: 'crumb',
     priority: 1,
     isDefect: true,
-    shortDefinition: "Large isolated caverns surrounded by dense, tight crumb. Usually indicates under-fermentation or weak starter.",
-    defaultRootCauses: ['under_fermentation', 'weak_starter'],
-  },
-  over_proofed: {
-    slug: 'over_proofed',
-    displayName: "Over-Proofed",
-    category: 'crumb_outcome',
-    priority: 1,
-    isDefect: true,
-    shortDefinition: "Collapsed structure, pale crust, and lack of oven spring.",
-    defaultRootCauses: ['long_proof', 'high_temp'],
-  },
-  gummy_crumb: {
-    slug: 'gummy_crumb',
-    displayName: "Gummy Crumb",
-    category: 'crumb_outcome',
-    priority: 2,
-    isDefect: true,
-    shortDefinition: "A dense, rubbery layer at the base of the loaf.",
-    defaultRootCauses: ['under_fermentation', 'low_deck_heat'],
+    shortDefinition: "Massive top caverns with a dense, gummy base.",
   },
   dense_crumb: {
     slug: 'dense_crumb',
     displayName: "Dense Crumb",
-    category: 'crumb_outcome',
+    category: 'crumb',
+    priority: 1,
+    isDefect: true,
+    shortDefinition: "Tight, tiny, uniform cells with poor aeration.",
+  },
+  gummy_bottom: {
+    slug: 'gummy_bottom',
+    displayName: "Gummy Bottom",
+    category: 'crumb',
     priority: 2,
     isDefect: true,
-    shortDefinition: "Lack of porosity and aeration throughout the loaf.",
-    defaultRootCauses: ['under_proofing', 'low_hydration'],
+    shortDefinition: "Uncooked, rubbery paste layer at the very base of the loaf.",
   },
-  under_proofed: {
-    slug: 'under_proofed',
-    displayName: "Under-Proofed",
-    category: 'crumb_outcome',
+  fragile_webbing: {
+    slug: 'fragile_webbing',
+    displayName: "Fragile Webbing",
+    category: 'crumb',
+    priority: 1,
+    isDefect: true,
+    shortDefinition: "Shattered, weak cell walls that tear easily upon slicing.",
+  },
+  wild_pockets: {
+    slug: 'wild_pockets',
+    displayName: "Wild Pockets",
+    category: 'crumb',
+    priority: 1,
+    isDefect: true,
+    shortDefinition: "Ragged, irregular large holes scattered randomly.",
+  },
+  // SHAPE
+  pancake_profile: {
+    slug: 'pancake_profile',
+    displayName: "Pancake Profile",
+    category: 'shape',
+    priority: 1,
+    isDefect: true,
+    shortDefinition: "Spreads completely flat and wide once turned out.",
+  },
+  flat_top: {
+    slug: 'flat_top',
+    displayName: "Flat Top",
+    category: 'shape',
     priority: 2,
     isDefect: true,
-    shortDefinition: "Tight crumb with 'rabbit ears' or blowout where scored.",
-    defaultRootCauses: ['short_proof', 'cold_proof'],
+    shortDefinition: "Squared, leveling off at the apex without a rounded dome.",
   },
-  pale_crust: {
-    slug: 'pale_crust',
-    displayName: "Pale Crust",
-    category: 'crust_outcome',
+  asymmetric_rise: {
+    slug: 'asymmetric_rise',
+    displayName: "Asymmetric Rise",
+    category: 'shape',
+    priority: 2,
+    isDefect: true,
+    shortDefinition: "Uneven expansion where one side bursts upward while the other remains flat.",
+  },
+  burst_score: {
+    slug: 'burst_score',
+    displayName: "Burst Score",
+    category: 'shape',
+    priority: 2,
+    isDefect: true,
+    shortDefinition: "Scoring line violently ripped, exploded, or jaggedly forced open.",
+  },
+  collapsed_score: {
+    slug: 'collapsed_score',
+    displayName: "Collapsed Score",
+    category: 'shape',
+    priority: 1,
+    isDefect: true,
+    shortDefinition: "Scoring line melted flat, softened out, or sealed entirely closed.",
+  },
+  jagged_ear: {
+    slug: 'jagged_ear',
+    displayName: "Jagged Ear",
+    category: 'shape',
+    priority: 2,
+    isDefect: true,
+    shortDefinition: "Wild, sharp, uneven crust separation forming a pronounced ridge.",
+  },
+  sharp_edges: {
+    slug: 'sharp_edges',
+    displayName: "Sharp Edges",
+    category: 'shape',
     priority: 3,
     isDefect: true,
-    shortDefinition: "Lack of caramelization and color on the crust.",
-    defaultRootCauses: ['over_fermentation', 'low_oven_temp'],
+    shortDefinition: "Hard corners where dough aggressively met baking vessel walls.",
   },
-  stuck_banneton: {
-    slug: 'stuck_banneton',
-    displayName: "Stuck to Banneton",
-    category: 'crust_outcome',
-    priority: 3,
+  // VOLUME
+  explosive_spring: {
+    slug: 'explosive_spring',
+    displayName: "Explosive Spring",
+    category: 'volume',
+    priority: 2,
     isDefect: true,
-    shortDefinition: "Dough tore when turning out of the basket.",
-    defaultRootCauses: ['low_dusting', 'weak_gluten'],
+    shortDefinition: "Massive, aggressive vertical rise out of the score.",
   },
-  weak_spring: {
-    slug: 'weak_spring',
-    displayName: "Weak Oven Spring",
-    category: 'crust_outcome',
-    priority: 3,
+  zero_spring: {
+    slug: 'zero_spring',
+    displayName: "Zero Spring",
+    category: 'volume',
+    priority: 1,
     isDefect: true,
-    shortDefinition: "Loaf failed to expand significantly in the oven.",
-    defaultRootCauses: ['weak_gluten', 'no_steam'],
+    shortDefinition: "Loaf enters and leaves oven at nearly identical heights.",
   },
 };
 
-export interface CorrelationResult {
-  defect: DefectSlug;
-  confirmed: boolean;
-  insight: string;
-  contributingFactors: string[];
-  recommendation?: string;
-  assumptionWarning?: string;
-  terminationStatus?: 'TARGET_MET' | 'BOUNDARY_HIT' | 'PLATEAU' | 'CONTINUE' | 'OVERSHOOT';
-  appliedDelta?: { variable: string, value: number };
+export type EngineStatus = 'UNDER-FERMENTED' | 'OVER-FERMENTED' | 'OPTIMAL_FERMENTATION' | 'UNDER-PROOFED' | 'OVER-PROOFED' | 'OPTIMAL_PROOF';
+
+export interface DiagnosticPayload {
+  bulkStatus: Extract<EngineStatus, 'UNDER-FERMENTED' | 'OVER-FERMENTED' | 'OPTIMAL_FERMENTATION'>;
+  proofStatus: Extract<EngineStatus, 'UNDER-PROOFED' | 'OVER-PROOFED' | 'OPTIMAL_PROOF'>;
+  rootCause: string;
+  triggeringSymptoms: string[];
+  actions: string[];
+  markdown: string;
 }
 
-// ─── Constants & Scalers ──────────────────────────────────────────────────────
-export const SAFETY_BOUNDARIES = {
-  MAX_BULK_TEMP_F: 82,
-  MIN_HYDRATION_PCT: 65,
-  MAX_HYDRATION_PCT: 85,
-  MAX_RETARD_HOURS: 24,
-};
-
-const STEP_DELTAS = {
-    BULK_MINS: 20,
-    HYDRATION_PCT: 3,
-};
-
 /**
- * Opposite Defect Mapping
- * Used to detect "Overshoots" in the iteration cycle.
+ * Generates the Unified UX Payload as a Markdown-structured summary.
  */
-const OPPOSITE_DEFECT_MAP: Partial<Record<DefectSlug, DefectSlug>> = {
-    'fools_crumb': 'over_proofed',
-    'under_proofed': 'over_proofed',
-    'over_proofed': 'fools_crumb', // Bidirectional
-};
-
-/** Q10 Retard Scaler lookup matrix */
-const RETARD_LOOKUP = [
-    { tempMin: 34, tempMax: 36, stepDeltaHours: 6.0 },
-    { tempMin: 37, tempMax: 39, stepDeltaHours: 4.0 },
-    { tempMin: 40, tempMax: 43, stepDeltaHours: 2.5 },
-    { tempMin: 44, tempMax: 48, stepDeltaHours: 1.5 }
-];
-
-/**
- * Analysis Engine: Correlates bake telemetry with visual observations.
- * Implements Tiered Priority (Structural > Texture > Cosmetic).
- */
-export function getCorrelationAnalysis(
+export function generateDiagnosticSummary(
   bake: ActiveBake,
-  selectedDefects: DefectSlug[],
-  previousBake?: ActiveBake
-): CorrelationResult[] {
-  // 1. Prioritize defects: only evaluate the highest priority tier present
-  const activeDefects = selectedDefects.map(s => DEFECT_LIBRARY[s]).filter(Boolean);
-  if (activeDefects.length === 0) return [];
+  selectedSlugs: DefectSlug[],
+  isTelemetryAuthentic: boolean
+): DiagnosticPayload {
+  const selected = new Set(selectedSlugs);
+  const triggeringSymptoms = selectedSlugs.map(s => DEFECT_LIBRARY[s].displayName);
 
-  const minPriority = Math.min(...activeDefects.map(d => d.priority));
-  const prioritizedSlugs = activeDefects.filter(d => d.priority === minPriority).map(d => d.slug as DefectSlug);
+  // 1. ENGINE 1: Bulk Fermentation State
+  let bulkStatus: Extract<EngineStatus, 'UNDER-FERMENTED' | 'OVER-FERMENTED' | 'OPTIMAL_FERMENTATION'>;
+  const hasCrumbDefect = selectedSlugs.some(s => DEFECT_LIBRARY[s].category === 'crumb');
 
-  const results: CorrelationResult[] = [];
-
-  // 2. Telemetry Extraction with Resilience
-  const bulkPhase = bake.phases.find(p => p.key === 'bulk_fermenting');
-  const retardPhase = bake.phases.find(p => p.key === 'cold_retarding');
-
-  let assumptionWarning = "";
-  const durationHours = (bulkPhase?.completedAt && bulkPhase?.startedAt)
-    ? (bulkPhase.completedAt - bulkPhase.startedAt) / (1000 * 60 * 60)
-    : 4; // Assume 4h baseline if missing
-
-  if (!bulkPhase?.startedAt) assumptionWarning = "Telemetry missing for Bulk Duration. Assuming 4h baseline...";
-
-  const latestReading = bulkPhase?.readings[bulkPhase.readings.length - 1] as any;
-  let tempF = latestReading?.doughTemp || latestReading?.temp;
-  if (!tempF) {
-      tempF = 70; // Assume room temp
-      assumptionWarning = assumptionWarning || "Telemetry missing for Bulk Temp. Assuming standard room temp (70°F)...";
+  if ((selected.has('fools_crumb') || selected.has('wild_pockets')) && (selected.has('gummy_bottom') || selected.has('dense_crumb'))) {
+    bulkStatus = 'UNDER-FERMENTED';
+  } else if ((selected.has('fragile_webbing') || selected.has('dense_crumb')) && (selected.has('pale_crust') || selected.has('flat_top'))) {
+    bulkStatus = 'OVER-FERMENTED';
+  } else if (!hasCrumbDefect && !selected.has('zero_spring')) {
+    bulkStatus = 'OPTIMAL_FERMENTATION';
   } else {
-      tempF = typeof tempF === 'string' ? parseFloat(tempF) : tempF;
+    // Default fallback if logic is ambiguous
+    bulkStatus = hasCrumbDefect ? 'UNDER-FERMENTED' : 'OPTIMAL_FERMENTATION';
   }
 
-  const retardHours = (retardPhase?.completedAt && retardPhase?.startedAt)
-    ? (retardPhase.completedAt - retardPhase.startedAt) / (1000 * 60 * 60)
-    : 0;
+  // 2. ENGINE 2: Final Proofing State
+  let proofStatus: Extract<EngineStatus, 'UNDER-PROOFED' | 'OVER-PROOFED' | 'OPTIMAL_PROOF'>;
+  const hasShapeOrVolDefect = selectedSlugs.some(s => ['shape', 'volume'].includes(DEFECT_LIBRARY[s].category));
 
-  const retardTemp = 38; // Mock/Assumption for now as Retard Temp logging is future scope
+  if (selected.has('explosive_spring') || selected.has('burst_score') || selected.has('jagged_ear')) {
+    proofStatus = 'UNDER-PROOFED';
+  } else if (selected.has('pancake_profile') || selected.has('zero_spring') || selected.has('collapsed_score') || selected.has('pale_crust')) {
+    proofStatus = 'OVER-PROOFED';
+  } else if (!hasShapeOrVolDefect) {
+    proofStatus = 'OPTIMAL_PROOF';
+  } else {
+    proofStatus = hasShapeOrVolDefect ? 'OVER-PROOFED' : 'OPTIMAL_PROOF';
+  }
 
-  prioritizedSlugs.forEach(slug => {
-    const defect = DEFECT_LIBRARY[slug];
-    let confirmed = false;
-    let insight = "";
-    let recommendation = "";
-    let terminationStatus: CorrelationResult['terminationStatus'] = 'CONTINUE';
-    const contributingFactors: string[] = [];
+  // 3. ROOT CAUSE ANALYSIS & ACTIONS
+  let rootCause = "";
+  const actions: string[] = [];
 
-    const currentScore = bake.outcome?.overallScore || 0;
-    const prevScore = previousBake?.outcome?.overallScore || 0;
-    const scoreDelta = currentScore - prevScore;
+  // Determine primary driver based on severity/priority
+  if (bulkStatus === 'UNDER-FERMENTED') {
+    rootCause = "The dough structure shows signs of incomplete gas accumulation and insufficient enzymatic activity during Bulk Fermentation.";
+    actions.push("Extend Bulk Fermentation duration by 30-45 minutes next time.");
+    actions.push("Ensure your dough maintains a temperature between 75°F and 80°F.");
+  } else if (bulkStatus === 'OVER-FERMENTED') {
+    rootCause = "The yeast has exhausted the available sugars and the gluten network has begun to degrade due to excessive acidity.";
+    actions.push("Reduce Bulk Fermentation time or decrease the ambient temperature.");
+    actions.push("Use cooler water (65-70°F) to slow down the initial fermentation rate.");
+  } else if (proofStatus === 'UNDER-PROOFED') {
+    rootCause = "The loaf entered the oven with too much residual tension and explosive energy, leading to structural ruptures.";
+    actions.push("Allow for a longer final proofing period (30-60m extra if at room temp).");
+    actions.push("Perform the 'poke test' to ensure the dough springs back slowly and leaves a small indentation.");
+  } else if (proofStatus === 'OVER-PROOFED') {
+    rootCause = "The gluten matrix lost its ability to hold gas just before or during the bake, causing structural collapse.";
+    actions.push("Move the dough to the refrigerator earlier for the cold retard.");
+    actions.push("Ensure your oven is fully preheated to prevent the dough from sitting too long at low heat.");
+  } else {
+    rootCause = "The fermentation and proofing stages appear well-balanced. Minor defects may be attributed to handling or scoring technique.";
+    actions.push("Refine scoring depth and angle (45 degrees) for a cleaner ear.");
+    actions.push("Check steam levels in the oven during the first 15-20 minutes of baking.");
+  }
 
-    // Detect polarity flip (Overshoot)
-    const prevDefects = previousBake?.outcome?.defects || [];
-    const isOvershoot = prevDefects.some(d => OPPOSITE_DEFECT_MAP[slug] === d || OPPOSITE_DEFECT_MAP[d as any] === slug);
+  // 4. TELEMETRY MATH INJECTION
+  let telemetryInsight = "";
+  if (isTelemetryAuthentic) {
+    const bulkPhase = bake.phases.find(p => p.key === 'bulk_fermenting');
+    const durationMins = (bulkPhase?.completedAt && bulkPhase?.startedAt)
+      ? (bulkPhase.completedAt - bulkPhase.startedAt) / (1000 * 60)
+      : 240;
 
-    // 3. Logic Paths
-    let delta = 0;
-    let variable = '';
+    const latestReading = bulkPhase?.readings[bulkPhase.readings.length - 1] as any;
+    let tempF = latestReading?.doughTemp || latestReading?.temp;
+    tempF = typeof tempF === 'string' ? parseFloat(tempF) : (tempF || 70);
 
-    if (slug === 'fools_crumb' || slug === 'under_proofed') {
-      variable = 'bulk_duration';
-      delta = STEP_DELTAS.BULK_MINS;
-      if (tempF < 72 && durationHours < 6) {
-        confirmed = true;
-        insight = "Correlates with short bulk duration for a cool dough temperature.";
-        contributingFactors.push(`Bulk: ${durationHours.toFixed(1)}h @ ${tempF.toFixed(1)}°F`);
-      } else {
-        insight = "Analyzing potential under-fermentation baseline.";
-      }
-    }
+    const hours = (durationMins / 60).toFixed(1);
+    telemetryInsight = `Based on your logged data (${hours}h at ${tempF.toFixed(1)}°F), yeast activity was ${tempF > 78 ? 'aggressive' : tempF < 72 ? 'sluggish' : 'consistent'}. `;
+  } else {
+    telemetryInsight = "Look for a 30-50% increase in volume during Bulk Fermentation as your primary visual cue. ";
+  }
 
-    if (slug === 'over_proofed') {
-      variable = 'bulk_duration';
-      delta = -STEP_DELTAS.BULK_MINS;
-      if (durationHours > 7 || tempF > 78) {
-        confirmed = true;
-        insight = "Correlates with extended bulk time or high temperature.";
-        contributingFactors.push(`Bulk: ${durationHours.toFixed(1)}h @ ${tempF.toFixed(1)}°F`);
-      } else {
-        insight = "Analyzing potential over-fermentation baseline.";
-      }
-    }
+  // 5. ASSEMBLE MARKDOWN
+  const markdown = `# ─── DIAGNOSTIC SUMMARY ───
 
-    if (slug === 'pale_crust') {
-      variable = 'bulk_duration';
-      delta = -STEP_DELTAS.BULK_MINS;
-      if (durationHours > 8 && tempF > 75) {
-        confirmed = true;
-        insight = "High temperature bulk likely depleted surface sugars.";
-      } else {
-          insight = "Analyzing potential sugar exhaustion mechanisms.";
-      }
-    }
+**BULK FERMENTATION:** ${bulkStatus.replace('_', ' ')}
+**FINAL PROOFING:** ${proofStatus.replace('_', ' ')}
 
-    if (slug === 'gummy_crumb') {
-      variable = 'hydration';
-      delta = -STEP_DELTAS.HYDRATION_PCT;
-      insight = "Reducing hydration to improve starch gelatinization and structure.";
-    }
+## 1. ROOT CAUSE ANALYSIS
+${telemetryInsight}${rootCause}
 
-    // Binary Convergence (Half-Step) Logic
-    if (delta !== 0 && isOvershoot) {
-        const prevAppliedDelta = previousBake?.outcome?.appliedDelta?.value || delta;
-        const halvedDelta = Math.max(variable === 'hydration' ? 1 : 5, Math.round(Math.abs(prevAppliedDelta) * 0.5));
-        delta = (delta > 0 ? 1 : -1) * halvedDelta;
-        recommendation = `Overshoot detected. Reversing direction with 50% damping: ${delta > 0 ? 'Increase' : 'Reduce'} ${variable.replace('_', ' ')} by ${Math.abs(delta)} ${variable === 'bulk_duration' ? 'minutes' : variable === 'hydration' ? '%' : 'hours'}.`;
-        terminationStatus = 'OVERSHOOT';
-    } else if (delta !== 0 && !recommendation) {
-        recommendation = `${delta > 0 ? 'Increase' : 'Reduce'} ${variable.replace('_', ' ')} by ${Math.abs(delta)} ${variable === 'bulk_duration' ? 'minutes' : variable === 'hydration' ? '%' : 'hours'}.`;
-    }
+## 2. TRIGGERING SYMPTOMS OBSERVED
+${triggeringSymptoms.length > 0 ? triggeringSymptoms.map(s => `• ${s}`).join('\n') : "• No specific defects selected."}
 
-    // Retard Scaler Logic (Secondary pass if weak_spring is the main issue)
-    if (slug === 'weak_spring' && retardHours > 0) {
-        variable = 'retard_duration';
-        const scaler = RETARD_LOOKUP.find(r => retardTemp >= r.tempMin && retardTemp <= r.tempMax);
-        const step = scaler?.stepDeltaHours || 4.0;
-        recommendation = `Extend Cold Retard by +${step} hours (scaled for ${retardTemp}°F).`;
-        delta = step;
-    }
+## 3. ACTIONS FOR NEXT BAKE
+${actions.map(a => `• ${a}`).join('\n')}
+`;
 
-    // Adjust recommendation based on assumptions if telemetry was missing
-    if (assumptionWarning && recommendation) {
-        recommendation = `${recommendation} (Note: Based on standard room temp assumptions)`;
-    }
-    if (currentScore >= 4) {
-      terminationStatus = 'TARGET_MET';
-      recommendation = "Target reached (4/5+). Primary driver optimized.";
-    } else if (tempF >= SAFETY_BOUNDARIES.MAX_BULK_TEMP_F) {
-      terminationStatus = 'BOUNDARY_HIT';
-      recommendation = "Safety boundary hit (82°F). High risk of acid degradation. Switch drivers.";
-    } else if (previousBake && scoreDelta === 0 && currentScore > 0) {
-      terminationStatus = 'PLATEAU';
-      recommendation = "Plateau detected. The current driver has yielded all gains.";
-    }
+  return {
+    bulkStatus,
+    proofStatus,
+    rootCause,
+    triggeringSymptoms,
+    actions,
+    markdown
+  };
+}
 
-    results.push({
-      defect: slug,
-      confirmed,
-      insight: insight || `Analyzing ${defect.displayName} mechanisms...`,
-      contributingFactors,
-      recommendation,
-      assumptionWarning,
-      terminationStatus
-    });
-  });
-
-  return results;
+// ─── Legacy Support (Keep for backward compatibility until refactor is complete) ────────────────
+export function getCorrelationAnalysis(
+  bake: ActiveBake,
+  selectedSlugs: DefectSlug[],
+  previousBake?: ActiveBake
+): CorrelationResult[] {
+  // We'll return an empty array for now since logDiagnostic.tsx is being refactored to use generateDiagnosticSummary
+  return [];
 }

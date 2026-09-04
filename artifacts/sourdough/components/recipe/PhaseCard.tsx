@@ -43,17 +43,17 @@ const CheckRow = ({
     ...s.specText,
     color: isChecked ? colors.mutedForeground : colors.foreground,
     textDecorationLine: (isChecked ? 'line-through' : 'none') as any,
-    opacity: isChecked ? 0.8 : 1, // Slight opacity boost for visibility on Android
   };
 
   return (
     <Pressable onPress={onToggle} style={s.checkRow}>
-      <Feather
-        name={isChecked ? "check-square" : "square"}
-        size={16}
-        color={isChecked ? colors.accent : colors.mutedForeground}
-        style={{ marginTop: 2 }}
-      />
+      <View style={s.checkIconWrap}>
+        <Feather
+          name={isChecked ? "check-square" : "square"}
+          size={16}
+          color={isChecked ? colors.accent : colors.mutedForeground}
+        />
+      </View>
       <Text style={textStyle}>
         {scalePhaseText(line.text, scaleMultiplier)}
       </Text>
@@ -327,7 +327,7 @@ export function ActivePhaseCard({
             <Text style={[s.heroTimerLabel, { color: colors.mutedForeground }]}>
               {bulkTimer.mode === "countdown" ? "EST. REMAINING" : bulkTimer.mode === "overtime" ? "PAST TARGET" : "TIME IN BULK"}
             </Text>
-            <Text style={[s.heroTimerText, { color: bulkTimer.mode === "overtime" ? "#C8862A" : colors.foreground }]}>
+            <Text style={[s.heroTimerText, { color: bulkTimer.mode === "overtime" ? colors.accent : colors.foreground }]}>
               {bulkTimer.label || formatTimer(elapsedMs)}
             </Text>
             {bulkTargetLabel && <Text style={[s.heroTargetText, { color: colors.foreground }]}>{bulkTargetLabel}</Text>}
@@ -336,9 +336,9 @@ export function ActivePhaseCard({
           <View style={s.dashboardGrid}>
             {/* Start Volume Column */}
             <View style={s.dashboardCol}>
-              <Text style={s.colLabel}>STARTING VOLUME{"\n"}(ML)</Text>
+              <Text style={[s.colLabel, { color: colors.mutedForeground }]}>STARTING VOLUME{"\n"}(ML)</Text>
               <TextInput
-                style={[s.dashboardInput, { color: colors.foreground, borderColor: colors.border }]}
+                style={[s.dashboardInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted + '40' }]}
                 value={startVolumeInput}
                 onChangeText={onStartVolumeChange}
                 onBlur={() => onStartVolumeCommit(startVolumeInput)}
@@ -367,14 +367,14 @@ export function ActivePhaseCard({
           </View>
 
           <Pressable onPress={onLogReading} style={({ pressed }) => [s.bulkActionBtn, { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 }]}>
-            <MaterialCommunityIcons name="timer-cog-outline" size={20} color="#fff" />
-            <Text style={s.bulkActionBtnText}>Bulk Check-In</Text>
+            <MaterialCommunityIcons name="timer-cog-outline" size={20} color={colors.accentForeground || "#fff"} />
+            <Text style={[s.bulkActionBtnText, { color: colors.accentForeground || "#fff" }]}>Bulk Check-In</Text>
           </Pressable>
 
           {/* Unified Bulk Readings Table */}
           <View style={[s.readingsTable, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {/* Table Header */}
-            <View style={[s.tableHeaderRow, { backgroundColor: colors.secondary + "20", borderBottomColor: colors.border }]}>
+            <View style={[s.tableHeaderRow, { backgroundColor: colors.muted, borderBottomColor: colors.border }]}>
               <Text style={[s.headerCol, { color: colors.mutedForeground, width: 70 }]}>Time</Text>
               <Text style={[s.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'center' }]}>pH</Text>
               <Text style={[s.headerCol, { color: colors.mutedForeground, flex: 1, textAlign: 'center' }]}>Temp</Text>
@@ -429,7 +429,7 @@ export function ActivePhaseCard({
               })
             ) : (
               !startVolumeInput && (
-                <Text style={s.bulkHint}>Log your first volume reading to start the estimator.</Text>
+                <Text style={[s.bulkHint, { color: colors.mutedForeground }]}>Log your first volume reading to start the estimator.</Text>
               )
             )}
           </View>
@@ -484,11 +484,12 @@ export function ActivePhaseCard({
 
 const s = StyleSheet.create({
   compactCard: { borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
-  compactRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
-  compactName: { fontSize: 15 },
-  expandedSection: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, gap: spacing.sm },
-  checkRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: 6 },
-  specText: { fontFamily: fonts.sans, fontSize: 13, lineHeight: 20 },
+  compactRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 14 },
+  compactName: { fontSize: 15, lineHeight: 20 },
+  expandedSection: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, gap: spacing.sm },
+  checkRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 8 },
+  checkIconWrap: { width: 20, paddingTop: 2 },
+  specText: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 22, flex: 1 },
   sectionLabel: { fontFamily: fonts.sans, fontSize: 13, paddingVertical: 4 },
   startBtn: { flexDirection: "row", alignItems: "center", gap: 2, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.md, borderWidth: 1 },
   startBtnText: { fontFamily: fonts.sansMedium, fontSize: 13 },
@@ -536,7 +537,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 17,
     paddingVertical: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(0,0,0,0.05)",
     gap: 12,
   },
   heroTimerSection: {
@@ -584,7 +584,6 @@ const s = StyleSheet.create({
     textAlign: "center",
     fontFamily: fonts.mono,
     fontSize: 18,
-    backgroundColor: "rgba(0,0,0,0.02)",
   },
   vDivider: {
     width: 1,

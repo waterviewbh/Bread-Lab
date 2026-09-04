@@ -60,22 +60,48 @@ export function buildBakeHtml(bake: ActiveBake, bakeNotes: string, completedCoun
   const phasesHtml = bake.phases.map((p, i) => {
     const dur = p.startedAt && p.completedAt ? formatDone(p.completedAt - p.startedAt) : p.startedAt ? "In progress" : "Not started";
     const status = p.completedAt ? "✓" : "○";
-    const ingHtml = p.ingredients.filter(l => l.text.trim().length > 0).length > 0
-      ? `<div class="recipe-info"><span class="recipe-label">Ingredients</span><ul class="checklist">${p.ingredients.map(l => `<li><span class="checkbox"></span><span class="check-text">${l.text}</span></li>`).join("")}</ul></div>`
+    const ingLines = Array.isArray(p.ingredients) ? p.ingredients : [];
+    const ingHtml = ingLines.filter(l => l.text.trim().length > 0).length > 0
+      ? `<div class="recipe-info"><span class="recipe-label">Ingredients</span><ul class="checklist">${ingLines.map(l => `<li><span class="checkbox"></span><span class="check-text">${l.text}</span></li>`).join("")}</ul></div>`
       : "";
-    return `<div class="phase"><div class="phase-header">${status} Phase ${i + 1}: ${p.name} (${dur})</div>${ingHtml}</div>`;
+    const insLines = Array.isArray(p.instructions) ? p.instructions : [];
+    const insHtml = insLines.filter(l => l.text.trim().length > 0).length > 0
+      ? `<div class="recipe-info"><span class="recipe-label">Instructions</span><ol class="checklist">${insLines.map(l => `<li><span class="checkbox"></span><span class="check-text">${l.text}</span></li>`).join("")}</ol></div>`
+      : "";
+    return `<div class="phase"><div class="phase-header">${status} Phase ${i + 1}: ${p.name} (${dur})</div>${ingHtml}${insHtml}</div>`;
   }).join("");
 
-  return `<!DOCTYPE html><html><head><style>body{font-family:sans-serif;padding:24px}.meta{color:#666;font-size:12px;margin-bottom:20px}${COMMON_STYLE}.phase{border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:10px}.phase-header{font-weight:600;margin-bottom:8px}</style></head>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>body{font-family:sans-serif;padding:24px;color:#111;line-height:1.5}.meta{color:#666;font-size:12px;margin-bottom:20px}${COMMON_STYLE}.phase{border:1px solid #ddd;border-radius:8px;padding:12px;margin-bottom:10px}.phase-header{font-weight:600;margin-bottom:8px}</style></head>
   <body>
     <h1>${bake.recipeName}</h1>
     <p class="meta">
       ${date} · ${completedCount}/${bake.phases.length} phases
       ${bake.yieldValue ? ` · Yield: ${bake.yieldValue}` : ""}
     </p>
-    ${bakeNotes ? `<div style="background:#f9f9f9;padding:12px;border-radius:6px;margin-bottom:20px"><strong>Notes:</strong><br/>${bakeNotes.replace(/\n/g, "<br>")}</div>` : ""}
+    ${bakeNotes ? `<div style="background:#f9f9f9;padding:12px;border-radius:6px;margin-bottom:20px;border:1px solid #eee"><strong>Notes:</strong><br/>${bakeNotes.replace(/\n/g, "<br>")}</div>` : ""}
     <h2>Phases</h2>
     ${phasesHtml}
+  </body></html>`;
+}
+
+export function buildPhaseHtml(phase: BakePhase, recipeName: string, scale: number): string {
+  const ingLines = Array.isArray(phase.ingredients) ? phase.ingredients : [];
+  const ingHtml = ingLines.filter(l => l.text.trim().length > 0).length > 0
+    ? `<div class="recipe-info"><span class="recipe-label">Ingredients (${scale}x)</span><ul class="checklist">${ingLines.map(l => `<li><span class="checkbox"></span><span class="check-text">${scaleCheckableLines([l], scale)[0].text}</span></li>`).join("")}</ul></div>`
+    : "";
+  const insLines = Array.isArray(phase.instructions) ? phase.instructions : [];
+  const insHtml = insLines.filter(l => l.text.trim().length > 0).length > 0
+    ? `<div class="recipe-info"><span class="recipe-label">Instructions</span><ol class="checklist">${insLines.map(l => `<li><span class="checkbox"></span><span class="check-text">${l.text}</span></li>`).join("")}</ol></div>`
+    : "";
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>body{font-family:sans-serif;padding:24px;color:#111;line-height:1.5}${COMMON_STYLE}.phase{border:1px solid #ddd;border-radius:8px;padding:12px}.phase-header{font-weight:600;margin-bottom:12px;font-size:16px}</style></head>
+  <body>
+    <p style="font-size:11px;color:#888;margin-bottom:4px;text-transform:uppercase">${recipeName}</p>
+    <div class="phase">
+      <div class="phase-header">${phase.name}</div>
+      ${ingHtml}
+      ${insHtml}
+    </div>
   </body></html>`;
 }
 

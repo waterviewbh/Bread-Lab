@@ -11,7 +11,7 @@ import { useColors } from "@/hooks/useColors";
 import { Feather } from "@expo/vector-icons";
 import { fonts } from "@/constants/theme";
 
-type ToastState = "hidden" | "synced" | "offline";
+type ToastState = "hidden" | "synced" | "offline" | "error";
 
 interface SyncContextValue {
   pendingCount: number;
@@ -56,8 +56,19 @@ function SyncToast({ state }: { state: ToastState }) {
   if (state === "hidden" && prevState.current === "hidden") return null;
 
   const isSynced = state === "synced" || (state === "hidden" && prevState.current === "synced");
+  const isError = state === "error" || (state === "hidden" && prevState.current === "error");
+  const isOffline = state === "offline" || (state === "hidden" && prevState.current === "offline");
+
   const tabBarHeight = Platform.OS === "web" ? 84 : 49;
   const bottomOffset = insets.bottom + tabBarHeight + 12;
+
+  const getToastConfig = () => {
+    if (isSynced) return { icon: "check-circle", text: "Synced", bg: colors.primary, fg: colors.primaryForeground };
+    if (isError) return { icon: "alert-circle", text: "Sync error — saved locally", bg: colors.muted, fg: colors.mutedForeground };
+    return { icon: "wifi-off", text: "Offline — saved locally", bg: colors.muted, fg: colors.mutedForeground };
+  };
+
+  const config = getToastConfig();
 
   return (
     <Animated.View
@@ -75,23 +86,23 @@ function SyncToast({ state }: { state: ToastState }) {
         style={[
           styles.toast,
           {
-            backgroundColor: isSynced ? colors.primary : colors.muted,
-            borderColor: isSynced ? colors.primary : colors.border,
+            backgroundColor: config.bg,
+            borderColor: isSynced ? config.bg : colors.border,
           },
         ]}
       >
         <Feather
-          name={isSynced ? "check-circle" : "wifi-off"}
+          name={config.icon as any}
           size={13}
-          color={isSynced ? colors.primaryForeground : colors.mutedForeground}
+          color={config.fg}
         />
         <Text
           style={[
             styles.toastText,
-            { color: isSynced ? colors.primaryForeground : colors.mutedForeground },
+            { color: config.fg },
           ]}
         >
-          {isSynced ? "Synced" : "Offline — saved locally"}
+          {config.text}
         </Text>
       </View>
     </Animated.View>
@@ -114,7 +125,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    shadowColor: "#000",
+    shadowColor: "rgba(0,0,0,0.2)",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 8,
@@ -149,7 +160,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, [scheduleHide]);
 
   const reportSyncFailure = useCallback(() => {
-    setToastState("offline");
+    setPendingCount((c) => Math.max(0, c - 1));
+    setToastState("error");
     scheduleHide(3500);
   }, [scheduleHide]);
 

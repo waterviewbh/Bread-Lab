@@ -1,5 +1,5 @@
 // components/recipe/RecipeRunnerActiveView.tsx
-import React, { RefObject, useState } from "react"; // ADDED useState
+import React, { RefObject, useState } from "react";
 import {
   Modal,
   Platform,
@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import AffiliateCarousel from "@/components/AffiliateCarousel";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -125,6 +126,7 @@ export function RecipeRunnerActiveView({
   onToggleLineCheck,
 }: Props) {
   const colors = useColors();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const tabBarPad = Platform.OS === "web" ? 84 : 60;
 
@@ -208,9 +210,9 @@ export function RecipeRunnerActiveView({
         </View>
         {/* ── Recipe version stale warning ─────────────────────────────── */}
         {recipeStale && (
-          <View style={[s.staleWarning, { backgroundColor: "#FFF3CD", borderColor: "#FBBF24" }]}>
-            <Feather name="alert-triangle" size={13} color="#92400E" />
-            <Text style={[s.staleWarningText, { color: "#92400E" }]}>
+          <View style={[s.staleWarning, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '30' }]}>
+            <Feather name="alert-triangle" size={13} color={colors.primary} />
+            <Text style={[s.staleWarningText, { color: colors.foreground }]}>
               This recipe was updated after the bake started. Phases shown are from the original version.
             </Text>
           </View>
@@ -338,26 +340,26 @@ export function RecipeRunnerActiveView({
             </Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable
+                onPress={() => router.push({ pathname: "/log", params: { section: "diagnostic", bakeId: bake.id } })}
+                style={({ pressed }) => [
+                  s.printBakeBtn,
+                  { backgroundColor: colors.accent, borderColor: colors.accent, opacity: pressed ? 0.8 : 1 },
+                ]}
+              >
+                <Feather name="activity" size={14} color={colors.accentForeground || "#fff"} />
+                <Text style={[s.printBakeBtnText, { color: colors.accentForeground || "#fff" }]}>Review & Log</Text>
+              </Pressable>
+              <Pressable
                 onPress={onSharePdf}
                 style={({ pressed }) => [
                   s.printBakeBtn,
-                  { borderColor: colors.primary + "40", backgroundColor: colors.primary + "10", opacity: pressed ? 0.7 : 1 },
+                  { borderColor: colors.primary + "40", backgroundColor: colors.card, opacity: pressed ? 0.7 : 1 },
                 ]}
                 accessibilityLabel="Share bake summary as PDF"
                 accessibilityRole="button"
               >
                 <Feather name="share" size={14} color={colors.primary} />
-                <Text style={[s.printBakeBtnText, { color: colors.primary }]}>Share PDF</Text>
-              </Pressable>
-              <Pressable
-                onPress={onPrint}
-                style={({ pressed }) => [
-                  s.printBakeBtn,
-                  { borderColor: colors.primary + "40", backgroundColor: colors.primary + "10", opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <Feather name="printer" size={14} color={colors.primary} />
-                <Text style={[s.printBakeBtnText, { color: colors.primary }]}>Print</Text>
+                <Text style={[s.printBakeBtnText, { color: colors.primary }]}>PDF</Text>
               </Pressable>
             </View>
           </Animated.View>
@@ -559,7 +561,7 @@ const s = StyleSheet.create({
     borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
+    shadowColor: "rgba(0,0,0,0.4)",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.18,
     shadowRadius: 6,

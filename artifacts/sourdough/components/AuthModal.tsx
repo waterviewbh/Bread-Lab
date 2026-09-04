@@ -184,22 +184,25 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
           {currentUser ? (
             <View style={[s.identityCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={[s.avatarCircle, { backgroundColor: colors.primary }]}>
-                <Text style={[s.avatarInitial, { color: colors.primaryForeground }]}>
-                  {currentUser.firstName?.[0]?.toUpperCase() ?? "?"}
-                </Text>
+              <View style={s.identityTopRow}>
+                <View style={[s.avatarCircle, { backgroundColor: colors.primary }]}>
+                  <Text style={[s.avatarInitial, { color: colors.primaryForeground }]}>
+                    {currentUser.firstName?.[0]?.toUpperCase() ?? "?"}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.identityName, { color: colors.foreground }]} numberOfLines={2}>
+                    {displayName}
+                  </Text>
+                  <Text style={[s.identityLabel, { color: colors.mutedForeground }]}>
+                    Data named · syncing automatically
+                  </Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.identityName, { color: colors.foreground }]} numberOfLines={1}>
-                  {displayName}
-                </Text>
-                <Text style={[s.identityLabel, { color: colors.mutedForeground }]}>
-                  Data named · syncing automatically
-                </Text>
-              </View>
+
               <Pressable
                 onPress={handleClearIdentity}
-                style={({ pressed }) => [s.clearBtn, { borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}
+                style={({ pressed }) => [s.clearBtn, { borderColor: colors.border, opacity: pressed ? 0.6 : 1, marginTop: 12 }]}
               >
                 <Text style={[s.clearBtnText, { color: colors.mutedForeground }]}>Track different starter</Text>
               </Pressable>
@@ -322,12 +325,14 @@ const s = StyleSheet.create({
     fontSize: 13,
   },
   identityCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
     padding: spacing.md,                       // 16
     borderRadius: radius.lg,                   // 12
     borderWidth: 1,
+  },
+  identityTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   avatarCircle: {
     width: 40,

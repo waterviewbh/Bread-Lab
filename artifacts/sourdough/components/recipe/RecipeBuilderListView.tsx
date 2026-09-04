@@ -178,7 +178,7 @@ export function RecipeBuilderListView({
                   <Animated.View key={master.id} entering={FadeInDown.delay(i * 40).duration(300)}>
                      <IterationStack
                        master={master}
-                       iterations={iterations.sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0))}
+                       iterations={iterations.sort((a,b) => (Math.max(b.updatedAt || 0, b.createdAt)) - (Math.max(a.updatedAt || 0, a.createdAt)))}
                        bakeHistory={bakeHistory}
                        onSelect={onEditRecipe}
                      />
