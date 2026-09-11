@@ -40,18 +40,39 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       const parsed: BakeHistoryItem[] = JSON.parse(raw);
       setHistory(parsed);
 
-      const targetId = bakeId || selectedBake?.id;
-      if (targetId) {
-        const found = parsed.find(b => b.id === targetId);
+      // 1. Try to find the specific bake requested via params
+      if (bakeId) {
+        const found = parsed.find(b => b.id === bakeId);
         if (found) {
-            setSelectedBake(found);
-            return;
+          setSelectedBake(found);
+          return;
         }
       }
 
-      if (parsed.length > 0 && !selectedBake) {
-        setSelectedBake(parsed[0]);
+      // 2. If no specific bake or it was deleted, look for the first unrated bake
+      const unrated = parsed.find(b => !b.outcome?.overallScore);
+      if (unrated) {
+        setSelectedBake(unrated);
+        return;
       }
+
+      // 3. Fallback: stay on current if valid, or take the most recent
+      if (selectedBake?.id) {
+        const stillExists = parsed.find(b => b.id === selectedBake.id);
+        if (stillExists) {
+          setSelectedBake(stillExists);
+          return;
+        }
+      }
+
+      if (parsed.length > 0) {
+        setSelectedBake(parsed[0]);
+      } else {
+        setSelectedBake(null);
+      }
+    } else {
+      setHistory([]);
+      setSelectedBake(null);
     }
   }, [selectedBake?.id, bakeId]);
 
@@ -74,10 +95,11 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   // Determine if telemetry is authentic (user logged readings or set specific times)
   const isTelemetryAuthentic = useMemo(() => {
     if (!selectedBake) return false;
-    const bulk = selectedBake.phases.find(p => p.key === 'bulk_fermenting');
+    const bulk = selectedBake.phases?.find(p => p.key === 'bulk_fermenting');
     if (!bulk) return false;
     // Authentic if readings exist OR startedAt/completedAt were actually set (not null)
-    return (bulk.readings && bulk.readings.length > 0) || (!!bulk.startedAt && !!bulk.completedAt);
+    const hasReadings = Array.isArray(bulk.readings) && bulk.readings.length > 0;
+    return hasReadings || (!!bulk.startedAt && !!bulk.completedAt);
   }, [selectedBake]);
 
   useEffect(() => {

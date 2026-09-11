@@ -119,6 +119,15 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
+      version: "v2.4.0", /* -- published 20260911 -- */
+      changes: [
+        { type: "Added", content: "Concurrent Bakes: Support for two simultaneous active sessions via a tabbed interface." },
+        { type: "Added", content: "Overlapping Index Tabs: A new navigation pattern for recipe lineages that allows 1-tap switching between versions directly from the list." },
+        { type: "Changed", content: "Descriptive PDF Naming: Renamed shared files from generic UUIDs to sanitized recipe titles." },
+        { type: "Fixed", content: "Diagnostic Deletion Crash: Fixed app reset when deleting a bake currently being reviewed in the Diagnostic Hub." },
+      ],
+    },
+    {
       version: "v2.3.0", /* -- published 20260904 -- */
       changes: [
         { type: "Changed", content: "Professional Diagnostic RCA: Overhauled the diagnostic engine with a 19-trait dictionary and logic trees to intelligently infer root causes for Bulk Fermentation and Final Proofing." },

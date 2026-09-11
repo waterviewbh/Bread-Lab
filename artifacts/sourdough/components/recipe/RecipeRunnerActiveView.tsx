@@ -178,7 +178,10 @@ export function RecipeRunnerActiveView({
           </View>
           <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
             <Pressable
-              onPress={onSharePdf}
+              onPress={() => {
+                console.log("[RecipeRunnerActiveView] Header Share PDF pressed");
+                onSharePdf();
+              }}
               style={({ pressed }) => [
                 s.newBakeBtn,
                 { borderColor: colors.border, opacity: pressed ? 0.5 : 1 },
@@ -189,7 +192,10 @@ export function RecipeRunnerActiveView({
               <Feather name="share" size={13} color={colors.mutedForeground} />
             </Pressable>
             <Pressable
-              onPress={onPrint}
+              onPress={() => {
+                console.log("[RecipeRunnerActiveView] Header Print pressed");
+                onPrint();
+              }}
               style={({ pressed }) => [
                 s.newBakeBtn,
                 { borderColor: colors.border, opacity: pressed ? 0.5 : 1 },
@@ -340,7 +346,10 @@ export function RecipeRunnerActiveView({
             </Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable
-                onPress={() => router.push({ pathname: "/log", params: { section: "diagnostic", bakeId: bake.id } })}
+                onPress={() => {
+                  console.log("[RecipeRunnerActiveView] Completion Review & Log pressed");
+                  router.push({ pathname: "/log", params: { section: "diagnostic", bakeId: bake.id } });
+                }}
                 style={({ pressed }) => [
                   s.printBakeBtn,
                   { backgroundColor: colors.accent, borderColor: colors.accent, opacity: pressed ? 0.8 : 1 },
@@ -350,7 +359,10 @@ export function RecipeRunnerActiveView({
                 <Text style={[s.printBakeBtnText, { color: colors.accentForeground || "#fff" }]}>Review & Log</Text>
               </Pressable>
               <Pressable
-                onPress={onSharePdf}
+                onPress={() => {
+                  console.log("[RecipeRunnerActiveView] Completion PDF pressed");
+                  onSharePdf();
+                }}
                 style={({ pressed }) => [
                   s.printBakeBtn,
                   { borderColor: colors.primary + "40", backgroundColor: colors.card, opacity: pressed ? 0.7 : 1 },

@@ -9,7 +9,7 @@ module.exports = {
   name: "Bread Lab",
   slug: "sourdough",
   version: versionData.version,
-  orientation: "portrait",
+  orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: "sourdough",
   userInterfaceStyle: "automatic",

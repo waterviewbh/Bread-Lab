@@ -1,0 +1,37 @@
+appId: com.waterviewbakehouse.breadlab
+---
+- runFlow: ../subflows/open_app.yaml
+
+# subflow already waits for Hub to be ready. 
+# We just need to make sure we are on the Recipe Builder section.
+- tapOn:
+    id: "recipe-builder-tab-toggle"
+
+- tapOn:
+    id: "new-recipe-button"
+
+# Wait for transition to the Editor screen
+- waitForAnimationToEnd
+
+# Atomic input prevents clicking 'X' by mistake
+- inputText:
+    id: "recipe-name-input"
+    text: "Test Sourdough"
+
+- waitForAnimationToEnd
+
+- inputText:
+    id: "yield-input"
+    text: "2"
+
+- hideKeyboard
+- waitForAnimationToEnd
+
+- tapOn:
+    id: "save-recipe-button"
+
+- assertVisible: "Test Sourdough"
+- takeScreenshot: "recipe_list_after_creation"
+- tapOn: "Test Sourdough"
+- assertVisible: "Yield: 2"
+- takeScreenshot: "scaled_recipe_detail"

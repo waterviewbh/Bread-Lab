@@ -272,12 +272,13 @@ export function generateDiagnosticSummary(
   // 4. TELEMETRY MATH INJECTION
   let telemetryInsight = "";
   if (isTelemetryAuthentic) {
-    const bulkPhase = bake.phases.find(p => p.key === 'bulk_fermenting');
+    const bulkPhase = bake.phases?.find(p => p.key === 'bulk_fermenting');
     const durationMins = (bulkPhase?.completedAt && bulkPhase?.startedAt)
       ? (bulkPhase.completedAt - bulkPhase.startedAt) / (1000 * 60)
       : 240;
 
-    const latestReading = bulkPhase?.readings[bulkPhase.readings.length - 1] as any;
+    const readings = bulkPhase?.readings || [];
+    const latestReading = readings.length > 0 ? readings[readings.length - 1] as any : null;
     let tempF = latestReading?.doughTemp || latestReading?.temp;
     tempF = typeof tempF === 'string' ? parseFloat(tempF) : (tempF || 70);
 

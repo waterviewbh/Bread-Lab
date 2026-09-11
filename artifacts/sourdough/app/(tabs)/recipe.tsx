@@ -53,7 +53,7 @@ import {
 import {
   loadAll as loadAllData,
   writeRecipesLocal,
-  writeBakeLocal,
+  writeBakesLocal,
   upsertBakeRemote,
   upsertRecipeRemote,
   archiveBakeWithDiagnostics,
@@ -82,6 +82,7 @@ import { RecipeBuilderListView } from "@/components/recipe/RecipeBuilderListView
 import { RecipeBuilderEditView } from "@/components/recipe/RecipeBuilderEditView";
 import { RecipeRunnerSetupView } from "@/components/recipe/RecipeRunnerSetupView";
 import { RecipeRunnerActiveView } from "@/components/recipe/RecipeRunnerActiveView";
+import { BakeSelectorTabs } from "@/components/recipe/BakeSelectorTabs";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { computeBulkFermentState } from "@/lib/bulkFermentEngine";
 import { fonts, spacing, radius } from "@/constants/theme";
@@ -102,7 +103,8 @@ export default function RecipeScreen() {
 
   // ── Shared data ────────────────────────────────────────────────────────────
   const [recipes, setRecipes] = useState<SavedRecipe[]>([]);
-  const [bake, setBake] = useState<ActiveBake | null>(null);
+  const [bakes, setBakes] = useState<ActiveBake[]>([]);
+  const [activeBakeId, setActiveBakeId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -188,8 +190,13 @@ export default function RecipeScreen() {
   const [showNudge, setShowNudge] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-// Replaces the manual setInterval useEffect — keyed on bake.id for stability
-const elapsed = useActiveBakeTimer(bake);
+// Derived current bake
+const bake = useMemo(() => bakes.find(b => b.id === activeBakeId) || null, [bakes, activeBakeId]);
+
+// Timer for both slots
+const elapsed1 = useActiveBakeTimer(bakes[0] || null);
+const elapsed2 = useActiveBakeTimer(bakes[1] || null);
+const elapsed = activeBakeId === bakes[0]?.id ? elapsed1 : elapsed2;
 
   useEffect(() => {
     loadAll();
@@ -224,7 +231,7 @@ const elapsed = useActiveBakeTimer(bake);
   };
 
 const loadAll = async () => {
-  const { recipes: loadedRecipes, bake: loadedBake } = await loadAllData();
+  const { recipes: loadedRecipes, bakes: loadedBakes } = await loadAllData();
 
   // Backward compatibility: Migrate any legacy recipes on load
       const migratedRecipes = loadedRecipes.map(r => {
@@ -243,7 +250,10 @@ const loadAll = async () => {
       });
 
   if (migratedRecipes.length > 0) setRecipes(migratedRecipes);
-  if (loadedBake) setBake(loadedBake);
+  setBakes(loadedBakes);
+  if (loadedBakes.length > 0 && !activeBakeId) {
+    setActiveBakeId(loadedBakes[0].id);
+  }
 };
 
 const persistRecipes = async (updated: SavedRecipe[]) => {
@@ -251,10 +261,21 @@ const persistRecipes = async (updated: SavedRecipe[]) => {
   await writeRecipesLocal(updated);
 };
 
-const persistBake = async (updated: ActiveBake) => {
-  setBake(updated);
-  await writeBakeLocal(updated);
-  upsertBakeRemote(updated).catch(() => {});
+const persistBakes = async (updatedBakes: ActiveBake[]) => {
+  setBakes(updatedBakes);
+  await writeBakesLocal(updatedBakes);
+  // Remote sync the specific active bake if needed, or all.
+  // The original code only synced one. We'll sync the current one for simplicity.
+  const current = updatedBakes.find(b => b.id === activeBakeId);
+  if (current) upsertBakeRemote(current).catch(() => {});
+};
+
+const persistBake = async (updatedBake: ActiveBake) => {
+  const next = bakes.map(b => b.id === updatedBake.id ? updatedBake : b);
+  if (!bakes.find(b => b.id === updatedBake.id)) {
+      next.push(updatedBake);
+  }
+  await persistBakes(next);
 };
 
 const saveBakeToHistory = async (b: ActiveBake) => {
@@ -443,10 +464,25 @@ const saveBakeToHistory = async (b: ActiveBake) => {
       recipeId: selectedRecipe.id,
       recipeName: selectedRecipe.name,
       startedAt: Date.now(),
+      status: 'active',
       phases,
       yieldValue: selectedRecipe.yieldValue || "1",
     };
-    await persistBake(newBake);
+
+    const nextBakes = [...bakes];
+    // If we have room, just add it. If not, this logic shouldn't have been reachable
+    // from "New Bake" tab unless there was a free slot.
+    if (nextBakes.length < 2) {
+      nextBakes.push(newBake);
+    } else {
+      // Safety fallback: replace current if somehow at limit
+      const idx = nextBakes.findIndex(b => b.id === activeBakeId);
+      if (idx !== -1) nextBakes[idx] = newBake;
+      else nextBakes[0] = newBake;
+    }
+
+    await persistBakes(nextBakes);
+    setActiveBakeId(newBake.id);
     setSelectedRecipe(null);
     setSection("runner");
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -465,8 +501,16 @@ const saveBakeToHistory = async (b: ActiveBake) => {
             const abandonedBake = bake;
             if (abandonedBake) await saveBakeToHistory(abandonedBake);
             await checkAndShowNudge();
-            await AsyncStorage.removeItem(BAKE_KEY);
-            setBake(null);
+
+            const nextBakes = bakes.filter(b => b.id !== activeBakeId);
+            await persistBakes(nextBakes);
+
+            if (nextBakes.length > 0) {
+              setActiveBakeId(nextBakes[0].id);
+            } else {
+              setActiveBakeId(null);
+            }
+
             setExpandedDone(new Set());
             setExpandedRecipeInfo(new Set());
             setScaleMultiplier(1);
@@ -778,6 +822,28 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
             </View>
           </CopilotView>
         </TourStep>
+
+        {section === "runner" && (
+          <View style={{ marginTop: 12, paddingHorizontal: 4 }}>
+            <BakeSelectorTabs
+              bakes={bakes}
+              activeBakeId={activeBakeId}
+              onSelectBake={(id) => {
+                setActiveBakeId(id);
+                setSelectedRecipe(null);
+                Haptics.selectionAsync();
+              }}
+              onNewBake={() => {
+                setActiveBakeId(null);
+                setSelectedRecipe(null);
+                setShowRecipePicker(true);
+                Haptics.selectionAsync();
+              }}
+              elapsed1={elapsed1}
+              elapsed2={elapsed2}
+            />
+          </View>
+        )}
       </View>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}

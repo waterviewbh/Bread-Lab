@@ -49,11 +49,12 @@ export async function getRecipeTombstone(): Promise<string[]> {
 // setRecipes / setBake — this module never touches React state.
 export async function loadAll(): Promise<{
   recipes: SavedRecipe[];
-  bake: ActiveBake | null;
+  bakes: ActiveBake[];
+  bake: ActiveBake | null; // Compatibility field
 }> {
   let recipes: SavedRecipe[] = [];
-  let bake: ActiveBake | null = null;
-  let localBakeFound = false;
+  let bakes: ActiveBake[] = [];
+  let localBakesFound = false;
   // ── Local read first (fast, offline-safe) ──────────────────────────────────
   try {
     const [recipeStr, bakeStr] = await Promise.all([
@@ -62,16 +63,18 @@ export async function loadAll(): Promise<{
     ]);
     if (recipeStr) recipes = JSON.parse(recipeStr);
     if (bakeStr) {
-      bake = JSON.parse(bakeStr);
-      localBakeFound = true;
+      const parsed = JSON.parse(bakeStr);
+      bakes = Array.isArray(parsed) ? parsed : [parsed];
+      localBakesFound = true;
     }
-  } catch {}  // ── API merge (may be skipped if offline) ──────────────────────────────────
+  } catch {}
+  // ── API merge (may be skipped if offline) ──────────────────────────────────
   try {
     const deviceId = await getDeviceId();
     const token = await getStoredToken().catch(() => null);
     const [apiRecipes, activeBake, deletedRecipeIds] = await Promise.all([
       api.recipes.list(deviceId, token ?? undefined),
-      localBakeFound ? Promise.resolve(null) : api.history.bakes.active(deviceId),
+      localBakesFound ? Promise.resolve(null) : api.history.bakes.active(deviceId),
       getRecipeTombstone(),
     ]);
     const mapped: SavedRecipe[] = apiRecipes
@@ -96,12 +99,14 @@ export async function loadAll(): Promise<{
     if (token || apiRecipes.length > 0) {
       recipes = mapped;
       await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(mapped));
-    }    if (!localBakeFound && activeBake) {
-      bake = {
+    }
+    if (!localBakesFound && activeBake) {
+      const apiBake: ActiveBake = {
         id: activeBake.id,
         recipeId: activeBake.recipeId ?? "",
         recipeName: activeBake.recipeName,
         startedAt: activeBake.startedAt,
+        status: 'active',
         yieldValue: (activeBake.yield_value && activeBake.yield_value > 0)
           ? activeBake.yield_value.toString()
           : "",
@@ -116,9 +121,11 @@ export async function loadAll(): Promise<{
           startVolume: p.startVolume,
         })),
       };
-      await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bake));
+      bakes = [apiBake];
+      await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes));
     }
-  } catch {}  return { recipes, bake };
+  } catch {}
+  return { recipes, bakes, bake: bakes[0] || null };
 }
 
 // ─── writeRecipesLocal ────────────────────────────────────────────────────────
@@ -129,9 +136,27 @@ export async function writeRecipesLocal(recipes: SavedRecipe[]): Promise<void> {
 }
 
 // ─── writeBakeLocal ───────────────────────────────────────────────────────────
-// Writes the active bake to local storage only.
+// Writes a single active bake to the local storage collection.
 export async function writeBakeLocal(bake: ActiveBake): Promise<void> {
-  await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bake));
+  const raw = await AsyncStorage.getItem(BAKE_KEY).catch(() => null);
+  let bakes: ActiveBake[] = raw ? JSON.parse(raw) : [];
+  if (!Array.isArray(bakes)) bakes = bakes ? [bakes] : [];
+
+  const idx = bakes.findIndex((b) => b.id === bake.id);
+  if (idx !== -1) {
+    bakes[idx] = bake;
+  } else {
+    // New bake: keep max 2 active slots
+    if (bakes.length < 2) bakes.push(bake);
+    else bakes[0] = bake; // replace first as fallback
+  }
+  await writeBakesLocal(bakes);
+}
+
+// ─── writeBakesLocal ───────────────────────────────────────────────────────────
+// Writes the active bakes to local storage only.
+export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
+  await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes));
 }
 
 // ─── upsertBakeRemote ─────────────────────────────────────────────────────────

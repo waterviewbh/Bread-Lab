@@ -1,0 +1,13 @@
+appId: com.waterviewbakehouse.breadlab
+---
+- runFlow: ../subflows/open_app.yaml
+- tapOn: "Bench"
+- tapOn: "Recipe Runner"
+- tapOn: "Select Recipe"
+- tapOn: "Test Sourdough"
+- tapOn: "Start Phase"
+- assertVisible: "00:01" # Wait for timer to start
+- pressKey: Home
+- runScript: ../scripts/delay_1m.js # Wait 1 minute in background
+- launchApp
+- assertVisible: "01:0" # Verify timer continued or restored

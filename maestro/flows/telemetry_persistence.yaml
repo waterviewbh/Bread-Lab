@@ -1,0 +1,18 @@
+appId: com.waterviewbakehouse.breadlab
+---
+- runFlow: ../subflows/open_app.yaml
+- tapOn: "Bench"
+- tapOn: "Recipe Runner"
+- tapOn: "Select Recipe"
+- tapOn: "Test Sourdough"
+- tapOn: "Start Phase"
+- tapOn: "Log Reading"
+- inputText: "5.2" # pH
+- tapOn: "Save Reading"
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Log"
+    timeout: 30000
+- tapOn: "Log"
+- assertVisible: "pH: 5.2"

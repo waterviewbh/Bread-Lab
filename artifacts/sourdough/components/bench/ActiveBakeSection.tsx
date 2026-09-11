@@ -37,8 +37,10 @@ import {
 } from "@/lib/recipeStorage";
 import { computeBulkFermentState, estimateInoculationPercent } from "@/lib/bulkFermentEngine";
 import { scalePhaseText } from "@/lib/recipeUtils";
-import { printHtml, shareHtmlAsPdf, buildBakeHtml } from "@/lib/recipeHtml";
+import { printHtml, shareHtmlAsPdf, buildBakeHtml, buildPhaseHtml } from "@/lib/recipeHtml";
 import { fonts } from "@/constants/theme";
+
+import { BakeSelectorTabs } from "@/components/recipe/BakeSelectorTabs";
 
 export function ActiveBakeSection() {
   const colors = useColors();
@@ -50,7 +52,8 @@ export function ActiveBakeSection() {
 
   // State
   const [recipes, setRecipes] = useState<SavedRecipe[]>([]);
-  const [bake, setBake] = useState<ActiveBake | null>(null);
+  const [bakes, setBakes] = useState<ActiveBake[]>([]);
+  const [activeBakeId, setActiveBakeId] = useState<string | null>(null);
   const [phaseStartVolumes, setPhaseStartVolumes] = useState<Record<string, string>>({});
 
   // Expansion States
@@ -73,6 +76,8 @@ export function ActiveBakeSection() {
   const [showNotesOverlay, setShowNotesOverlay] = useState(false);
 
   // --- Derived Values (The Brain) ---
+  const bake = useMemo(() => bakes.find(b => b.id === activeBakeId) || null, [bakes, activeBakeId]);
+
   // This finds the first phase that is started but not yet completed.
   const activePhase = bake?.phases.find((p) => p.startedAt && !p.completedAt);
   // Count how many phases are done for the progress bar
@@ -81,7 +86,9 @@ export function ActiveBakeSection() {
   const allDone = !!bake && completedCount === bake.phases.length && bake.phases.length > 0;
 
   // Active Timers
-  const elapsed = useActiveBakeTimer(bake);
+  const elapsed1 = useActiveBakeTimer(bakes[0] || null);
+  const elapsed2 = useActiveBakeTimer(bakes[1] || null);
+  const elapsed = activeBakeId === bakes[0]?.id ? elapsed1 : elapsed2;
 
   const sessionChecks = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -95,21 +102,33 @@ export function ActiveBakeSection() {
 
   // --- Data Loading ---
   const load = async () => {
+    console.log("[ActiveBakeSection] Loading data...");
     const data = await loadData();
     setRecipes(data.recipes);
-    setBake(data.bake);
+    setBakes(data.bakes);
 
-    if (data.bake) {
-      setBakeNotes(data.bake.notes ?? "");
-      const active = data.bake.phases.find(p => p.startedAt && !p.completedAt);
-      if (active) {
-        setExpandedRecipeInfo(new Set([active.key]));
-      } else {
-        const firstPending = data.bake.phases.find(p => !p.startedAt);
-        if (firstPending) {
-          setExpandedPending(new Set([firstPending.key]));
-        }
+    if (data.bakes.length > 0) {
+      // Restore active slot or default to first
+      if (!activeBakeId || !data.bakes.find(b => b.id === activeBakeId)) {
+        setActiveBakeId(data.bakes[0].id);
       }
+
+      const currentBake = data.bakes.find(b => b.id === (activeBakeId || data.bakes[0].id));
+      if (currentBake) {
+          setBakeNotes(currentBake.notes ?? "");
+          const active = currentBake.phases.find(p => p.startedAt && !p.completedAt);
+          if (active) {
+            setExpandedRecipeInfo(new Set([active.key]));
+          } else {
+            const firstPending = currentBake.phases.find(p => !p.startedAt);
+            if (firstPending) {
+              setExpandedPending(new Set([firstPending.key]));
+            }
+          }
+      }
+    } else {
+      setActiveBakeId(null);
+      console.log("[ActiveBakeSection] No active bake found in storage");
     }
   };
 
@@ -125,11 +144,21 @@ export function ActiveBakeSection() {
       recipeId: recipe.id,
       recipeName: recipe.name,
       startedAt: Date.now(),
+      status: 'active',
       phases,
       yieldValue: recipe.yieldValue || "1",
     };
 
-    setBake(newBake);
+    const nextBakes = [...bakes];
+    if (nextBakes.length < 2) nextBakes.push(newBake);
+    else {
+        const idx = nextBakes.findIndex(b => b.id === activeBakeId);
+        if (idx !== -1) nextBakes[idx] = newBake;
+        else nextBakes[0] = newBake;
+    }
+
+    setBakes(nextBakes);
+    setActiveBakeId(newBake.id);
     await writeBakeLocal(newBake);
     upsertBakeRemote(newBake).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -161,7 +190,7 @@ export function ActiveBakeSection() {
     });
 
     const updatedBake = { ...bake, phases };
-    setBake(updatedBake);
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     setShowReadingModal(false);
   };
@@ -170,9 +199,16 @@ export function ActiveBakeSection() {
     Alert.alert("New Bake?", "Clear the current bake? This will save a snapshot to your history.", [
       { text: "Cancel", style: "cancel" },
       { text: "Reset", style: "destructive", onPress: async () => {
-          if (bake) await archiveBakeWithDiagnostics(bake, { reportSyncStart, reportSyncSuccess, reportSyncFailure });
-          setBake(null);
-          await AsyncStorage.removeItem(BAKE_KEY);
+          if (bake) {
+              await archiveBakeWithDiagnostics(bake, { reportSyncStart, reportSyncSuccess, reportSyncFailure });
+              const nextBakes = bakes.filter(b => b.id !== activeBakeId);
+              setBakes(nextBakes);
+              if (nextBakes.length > 0) setActiveBakeId(nextBakes[0].id);
+              else setActiveBakeId(null);
+
+              const { writeBakesLocal } = await import("@/lib/recipeStorage");
+              await writeBakesLocal(nextBakes);
+          }
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }}
     ]);
@@ -189,7 +225,7 @@ export function ActiveBakeSection() {
     });
 
     const updatedBake = { ...bake, phases };
-    setBake(updatedBake);
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -211,7 +247,7 @@ export function ActiveBakeSection() {
     );
 
     const updatedBake = { ...bake, phases };
-    setBake(updatedBake);
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -269,7 +305,7 @@ export function ActiveBakeSection() {
         p.key === key ? { ...p, startVolume: value } : p
       );
       const updatedBake = { ...bake, phases };
-        setBake(updatedBake);
+      setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
       await writeBakeLocal(updatedBake);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
@@ -284,7 +320,7 @@ export function ActiveBakeSection() {
     });
 
     const updatedBake = { ...bake, phases };
-    setBake(updatedBake);
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.selectionAsync();
@@ -299,7 +335,7 @@ export function ActiveBakeSection() {
     );
 
     const updatedBake = { ...bake, phases };
-    setBake(updatedBake);
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -313,7 +349,7 @@ export function ActiveBakeSection() {
       instructions: p.instructions.map(i => i.id === id ? { ...i, is_checked: !i.is_checked } : i),
     }));
     const updatedBake = { ...bake, phases };
-    setBake(updatedBake);
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -326,7 +362,7 @@ export function ActiveBakeSection() {
   const handleSaveNotesOverlay = async () => {
     if (!bake) return;
     const updatedBake = { ...bake, notes: overlayDraft };
-    setBake(updatedBake);
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     setBakeNotes(overlayDraft);
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
@@ -336,6 +372,20 @@ export function ActiveBakeSection() {
   // --- Render ---
   return (
     <View style={{ flex: 1 }}>
+      <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+        <BakeSelectorTabs
+          bakes={bakes}
+          activeBakeId={activeBakeId}
+          onSelectBake={setActiveBakeId}
+          onNewBake={() => {
+              setActiveBakeId(null);
+              setShowRecipePicker(true);
+          }}
+          elapsed1={elapsed1}
+          elapsed2={elapsed2}
+        />
+      </View>
+
       {bake ? (
       <RecipeRunnerActiveView
         bake={bake}
@@ -374,10 +424,62 @@ export function ActiveBakeSection() {
         onIncrementFold={handleToggleFold}
         onStartVolumeChange={handleStartVolumeChange}
         onStartVolumeCommit={handleStartVolumeCommit}
-        onCopyIngredients={() => {}}
-        onShareSpec={() => {}}
-        onPrint={() => {}}
-        onSharePdf={() => {}}
+        onCopyIngredients={async (key) => {
+          const phase = bake?.phases.find(p => p.key === key);
+          if (!phase) return;
+          console.log("[ActiveBakeSection] onCopyIngredients triggered for phase:", phase.name);
+          const ingredients = phase.ingredients.map(i => i.text).join("\n");
+          await Clipboard.setStringAsync(ingredients);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }}
+        onShareSpec={(phase) => {
+          console.log("[ActiveBakeSection] onShareSpec triggered for phase:", phase.name);
+          try {
+            if (!bake) return;
+            const html = buildPhaseHtml(phase, bake.recipeName, scaleMultiplier);
+            console.log("[ActiveBakeSection] onShareSpec: HTML generated, sharing PDF...");
+            shareHtmlAsPdf(html, `${bake.recipeName} - ${phase.name}`);
+          } catch (error) {
+            console.error("[ActiveBakeSection] onShareSpec error:", error);
+          }
+        }}
+        onPrint={() => {
+          console.log("[ActiveBakeSection] onPrint triggered");
+          try {
+            if (!bake) {
+              console.warn("[ActiveBakeSection] onPrint: No active bake found in state");
+              return;
+            }
+            console.log("[ActiveBakeSection] onPrint: Preparing HTML for bake:", bake.recipeName, "(ID:", bake.id, ")");
+            console.log("[ActiveBakeSection] onPrint: Phase status:", completedCount, "/", bake.phases?.length || 0);
+
+            const html = buildBakeHtml(bake, bakeNotes, completedCount);
+            console.log("[ActiveBakeSection] onPrint: HTML generation successful, length:", html.length);
+
+            printHtml(html);
+          } catch (error) {
+            console.error("[ActiveBakeSection] onPrint error:", error);
+            Alert.alert("Print Error", "Failed to generate print document. Check console for details.");
+          }
+        }}
+        onSharePdf={() => {
+          console.log("[ActiveBakeSection] onSharePdf triggered");
+          try {
+            if (!bake) {
+              console.warn("[ActiveBakeSection] onSharePdf: No active bake found in state");
+              return;
+            }
+            console.log("[ActiveBakeSection] onSharePdf: Preparing PDF for bake:", bake.recipeName, "(ID:", bake.id, ")");
+
+            const html = buildBakeHtml(bake, bakeNotes, completedCount);
+            console.log("[ActiveBakeSection] onSharePdf: HTML generation successful, length:", html.length);
+
+            shareHtmlAsPdf(html, bake.recipeName);
+          } catch (error) {
+            console.error("[ActiveBakeSection] onSharePdf error:", error);
+            Alert.alert("Share Error", "Failed to generate PDF. Check console for details.");
+          }
+        }}
         onOpenNotesOverlay={() => { setOverlayDraft(bakeNotes); setShowNotesOverlay(true); }}
         onSaveNotesOverlay={handleSaveNotesOverlay}
         onCloseNotesOverlay={() => setShowNotesOverlay(false)}

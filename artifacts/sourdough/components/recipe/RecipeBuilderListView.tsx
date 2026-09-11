@@ -33,7 +33,7 @@ interface Props {
 }
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import { TourStep, CopilotView } from "@/components/TourStep";
-import { IterationStack } from "@/components/log/IterationStack";
+import { RecipeDeck } from "@/components/recipe/RecipeDeck";
 
 export function RecipeBuilderListView({
   recipes,
@@ -94,6 +94,7 @@ export function RecipeBuilderListView({
               s.addBtn,
               { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
             ]}
+            testID="new-recipe-button"
           >
             <Feather name="plus" size={14} color={colors.primaryForeground} />
             <Text style={[s.addBtnText, { color: colors.primaryForeground }]}>
@@ -169,115 +170,18 @@ export function RecipeBuilderListView({
             </Text>
           </View>
         ) : (
-          <View style={{ gap: 10 }}>
+          <View style={{ gap: 4 }}>
             {masterRecipes.map((master, i) => {
               const iterations = iterationsMap.get(master.id) || [];
-
-              if (iterations.length > 0) {
-                return (
-                  <Animated.View key={master.id} entering={FadeInDown.delay(i * 40).duration(300)}>
-                     <IterationStack
-                       master={master}
-                       iterations={iterations.sort((a,b) => (Math.max(b.updatedAt || 0, b.createdAt)) - (Math.max(a.updatedAt || 0, a.createdAt)))}
-                       bakeHistory={bakeHistory}
-                       onSelect={onEditRecipe}
-                     />
-                  </Animated.View>
-                );
-              }
+              const sortedIterations = iterations.sort((a,b) => (Math.max(b.updatedAt || 0, b.createdAt)) - (Math.max(a.updatedAt || 0, a.createdAt)));
 
               return (
-                <Animated.View key={master.id} entering={FadeInDown.delay(i * 40).duration(300)} style={{ paddingHorizontal: 20 }}>
-                  <Pressable
-                    onPress={() => onEditRecipe(master)}
-                    style={({ pressed }) => [
-                      s.recipeCard,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.border,
-                        opacity: pressed ? 0.85 : 1,
-                      },
-                    ]}
-                  >
-                    <View style={s.recipeCardTop}>
-                      <Text
-                        style={[s.recipeName, { color: colors.foreground }]}
-                        numberOfLines={1}
-                      >
-                        {master.name}
-                      </Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                        <Pressable
-                          onPress={(e) => { e.stopPropagation?.(); onDuplicateRecipe(master); }}
-                          hitSlop={8}
-                          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
-                        >
-                          <Feather name="copy" size={15} color={colors.mutedForeground} />
-                        </Pressable>
-                        <Pressable
-                          onPress={(e) => { e.stopPropagation?.(); onPrintRecipe(master); }}
-                          hitSlop={8}
-                          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
-                        >
-                          <Feather name="printer" size={15} color={colors.mutedForeground} />
-                        </Pressable>
-                        <Pressable
-                          onPress={(e) => { e.stopPropagation?.(); onShareRecipe(master); }}
-                          hitSlop={8}
-                          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
-                        >
-                          <Feather name="share-2" size={15} color={colors.mutedForeground} />
-                        </Pressable>
-                        <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-                      </View>
-                    </View>
-                    <View style={s.recipeCardMeta}>
-                      <View style={{ flexDirection: "row", gap: 2 }}>
-                        <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
-                          {master.phases.length} {master.phases.length === 1 ? "phase" : "phases"}
-                        </Text>
-                        <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
-                          · {formatDate(master.createdAt)}
-                        </Text>
-                      </View>
-                      {!!master.yieldValue && (
-                        <Text style={[s.recipeMeta, { color: colors.mutedForeground }]}>
-                          Yield: {master.yieldValue}
-                        </Text>
-                      )}
-                    </View>
-                    {!!master.overview && (
-                      <Text
-                        style={[s.recipeOverview, { color: colors.mutedForeground }]}
-                        numberOfLines={2}
-                      >
-                        {master.overview}
-                      </Text>
-                    )}
-                    {master.phases.length > 0 && (
-                      <View style={s.phasePillRow}>
-                        {master.phases.slice(0, 3).map((p) => (
-                          <View
-                            key={p.key}
-                            style={[
-                              s.phasePill,
-                              {
-                                backgroundColor: colors.primary + "12",
-                                borderColor: colors.primary + "28",
-                              },
-                            ]}
-                          >
-                            <Text style={[s.phasePillText, { color: colors.primary }]}>
-                              {p.name}
-                            </Text>
-                          </View>
-                        ))}
-                        {master.phases.length > 3 && (
-                          <Text style={{ fontSize: 10, color: colors.mutedForeground }}>+{master.phases.length - 3}</Text>
-                        )}
-                      </View>
-                    )}
-                  </Pressable>
+                <Animated.View key={master.id} entering={FadeInDown.delay(i * 40).duration(300)}>
+                   <RecipeDeck
+                     master={master}
+                     iterations={sortedIterations}
+                     onSelect={onEditRecipe}
+                   />
                 </Animated.View>
               );
             })}

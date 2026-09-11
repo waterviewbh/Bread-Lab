@@ -1,0 +1,15 @@
+appId: com.waterviewbakehouse.breadlab
+---
+- runFlow: ../subflows/open_app.yaml
+- tapOn: "Bench"
+- tapOn: "Recipe Runner"
+- tapOn: "Select Recipe"
+- tapOn: "Test Sourdough"
+- tapOn: "Start Phase"
+- tapOn: "Complete Phase"
+- assertVisible: "Bake complete"
+- tapOn: "Review & Log"
+- inputText: "Great crust."
+- tapOn: "Save Log"
+- tapOn: "Log"
+- assertVisible: "Great crust."

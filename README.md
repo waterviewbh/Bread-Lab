@@ -1,6 +1,16 @@
-# Baker's Bench - App Documentation
+# Baker's Bench - Bread Lab
 
-This document serves as the technical documentation for the Bread Lab application (the-bakers-bench branch).
+> [!IMPORTANT]
+> **Project Knowledge Base**: All project-level documentation, architectural plans, session journals, and agent instructions are now centralized in the **[docs/](file:///E:/Bread-Lab/docs/index.md)** directory. 
+> 
+> **AI Agents**: Please read **[docs/index.md](file:///E:/Bread-Lab/docs/index.md)** before starting any major task to understand the current project context and recent session history. 
+
+### AI Agent Protocol (Session Wrap-up)
+To maintain the project's long-term memory, every agent must follow this protocol before ending a session:
+1. **Journal**: Create a new entry in `docs/journal/` summarizing the session.
+2. **Walkthrough**: Create/Update a walkthrough in `docs/walkthroughs/` for new features.
+3. **Briefs**: Update any relevant files in `docs/briefs/` with a 'Completion Status' and link to the walkthrough.
+4. **Index**: Update `docs/index.md` to link all new artifacts.
 
 ## 1. App Structure: (tabs) Directory
 
@@ -80,6 +90,7 @@ The app follows a modular component structure, organized by feature hubs.
 ### Recipe Components (`components/recipe`)
 *Recipe definition and execution blocks.*
 
+- **[RecipeDeck.tsx]**: Implements the Overlapping Index Tabs pattern for recipe navigation and iteration comparison.
 - **[PhaseCard.tsx]**: State-aware UI cards for recipe phases (Pending/Active/Done). Includes the Bulk Dashboard.
 - **[ContinuousListInput.tsx]**: High-efficiency text input for ingredient/instruction lists.
 - **[RecipeBuilderEditView.tsx]**: Full-screen editor for recipe configuration.

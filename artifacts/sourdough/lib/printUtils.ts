@@ -2,6 +2,7 @@
 import { Alert, Platform } from "react-native";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system/legacy";
 
 /**
  * SafePrint prevents the "Another print request is already in progress" error
@@ -88,8 +89,27 @@ class SafePrintManager {
         return;
       }
 
+      // Generate the PDF in the temporary cache
       const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri, {
+
+      // Sanitize the filename: replace non-alphanumeric (including spaces) with a single dash
+      // e.g. "Open Bake #2" -> "Open-Bake-2"
+      const safeName = dialogTitle
+        .replace(/[^a-zA-Z0-9]+/g, '-') // replace one or more non-alphanumeric chars with a dash
+        .replace(/^-+|-+$/g, '');       // trim dashes from start and end
+
+      const finalName = (safeName || "bake") + ".pdf";
+      const namedUri = FileSystem.cacheDirectory + finalName;
+
+      // Rename the UUID file to the recipe name file
+      await FileSystem.moveAsync({
+        from: uri,
+        to: namedUri
+      });
+
+      console.log("[SafePrint] PDF renamed to:", finalName);
+
+      await Sharing.shareAsync(namedUri, {
         mimeType: "application/pdf",
         dialogTitle,
         UTI: "com.adobe.pdf",

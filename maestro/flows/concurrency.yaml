@@ -1,0 +1,11 @@
+appId: com.waterviewbakehouse.breadlab
+---
+- runFlow: ../subflows/open_app.yaml
+- tapOn: "Bench"
+- tapOn: "Recipe Runner"
+- tapOn: "Select Recipe"
+- tapOn: "Test Sourdough"
+- doubleTapOn:
+    text: "Start Phase"
+    delay: 50
+- assertVisible: "00:01"

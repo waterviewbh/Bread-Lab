@@ -78,6 +78,7 @@ export function RecipeBuilderEditView({
               onPress={onCancel}
               hitSlop={12}
               style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+              testID="close-edit-button"
             >
               <Feather name="x" size={20} color={colors.mutedForeground} />
             </Pressable>
@@ -87,6 +88,7 @@ export function RecipeBuilderEditView({
             <Pressable
               onPress={onSave}
               style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+              testID="save-recipe-button"
             >
               <Text style={[s.saveLink, { color: colors.accent }]}>Save</Text>
             </Pressable>
@@ -108,6 +110,7 @@ export function RecipeBuilderEditView({
             value={editingRecipe.name}
             onChangeText={onChangeName}
             returnKeyType="done"
+            testID="recipe-name-input"
           />
           {/* ── Overview textarea ───────────────────────────────────────── */}
           <Text style={[s.fieldLabel, { color: colors.mutedForeground, marginTop: 16 }]}>

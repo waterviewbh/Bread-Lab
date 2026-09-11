@@ -20,6 +20,7 @@ export const YieldPill = React.memo(({ isBuilder, value, onChangeValue }: YieldP
           placeholder="1"
           maxLength={4}
           placeholderTextColor="#A3968E"
+          testID="yield-input"
         />
       ) : (
         <View style={styles.runnerYieldContainer}>

@@ -206,7 +206,12 @@ export function LabHub() {
         <View style={[s.toggleWrap, { paddingTop: insets.top + 16 }]}>
           <View style={[s.toggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             {(["analytics", "feed planner", "recipe builder"] as const).map((sec) => (
-              <Pressable key={sec} onPress={() => { setSection(sec); Haptics.selectionAsync(); }} style={[s.toggleBtn, section === sec && { backgroundColor: colors.card }]}>
+              <Pressable
+                key={sec}
+                onPress={() => { setSection(sec); Haptics.selectionAsync(); }}
+                style={[s.toggleBtn, section === sec && { backgroundColor: colors.card }]}
+                testID={`${sec.replace(' ', '-')}-tab-toggle`}
+              >
                 <Text style={[s.toggleText, { color: section === sec ? colors.foreground : colors.mutedForeground }]}>{sec.toUpperCase()}</Text>
               </Pressable>
             ))}

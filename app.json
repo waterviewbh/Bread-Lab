@@ -1,7 +1,5 @@
 {
-  "expo": {
-    "android": {
-      "package": "com.waterviewbh.workspace"
-    }
+  "android": {
+    "package": "com.waterviewbh.workspace"
   }
 }

@@ -1,0 +1,13 @@
+appId: com.waterviewbakehouse.breadlab
+---
+- runFlow: ../subflows/open_app.yaml
+- tapOn: "Log"
+- tapOn: "Name my data"
+- tapOn: "Track different starter"
+- tapOn: "Remove"
+- launchApp
+- tapOn: "Log"
+- tapOn: "Name my data"
+- inputText: "Test"
+- tapOn: "Save"
+- assertVisible: "Data named"

@@ -1,0 +1,15 @@
+appId: com.waterviewbakehouse.breadlab
+---
+- runFlow: ../subflows/open_app.yaml
+- tapOn: "Lab"
+- tapOn: "RECIPE BUILDER"
+- tapOn: "Test Sourdough"
+- tapOn: "Edit Recipe"
+- inputText: "Edited Sourdough"
+- tapOn: "Save"
+- assertVisible: "Edited Sourdough"
+- tapOn: "Bench"
+- tapOn: "Recipe Runner"
+- tapOn: "New Bake"
+- tapOn: "Abandon Bake" # Delete draft
+- assertNotVisible: "Bake complete"
