@@ -27,6 +27,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [📓 Journal](file:///E:/Bread-Lab/docs/journal/)
 **Purpose**: A chronological record of work sessions, obstacles encountered, and high-level progress. Use this to get a sense of the project's recent trajectory.
+- [Session: Android Build Stabilization (2026-09-11)](file:///E:/Bread-Lab/docs/journal/2026-09-11_aab_build_stabilization.artifact.md)
 - [Session: Maestro Testing Stabilization (2026-09-10)](file:///E:/Bread-Lab/docs/journal/2026-09-10_maestro_testing_stabilization.artifact.md)
 - [Session: Automated Testing Protocol (2026-09-08)](file:///E:/Bread-Lab/docs/journal/2026-09-08_automated_testing_protocol.artifact.md)
 - [Session: Concurrent Active Bakes (2026-09-07 PM)](file:///E:/Bread-Lab/docs/journal/2026-09-07_concurrent_active_bakes.artifact.md)
@@ -45,6 +46,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🎨 Walkthroughs](file:///E:/Bread-Lab/docs/walkthroughs/)
 **Purpose**: Demonstrations and summaries of completed features, including UI screenshots and technical breakdowns.
+- [Android Build Stabilization (2026-09-11)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-11_aab_build_stabilization.artifact.md)
 - [Diagnostic Stability & PDF Naming Improvements](file:///E:/Bread-Lab/docs/walkthroughs/diagnostic_stability.artifact.md)
 - [Concurrent Active Bakes (2026-09-07)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-07_concurrent_active_bakes.artifact.md)
 - [Recipe Deck Navigation & Label Refinement (2026-09-07)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-07_recipe_deck_navigation.artifact.md)
