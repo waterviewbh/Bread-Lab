@@ -109,6 +109,10 @@ export type ApiBakeSession = {
   inProgress: boolean;
   createdAt: string;
   yield_value: number;
+  completedAt?: number | null;
+  status?: string | null;
+  outcome?: any | null;
+  notes?: string | null;
 };
 
 export type ApiAuthUser = { id: string; firstName: string; starterName: string };
@@ -136,6 +140,7 @@ interface RecipeRow {
   hydration_pct?: number;
   parent_recipe_id?: string | null;
   version_label?: string | null;
+  is_archived: boolean;
 }
 
 interface FeedSessionRow {
@@ -168,6 +173,10 @@ interface BakeSessionRow {
   in_progress: boolean;
   created_at: string;
   yield_value: number;
+  completed_at: number | null;
+  status: string | null;
+  outcome: any | null;
+  notes: string | null;
 }
 
 interface StarterAnalyticsRow {
@@ -196,6 +205,7 @@ function rowToApiRecipe(r: RecipeRow): ApiRecipe {
     hydration_pct: r.hydration_pct,
     parent_recipe_id: r.parent_recipe_id ?? undefined,
     version_label: r.version_label ?? undefined,
+    isArchived: r.is_archived,
   };
 }
 
@@ -224,6 +234,10 @@ function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
     inProgress: r.in_progress ?? false,
     createdAt: r.created_at,
     yield_value: r.yield_value,
+    completedAt: r.completed_at != null ? Number(r.completed_at) : null,
+    status: r.status ?? undefined,
+    outcome: r.outcome ?? undefined,
+    notes: r.notes ?? undefined,
   };
 }
 
@@ -374,7 +388,7 @@ export const api = {
         phases: flattenPhasesForLegacy(body.phases), recipe_data: body,
         updated_at: new Date().toISOString(), total_flour_g: body.total_flour_g,
         hydration_pct: body.hydration_pct, parent_recipe_id: body.parentRecipeId ?? null,
-        version_label: body.versionLabel ?? null,
+        version_label: body.versionLabel ?? null, is_archived: body.isArchived ?? false,
       }).select().returns<RecipeRow[]>().single();
       if (error) throw error;
       return rowToApiRecipe(data);
@@ -473,7 +487,9 @@ export const api = {
         const { data, error } = await supabase.from("bake_sessions").upsert({
           id: body.id, device_id: body.deviceId, user_id: body.userId ?? null, recipe_id: body.recipeId ?? null,
           recipe_name: body.recipeName, yield_value: body.yield_value, saved_at: body.savedAt,
-          started_at: body.startedAt, phases: flattenPhasesForLegacy(body.phases), in_progress: body.inProgress ?? true,
+          started_at: body.startedAt, completed_at: body.completedAt ?? null, status: body.status ?? null,
+          outcome: body.outcome ?? null, notes: body.notes ?? null,
+          phases: flattenPhasesForLegacy(body.phases), in_progress: body.inProgress ?? true,
         }).select().returns<BakeSessionRow[]>().single();
         if (error) throw error;
         return rowToApiBakeSession(data);

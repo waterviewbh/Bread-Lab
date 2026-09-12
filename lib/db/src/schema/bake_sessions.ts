@@ -1,4 +1,4 @@
-import { pgTable, text, bigint, jsonb, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, bigint, jsonb, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -8,8 +8,23 @@ export const bakeSessionsTable = pgTable("bake_sessions", {
   userId: text("user_id"),
   recipeId: text("recipe_id"),
   recipeName: text("recipe_name").notNull(),
+  yieldValue: integer("yield_value"),
   savedAt: bigint("saved_at", { mode: "number" }).notNull(),
   startedAt: bigint("started_at", { mode: "number" }).notNull(),
+  completedAt: bigint("completed_at", { mode: "number" }),
+  status: text("status"),
+  notes: text("notes"),
+  outcome: jsonb("outcome").$type<{
+    crumbScore?: number;
+    crustScore?: number;
+    sournessScore?: number;
+    overallScore?: number;
+    defects: string[];
+    reflectionNotes?: string;
+    iterationHypothesis?: string;
+    crumbShotUri?: string;
+    appliedDelta?: { variable: string, value: number };
+  }>(),
   phases: jsonb("phases").notNull().$type<Array<{
     key: string;
     name: string;

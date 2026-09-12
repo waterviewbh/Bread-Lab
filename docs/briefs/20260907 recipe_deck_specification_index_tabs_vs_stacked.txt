@@ -1,0 +1,142 @@
+# Specification: Recipe Deck Navigation via Overlapping Index Tabs
+
+## Overview & Architecture Decision
+In the Bread Lab mobile application, recipes evolve through experimental iterations branching from an original foundational formula (the "Master Formula"). 
+
+After evaluating two physical metaphors for presenting iterated formulas, **Overlapping Index Tabs** pattern has been explicitly selected as the primary UX pattern.
+
+This document details the architectural rationale, interaction specifications, component structure, and styling rules for implementing this pattern.
+
+---
+
+## Why Index Tabs Over Fanned Decks
+1. **Ergonomic 1-Tap Switching**:
+   - The fanned deck requires an initial tap to "spread" or expand the lineage deck, followed by a second interaction to inspect or select a specific version.
+   - Index tabs expose all available versions (`Master`, `v1`, `v2`) directly at the top of the card. A baker with flour on their hands can swap directly between iterations in a single tap without layout jumps or accordion animations.
+2. **Zero Gesture Ambiguity**:
+   - Swiping or fanning cards vertically or horizontally often intercepts parent scroll gestures in a recipe list view. Tabs are standard, predictable touch targets.
+3. **Continuous Context & Predictable Card Footprint**:
+   - The card maintains a steady, compact vertical footprint in the feed list while still conveying full version history.
+
+---
+
+## Display Rules & Business Logic
+
+### 1. Visible Tab Limit (Rule of 3)
+- **Maximum visible tabs**: 3 tabs across the top edge of any iterated recipe card:
+  1. `Master` (The baseline formula, always positioned leftmost).
+  2. `v[N-1]` (The second most recent iteration, e.g., `v1 · Aug 10`).
+  3. `v[N] (Latest)` (The active / latest iteration, e.g., `v2 (Latest) · Aug 21`, positioned rightmost).
+- **Older Archived Batches**:
+  - If a recipe has 4 or more iterations, older versions do not clutter the top tab row. They are accessible via an understated `+ N older archived iterations` link or dropdown drawer inside the card or review log.
+
+### 2. Untouched / Non-Iterated Master Formulas
+- If a recipe has no iterations (e.g., *Chocolate Molasses*):
+  - Do **not** render top tabs.
+  - Render a clean, standalone card with an editorial `Master Formula · Untouched` badge.
+
+### 3. Tab Visual Hierarchy & States
+- **Active Tab**:
+  - Filled surface matching the card background (`#ffffff` or card container).
+  - Merges seamlessly with the top edge of the card body (border-bottom disappears or matches card fill).
+  - Includes a leading indicator dot (`•`) or bolded label (e.g., `• v2 (Latest) · Aug 21`).
+  - Font: `HankenGrotesk_600SemiBold`, 12px.
+- **Inactive / Background Tabs**:
+  - Slightly recessed surface tone (e.g., `#fbf2ed` or `#e1d8d4` border/fill).
+  - Explicit top-rounded tab shape with subtle border outlining.
+  - Muted text tone (`#82736b`).
+  - Clear icon glyphs:
+    - Master tab: Shield icon (`shield-outline` or `bookmark`).
+    - Prior iteration tab: Clock / history icon (`history` or `time-outline`).
+
+---
+
+## Component Layout & Content Specs
+
+Each card consists of three core visual blocks:
+
+### 1. Tab Bar (`IndexTabBar`)
+Placed immediately above the card body with negative bottom margin or border-collapse so the active tab visually joins the card.
+```
+┌── [ 🛡️ Master ] ── [ 🕒 v1 · Aug 10 ] ── [ • v2 (Latest) · Aug 21 ] ──┐
+```
+
+### 2. Card Header & Baseline Meta
+- **Lineage Chip**: `BASELINE V1.6 · 3 Iterations` (uppercase, tracked, 10px).
+- **Title**: `[Recipe Name] (Iterated v2)` in `LibreCaslonText_700Bold`, 20px–22px.
+- **Thumbnail Image**: Right-aligned 72x72 rounded preview thumbnail.
+
+### 3. Scientific Data & Delta Highlights
+- **Key Metrics Row**:
+  - Hydration % (e.g., `62%`)
+  - Starter / Levain % (e.g., `14%`)
+  - Yield / Mass (e.g., `1 Loaf` or `850g`)
+- **Delta vs. Master Callout (Crucial)**:
+  - An accented callout banner directly beneath the metrics highlighting experimental changes:
+  - *Example*: `Delta vs Master: +4% hydration for a more open crumb; 30 min extended autolyse stage.`
+- **Card Footer**:
+  - Left: Time elapsed since bake (e.g., `🕒 Baked 3 days ago`).
+  - Right: Primary action link (e.g., `Review Log ›` or `Open Formulation ›`).
+
+---
+
+## React Native / StyleSheet Implementation Notes
+
+```typescript
+// Example snippet structure for the Tab Deck component:
+const styles = StyleSheet.create({
+  cardContainer: {
+    marginBottom: 20,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 8,
+    marginBottom: -1, // Sits directly on top of card border
+    zIndex: 2,
+  },
+  tabItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  activeTab: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e1d8d4',
+  },
+  inactiveTab: {
+    backgroundColor: '#fbf2ed',
+    borderColor: '#e1d8d4',
+  },
+  cardBody: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderTopLeftRadius: 0, // When leftmost tab is active
+    borderWidth: 1,
+    borderColor: '#e1d8d4',
+    padding: 16,
+    zIndex: 1,
+  },
+  deltaBox: {
+    backgroundColor: '#fbf2ed',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 12,
+  },
+});
+```
+
+---
+
+## Summary for the Engineering Agent
+When generating, editing, or rendering recipe cards in the Bread Lab:
+- Use **Option 1 (Overlapping Index Tabs)** as the canonical presentation for iterated formulas.
+- Never use a carousel or gesture-heavy fanned card stack for recipe iterations.
+- Adhere strictly to the Rule of 3 (Master + two latest iterations).
+- Ensure the Delta Callout is always rendered on iterated cards to preserve the "Baker into Scientist" experimental feedback loop.

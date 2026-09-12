@@ -1,0 +1,51 @@
+I'd liek to explore ways to develop an automated (or at least exceedingly efficient) testing protocol for when changes are made.
+
+Another agent told me that there few things will catch 90% of the errors preparatory to a production .aab build. Do you agree? Could you add to or refine this list to get to 99?
+
+1. Create & Scale a Recipe
+
+Create a multi-ingredient recipe, change total weight or baker's percentage, and save.
+
+Catches: Rounding/floating-point errors, schema validation bugs, state updates.
+
+2. Start a Session & Background the App
+
+Launch a bake session, trigger a timer, lock the screen or background the app for 1 minute, and return.
+
+Catches: Unmounting state loss, timer drift, background push/notification failures.
+
+3. Log Mid-Bake Telemetry & Force Close
+
+Input numeric logs (e.g., dough temp, pH, volume rise %), hard-kill the app, and reopen.
+
+Catches: Local storage/persistence failures, crashing on mid-session restoration.
+
+4. Toggle Offline Mode Mid-Session
+
+Disconnect network, perform a step action (e.g., mark stretch-and-fold complete), reconnect, and complete the bake.
+
+Catches: Sync queue drops, optimistic UI failures, network handler crashes.
+
+5. Complete Bake & Verify History
+
+Finish the session, add a photo/note, and view the saved log in history.
+
+Catches: Database write errors, missing fields on detailed log renders, image caching bugs.
+
+6. Edit Existing / Delete Draft Data
+
+Edit an existing recipe name/ingredient, then delete an unused draft session.
+
+Catches: Cascade deletion errors, stale cache rendering, orphaned DB records.
+
+7. Auth Cycle Mid-State
+
+Log out (or trigger token refresh) while an active bake exists, then log back in.
+
+Catches: User-ID association leaks, auth header drops, unauthorized state resets.
+
+8. Rapid Tap / Double-Submit Inputs
+
+Double-tap action buttons (e.g., "Start Bake", "Save Step") in quick succession.
+
+Catches: Duplicate database entries, race conditions, unhandled async promises.

@@ -174,6 +174,10 @@ export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
         yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
         savedAt: Date.now(),
         startedAt: bake.startedAt,
+        completedAt: bake.completedAt,
+        status: bake.status,
+        outcome: bake.outcome,
+        notes: bake.notes,
         phases: bake.phases.map((p) => ({
           key: p.key,
           name: p.name,
@@ -260,6 +264,7 @@ export async function archiveBakeWithDiagnostics(
     completedAt: bake.completedAt,
     status: bake.status,
     outcome: bake.outcome,
+    notes: bake.notes,
     phases: bake.phases,
     inProgress: false,
   })
@@ -352,10 +357,11 @@ export async function updateBakeOutcomeInHistory(
                     const token = await getStoredToken().catch(() => null);
 
                     await api.history.bakes.upsert({
-                        id: bakeId,
+                        ...updatedBake,
                         deviceId,
                         userId: token ?? undefined,
-                        outcome: outcome,
+                        yield_value: updatedBake.yieldValue ? parseInt(updatedBake.yieldValue, 10) : 0,
+                        savedAt: Date.now(),
                         inProgress: false
                     } as any);
                 } catch (remoteError) {

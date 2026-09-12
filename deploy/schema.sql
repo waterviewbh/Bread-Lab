@@ -33,8 +33,13 @@ CREATE TABLE IF NOT EXISTS bake_sessions (
   user_id     text,
   recipe_id   text,
   recipe_name text NOT NULL,
+  yield_value integer DEFAULT 0,
   saved_at    bigint NOT NULL,
   started_at  bigint NOT NULL,
+  completed_at bigint,
+  status      text,
+  outcome     jsonb,
+  notes       text,
   phases      jsonb NOT NULL,
   in_progress boolean NOT NULL DEFAULT false,
   created_at  timestamp NOT NULL DEFAULT now()
@@ -49,6 +54,12 @@ CREATE TABLE IF NOT EXISTS recipes (
   user_id    text,
   name       text NOT NULL,
   phases     jsonb NOT NULL,
+  yield_value integer DEFAULT 0,
+  total_flour_g float,
+  hydration_pct float,
+  parent_recipe_id text,
+  version_label text,
+  is_archived boolean NOT NULL DEFAULT false,
   created_at timestamp NOT NULL DEFAULT now(),
   updated_at timestamp NOT NULL DEFAULT now()
 );

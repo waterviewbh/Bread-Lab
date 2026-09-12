@@ -1,0 +1,1 @@
+apk builds (and aab builds) will be moved to E:\aab and apk once they're created. If you want to find one, look there.
