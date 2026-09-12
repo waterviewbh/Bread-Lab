@@ -26,7 +26,7 @@ pluginManagement {
 plugins {
   id("com.facebook.react.settings")
   id("expo-autolinking-settings")
-  id 'org.gradle.toolchains.foojay-resolver-convention' version '0.10.0'
+  id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
@@ -44,6 +44,6 @@ expoAutolinking.useExpoVersionCatalog()
 
 include ':app'
 if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
-    project(':app').projectDir = new File("E:/bl/artifacts/sourdough/android/app")
+    project(':app').projectDir = new File(rootDir, "app")
 }
 includeBuild(expoAutolinking.reactNativeGradlePlugin)

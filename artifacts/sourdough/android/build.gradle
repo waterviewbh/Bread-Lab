@@ -1,6 +1,13 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
+  ext {
+    buildToolsVersion = "35.0.0"
+    minSdkVersion = 24
+    compileSdkVersion = 35
+    targetSdkVersion = 34
+    ndkVersion = "27.1.12297006"
+  }
   repositories {
     google()
     mavenCentral()
@@ -37,7 +44,7 @@ subprojects {
       // 1. Redirect CMake staging (.cxx)
       try {
         android.externalNativeBuild.cmake.buildStagingDirectory = new File("E:/x/${project.name}")
-      } catch (Exception e) {}
+      } catch (Exception ignored) {}
 
       // 2. Junction 'generated' and 'intermediates' to short paths
       def junctionFolders = [
@@ -98,7 +105,7 @@ gradle.projectsEvaluated {
           
           def cmakeFile = isWindows ?
             new File("E:\\b\\app\\generated\\autolinking\\src\\main\\jni\\Android-autolinking.cmake") :
-            new File(appProject.buildDir, "generated/autolinking/src/main/jni/Android-autolinking.cmake")
+            new File(appProject.layout.buildDirectory.file("generated/autolinking/src/main/jni/Android-autolinking.cmake").get().asFile.absolutePath)
 
         if (cmakeFile.exists()) {
           def original = cmakeFile.text
