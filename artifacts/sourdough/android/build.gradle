@@ -87,6 +87,10 @@ gradle.projectsEvaluated {
       outputs.upToDateWhen { false }
 
       doLast {
+        if (!isWindows) {
+          println "[build.gradle] Skipping patchAutolinkingCmake on non-Windows platform."
+          return
+        }
         println "[build.gradle] Running patchAutolinkingCmake..."
           // --- The Junction Root Strategy ---
           // Using junction 'E:/bl' -> 'E:/Bread-Lab'
