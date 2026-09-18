@@ -1,4 +1,4 @@
-import { scalePhaseText, parseIngredientsForMetrics, calculateRecipeMetrics } from '../recipeUtils';
+import { scalePhaseText, parseIngredientsForMetrics, calculateRecipeMetrics, sortRecipePhases } from '../recipeUtils';
 
 describe('recipeUtils', () => {
   describe('scalePhaseText', () => {
@@ -61,4 +61,19 @@ describe('recipeUtils', () => {
       expect(result.hydrationPct).toBe(73);
     });
   });
+
+  describe('sortRecipePhases', () => {
+    it('correctly sorts added phases including cold_retarding into canonical positions', () => {
+      const phases = [
+        { key: 'the_bake', name: 'Baking', ingredients: [], instructions: [] },
+        { key: 'cold_retarding', name: 'Cold Retarding', ingredients: [], instructions: [] },
+        { key: 'mixing', name: 'Mixing', ingredients: [], instructions: [] }
+      ] as any;
+      const sorted = sortRecipePhases(phases);
+      expect(sorted[0].key).toBe('mixing');
+      expect(sorted[1].key).toBe('cold_retarding');
+      expect(sorted[2].key).toBe('the_bake');
+    });
+  });
 });
+

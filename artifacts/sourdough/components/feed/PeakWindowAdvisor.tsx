@@ -122,24 +122,24 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={isWeb ? undefined : FadeIn.duration(400)} layout={isWeb ? undefined : Layout}>
-          <Text style={[styles.title, { color: colors.foreground }]}>Peak Window Advisor</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+          <Text selectable={true} style={[styles.title, { color: colors.foreground }]}>Peak Window Advisor</Text>
+          <Text selectable={true} style={[styles.subtitle, { color: colors.mutedForeground }]}>
             {model.isHeuristic
               ? "Using standard sourdough curves. Log more feeds to personalize."
               : "Calibrated to your starter's history."}
           </Text>
 
           <View style={[styles.usageTip, { backgroundColor: colors.muted + "30" }]}>
-            <Text style={[styles.usageText, { color: colors.foreground }]}>
+            <Text selectable={true} style={[styles.usageText, { color: colors.foreground }]}>
               Calculate the exact weights needed to make your levain peak exactly when you're ready to mix.
             </Text>
           </View>
 
           <View style={[styles.warningBox, { borderColor: colors.border }]}>
             <Ionicons name="alert-circle-outline" size={18} color={colors.primary} />
-            <Text style={[styles.warningText, { color: colors.mutedForeground }]}>
-              <Text style={{ fontFamily: fonts.serifBold, color: colors.foreground }}>Note: </Text>
-              This tool is for building <Text style={{ fontStyle: "italic" }}>levains</Text>. Ensure you have reserved your mother starter separately before mixing these amounts.
+            <Text selectable={true} style={[styles.warningText, { color: colors.mutedForeground }]}>
+              <Text selectable={true} style={{ fontFamily: fonts.serifBold, color: colors.foreground }}>Note: </Text>
+              This tool is for building <Text selectable={true} style={{ fontStyle: "italic" }}>levains</Text>. Ensure you have reserved your mother starter separately before mixing these amounts.
             </Text>
           </View>
         </Animated.View>
@@ -200,10 +200,10 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
             ><Feather name="minus" size={20} color={colors.primary} />
             </Pressable>
             <View style={{ alignItems: "center" }}>
-              <Text style={[styles.hoursValue, {
+              <Text selectable={true} style={[styles.hoursValue, {
                   color: colors.foreground }]}>
                   {targetHours % 1 === 0 ? targetHours : targetHours.toFixed(1)}h</Text>
-              <Text style={[styles.hoursLabel, { color: colors.mutedForeground }]}>duration</Text>
+              <Text selectable={true} style={[styles.hoursLabel, { color: colors.mutedForeground }]}>duration</Text>
             </View>
             <Pressable
               onPress={() => {
@@ -282,10 +282,10 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
                 ]}
               >
                 <View style={s.nudgeInfo}>
-                  <Text style={[styles.nudgeType, { color: colors.foreground }]}>
+                  <Text selectable={true} style={[styles.nudgeType, { color: colors.foreground }]}>
                     {nudge.type === "early" ? "Early Bird" : "Morning Fresh"}
                   </Text>
-                  <Text style={[styles.nudgeDesc, { color: colors.mutedForeground }]}>
+                  <Text selectable={true} style={[styles.nudgeDesc, { color: colors.mutedForeground }]}>
                     {'Peak by {formatTime(nudge.peakTime)} ({nudge.ratioStr})'}
                   </Text>
                 </View>
@@ -312,8 +312,8 @@ function LevainTile({
 }) {
   return (
     <View style={[styles.levainTile, { backgroundColor: colors.background, borderColor: colors.border }]}>
-      <Text style={[styles.levainTileLabel, { color: colors.mutedForeground }]}>{label}</Text>
-      <Text style={[styles.levainTileValue, { color: colors.foreground }]}>{value}g</Text>
+      <Text selectable={true} style={[styles.levainTileLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text selectable={true} style={[styles.levainTileValue, { color: colors.foreground }]}>{value}g</Text>
     </View>
   );
 }

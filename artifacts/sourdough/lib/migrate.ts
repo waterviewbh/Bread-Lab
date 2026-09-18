@@ -143,6 +143,10 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         yield_value: safeYield,
         savedAt: b.savedAt,
         startedAt: b.startedAt,
+        completedAt: (b as any).completedAt || null,
+        status: (b as any).status || null,
+        outcome: b.outcome || null,
+        notes: (b as any).notes || null,
         phases: b.phases.map((p) => ({
           key: p.key,
           name: p.name,

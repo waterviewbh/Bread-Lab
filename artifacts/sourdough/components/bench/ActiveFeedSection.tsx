@@ -378,8 +378,8 @@ export function ActiveFeedSection({
         starterTutorialMode && tutorialDay === 2 ? (
           <View style={[styles.stirContainer, { backgroundColor: colors.background, paddingTop: insets.top + 60 }]}>
             <Ionicons name="reload" size={80} color={colors.primary} style={{ marginBottom: 24 }} />
-            <Text style={[styles.stirTitle, { color: colors.foreground }]}>Day 2: Stir Phase</Text>
-            <Text style={[styles.stirBody, { color: colors.mutedForeground }]}>
+            <Text selectable={true} style={[styles.stirTitle, { color: colors.foreground }]}>Day 2: Stir Phase</Text>
+            <Text selectable={true} style={[styles.stirBody, { color: colors.mutedForeground }]}>
               DO NOT FEED TODAY. Stir your mixture vigorously for 30 seconds to introduce fresh oxygen and disrupt mold. Re-cover loosely.
             </Text>
             <Pressable

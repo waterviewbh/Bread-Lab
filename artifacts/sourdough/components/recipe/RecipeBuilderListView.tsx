@@ -13,7 +13,7 @@ import { Feather } from "@expo/vector-icons";
 import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { formatDate } from "@/lib/recipeUtils";
+import { formatDate, resolveRootMasterId } from "@/lib/recipeUtils";
 import { KeycapKey } from "@/components/recipe/KeycapKey";
 import type { SavedRecipe } from "@/lib/recipeTypes";
 interface Props {
@@ -57,11 +57,13 @@ export function RecipeBuilderListView({
   // Group recipes by lineage, filtering out archived ones for the main view
   const masterRecipes = displayedRecipes.filter(r => !r.parentRecipeId && !r.isArchived);
   const iterationsMap = new Map<string, SavedRecipe[]>();
+
   displayedRecipes.forEach(r => {
     if (r.parentRecipeId && !r.isArchived) {
-      const list = iterationsMap.get(r.parentRecipeId) || [];
+      const rootId = resolveRootMasterId(r, recipes);
+      const list = iterationsMap.get(rootId) || [];
       list.push(r);
-      iterationsMap.set(r.parentRecipeId, list);
+      iterationsMap.set(rootId, list);
     }
   });
 
@@ -85,7 +87,7 @@ export function RecipeBuilderListView({
       <Animated.View entering={FadeIn.duration(300)}>
       {/* Header row */}
         <View style={[s.listHeader, { paddingHorizontal: 20 }]}>
-          <Text style={[s.sectionTitle, { color: colors.foreground }]}>
+          <Text selectable={true} style={[s.sectionTitle, { color: colors.foreground }]}>
             Recipes
           </Text>
           <Pressable
@@ -164,8 +166,8 @@ export function RecipeBuilderListView({
         {recipes.length === 0 ? (
           <View style={[s.emptyCard, { borderColor: colors.border, backgroundColor: colors.card, marginHorizontal: 20 }]}>
             <Feather name="book-open" size={28} color={colors.mutedForeground} />
-            <Text style={[s.emptyTitle, { color: colors.foreground }]}>No recipes yet</Text>
-            <Text style={[s.emptyBody, { color: colors.mutedForeground }]}>
+            <Text selectable={true} style={[s.emptyTitle, { color: colors.foreground }]}>No recipes yet</Text>
+            <Text selectable={true} style={[s.emptyBody, { color: colors.mutedForeground }]}>
               Tap "New Recipe" to define your first bake — add phases, ingredients, and instructions.
             </Text>
           </View>

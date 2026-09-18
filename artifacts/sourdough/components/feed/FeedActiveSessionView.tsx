@@ -271,7 +271,7 @@ export default function FeedActiveSessionView({
       {/* Logic Banners */}
       {starterTutorialMode && !session.peak && (
         <View style={{ backgroundColor: colors.primary + '10', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.primary + '30' }}>
-          <Text style={{ color: colors.primary, fontSize: 12, fontFamily: fonts.sansMedium }}>
+          <Text selectable={true} style={{ color: colors.primary, fontSize: 12, fontFamily: fonts.sansMedium }}>
             💡 After 24 hours, log a volume reading to unlock progression to the next day.
           </Text>
         </View>
@@ -279,7 +279,7 @@ export default function FeedActiveSessionView({
 
       {isCool && (
         <View style={{ backgroundColor: '#eff6ff', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8 }}>
-          <Text style={{ color: '#1e40af', fontSize: 12, fontFamily: fonts.sansMedium }}>
+          <Text selectable={true} style={{ color: '#1e40af', fontSize: 12, fontFamily: fonts.sansMedium }}>
             ❄️ Cool kitchen detected. Activity may take up to 36–48 hours to peak. Keep watching the volume!
           </Text>
         </View>
@@ -287,7 +287,7 @@ export default function FeedActiveSessionView({
 
       {isWarm && (
         <View style={{ backgroundColor: '#fff1f2', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8 }}>
-          <Text style={{ color: '#9f1239', fontSize: 12, fontFamily: fonts.sansMedium }}>
+          <Text selectable={true} style={{ color: '#9f1239', fontSize: 12, fontFamily: fonts.sansMedium }}>
             🔥 Warm kitchen detected. Yeast activity will be accelerated. Check volume frequently!
           </Text>
         </View>
@@ -295,8 +295,8 @@ export default function FeedActiveSessionView({
 
       {showFalseRise && (
         <View style={{ backgroundColor: '#fff7ed', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: '#fdba74' }}>
-          <Text style={{ color: '#9a3412', fontWeight: '700', fontSize: 13, marginBottom: 4 }}>⚠️ Heads Up: The Early Bacterial Bloom</Text>
-          <Text style={{ color: '#9a3412', fontSize: 12, lineHeight: 16 }}>
+          <Text selectable={true} style={{ color: '#9a3412', fontWeight: '700', fontSize: 13, marginBottom: 4 }}>⚠️ Heads Up: The Early Bacterial Bloom</Text>
+          <Text selectable={true} style={{ color: '#9a3412', fontSize: 12, lineHeight: 16 }}>
             Seeing sudden bubbling or a funky smell? This is a normal surge of bacteria, not yeast! Expect it to go flat and look "dead" soon. Do not stop feeding!
           </Text>
         </View>
@@ -325,6 +325,7 @@ export default function FeedActiveSessionView({
           <TourStep order={3} name="active-timer">
             <CopilotView>
               <Text
+                selectable={true}
                 style={[
                   styles.sectionLabel,
                   { color: colors.mutedForeground, marginBottom: 4 },
@@ -332,7 +333,7 @@ export default function FeedActiveSessionView({
               >
                 {session.peak ? "Peaked at" : "Time Since Feed"}
               </Text>
-              <Text style={[styles.timerText, { color: colors.foreground }]}>
+              <Text selectable={true} style={[styles.timerText, { color: colors.foreground }]}>
                 {session.peak
                   ? formatTimeToPeak(session.peak.timeToPeakMs)
                   : formatDuration(elapsed)}
@@ -356,59 +357,59 @@ export default function FeedActiveSessionView({
             <CopilotView style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.ratioRow}>
                 <View style={styles.ratioItem}>
-                  <Text style={[styles.ratioValue, { color: colors.primary }]}>
+                  <Text selectable={true} style={[styles.ratioValue, { color: colors.primary }]}>
                     {session.starterWeight}g
                   </Text>
-                  <Text style={[styles.ratioLabel, { color: colors.mutedForeground }]}>
+                  <Text selectable={true} style={[styles.ratioLabel, { color: colors.mutedForeground }]}>
                     Starter
                   </Text>
                 </View>
                 <Text style={[styles.ratioColon, { color: colors.border }]}>:</Text>
                 <View style={styles.ratioItem}>
-                  <Text style={[styles.ratioValue, { color: colors.primary }]}>
+                  <Text selectable={true} style={[styles.ratioValue, { color: colors.primary }]}>
                     {session.flourWeight}g
                   </Text>
-                  <Text style={[styles.ratioLabel, { color: colors.mutedForeground }]}>
+                  <Text selectable={true} style={[styles.ratioLabel, { color: colors.mutedForeground }]}>
                     Flour
                   </Text>
                 </View>
                 <Text style={[styles.ratioColon, { color: colors.border }]}>:</Text>
                 <View style={styles.ratioItem}>
-                  <Text style={[styles.ratioValue, { color: colors.primary }]}>
+                  <Text selectable={true} style={[styles.ratioValue, { color: colors.primary }]}>
                     {session.waterWeight}g
                   </Text>
-                  <Text style={[styles.ratioLabel, { color: colors.mutedForeground }]}>
+                  <Text selectable={true} style={[styles.ratioLabel, { color: colors.mutedForeground }]}>
                     Water
                   </Text>
                 </View>
               </View>
-              <Text style={[styles.ratioBadge, { color: colors.mutedForeground }]}>
+              <Text selectable={true} style={[styles.ratioBadge, { color: colors.mutedForeground }]}>
                 ratio {session.ratioStr}
               </Text>
 
               {session.wwPercent > 0 && session.wwPercent < 100 && (
                 <View style={[styles.flourSplitRow, { borderTopColor: colors.border }]}>
                   <View style={styles.flourSplitItem}>
-                    <Text style={[styles.flourSplitValue, { color: colors.primary }]}>{apGrams}g</Text>
-                    <Text style={[styles.flourSplitLabel, { color: colors.mutedForeground }]}>AP ({apPct}%)</Text>
+                    <Text selectable={true} style={[styles.flourSplitValue, { color: colors.primary }]}>{apGrams}g</Text>
+                    <Text selectable={true} style={[styles.flourSplitLabel, { color: colors.mutedForeground }]}>AP ({apPct}%)</Text>
                   </View>
                   <View style={[styles.flourSplitDivider, { backgroundColor: colors.border }]} />
                   <View style={styles.flourSplitItem}>
-                    <Text style={[styles.flourSplitValue, { color: colors.accent }]}>{wwGrams}g</Text>
-                    <Text style={[styles.flourSplitLabel, { color: colors.mutedForeground }]}>WW ({session.wwPercent}%)</Text>
+                    <Text selectable={true} style={[styles.flourSplitValue, { color: colors.accent }]}>{wwGrams}g</Text>
+                    <Text selectable={true} style={[styles.flourSplitLabel, { color: colors.mutedForeground }]}>WW ({session.wwPercent}%)</Text>
                   </View>
                 </View>
               )}
               {session.wwPercent === 100 && (
                 <View style={[styles.flourSplitRow, { borderTopColor: colors.border }]}>
-                  <Text style={[styles.flourSplitValue, { color: colors.accent, textAlign: "center", flex: 1 }]}>
+                  <Text selectable={true} style={[styles.flourSplitValue, { color: colors.accent, textAlign: "center", flex: 1 }]}>
                     100% Whole Wheat · {session.flourWeight}g
                   </Text>
                 </View>
               )}
               {session.wwPercent === 0 && (
                 <View style={[styles.flourSplitRow, { borderTopColor: colors.border }]}>
-                  <Text style={[styles.flourSplitValue, { color: colors.primary, textAlign: "center", flex: 1 }]}>
+                  <Text selectable={true} style={[styles.flourSplitValue, { color: colors.primary, textAlign: "center", flex: 1 }]}>
                     100% All-Purpose · {session.flourWeight}g
                   </Text>
                 </View>
@@ -443,10 +444,10 @@ export default function FeedActiveSessionView({
             {/* Initial Reading Row (t=0) */}
             {(session.initialPH || session.initialTemp || session.initialVolume) && (
               <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: (session.readings?.length ?? 0) > 0 ? 1 : 0, borderBottomColor: colors.border }}>
-                <Text style={[styles.readCol, { color: colors.mutedForeground, width: 75 }]}>0m</Text>
-                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{session.initialPH || "—"}</Text>
-                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.mono, textAlign: 'center' }]}>{session.initialTemp ? `${session.initialTemp}°` : "—"}</Text>
-                <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.mono, textAlign: 'center' }]}>{session.initialVolume ? `${session.initialVolume}` : "—"}</Text>
+                <Text selectable={true} style={[styles.readCol, { color: colors.mutedForeground, width: 75 }]}>0m</Text>
+                <Text selectable={true} style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{session.initialPH || "—"}</Text>
+                <Text selectable={true} style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.mono, textAlign: 'center' }]}>{session.initialTemp ? `${session.initialTemp}°` : "—"}</Text>
+                <Text selectable={true} style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.mono, textAlign: 'center' }]}>{session.initialVolume ? `${session.initialVolume}` : "—"}</Text>
               </View>
             )}
 
@@ -468,13 +469,13 @@ export default function FeedActiveSessionView({
                       style={{ paddingHorizontal: 16, paddingVertical: 12 }}
                     >
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Text style={[styles.readCol, { color: hasNote ? colors.primary : colors.mutedForeground, width: 75 }]}>{timeStr}</Text>
-                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{r.pH}</Text>
-                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{r.temp ? `${r.temp}°` : "—"}</Text>
-                        <Text style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{r.volume ? `${r.volume}` : "—"}</Text>
+                        <Text selectable={true} style={[styles.readCol, { color: hasNote ? colors.primary : colors.mutedForeground, width: 75 }]}>{timeStr}</Text>
+                        <Text selectable={true} style={[styles.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{r.pH}</Text>
+                        <Text selectable={true} style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{r.temp ? `${r.temp}°` : "—"}</Text>
+                        <Text selectable={true} style={[styles.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{r.volume ? `${r.volume}` : "—"}</Text>
                       </View>
                       {hasNote && (
-                        <Text numberOfLines={isExpanded ? undefined : 1} style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 4, fontStyle: "italic", paddingLeft: 75 }}>
+                        <Text selectable={true} numberOfLines={isExpanded ? undefined : 1} style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 4, fontStyle: "italic", paddingLeft: 75 }}>
                           "{r.note}"
                         </Text>
                       )}
@@ -553,20 +554,20 @@ export default function FeedActiveSessionView({
               <View style={styles.readingsRow}>
                 {session.peak.pH ? (
                   <View style={styles.readingItem}>
-                    <Text style={[styles.readingValue, { color: colors.foreground }]}>{session.peak.pH}</Text>
-                    <Text style={[styles.readingLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Peak pH</Text>
+                    <Text selectable={true} style={[styles.readingValue, { color: colors.foreground }]}>{session.peak.pH}</Text>
+                    <Text selectable={true} style={[styles.readingLabel, { color: colors.mutedForeground, textTransform: "none" }]}>Peak pH</Text>
                   </View>
                 ) : null}
                 {session.peak.volume ? (
                   <View style={styles.readingItem}>
-                    <Text style={[styles.readingValue, { color: colors.foreground }]}>{session.peak.volume}mL</Text>
-                    <Text style={[styles.readingLabel, { color: colors.mutedForeground }]}>Peak Vol</Text>
+                    <Text selectable={true} style={[styles.readingValue, { color: colors.foreground }]}>{session.peak.volume}mL</Text>
+                    <Text selectable={true} style={[styles.readingLabel, { color: colors.mutedForeground }]}>Peak Vol</Text>
                   </View>
                 ) : null}
                 {session.peak.volumeIncreasePct > 0 && (
                   <View style={styles.readingItem}>
-                    <Text style={[styles.readingValue, { color: colors.accent }]}>+{session.peak.volumeIncreasePct}%</Text>
-                    <Text style={[styles.readingLabel, { color: colors.mutedForeground }]}>Rise</Text>
+                    <Text selectable={true} style={[styles.readingValue, { color: colors.accent }]}>+{session.peak.volumeIncreasePct}%</Text>
+                    <Text selectable={true} style={[styles.readingLabel, { color: colors.mutedForeground }]}>Rise</Text>
                   </View>
                 )}
               </View>

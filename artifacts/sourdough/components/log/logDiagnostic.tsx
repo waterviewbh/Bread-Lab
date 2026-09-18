@@ -7,14 +7,15 @@ import { useColors } from "@/hooks/useColors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BAKE_HISTORY_KEY, BakeHistoryItem, SavedRecipe, DefectSlug } from "@/lib/recipeTypes";
+import { BAKE_HISTORY_KEY, BAKE_KEY, BakeHistoryItem, SavedRecipe, DefectSlug } from "@/lib/recipeTypes";
 import { DEFECT_LIBRARY, generateDiagnosticSummary, DiagnosticPayload, GlossaryCategory } from "@/lib/diagnosticLogic";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { writeRecipesLocal, archiveIntermediateIterations, loadAll, updateBakeOutcomeInHistory } from "@/lib/recipeStorage";
+import { writeRecipesLocal, archiveIntermediateIterations, loadAll, updateBakeOutcomeInHistory, upsertRecipeRemote } from "@/lib/recipeStorage";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
+import { resolveRootMasterId } from "@/lib/recipeUtils";
 
 const CATEGORY_ORDER: GlossaryCategory[] = ['crumb', 'shape', 'crust', 'volume'];
 
@@ -32,17 +33,37 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   const [flavorScore, setFlavorScore] = useState<number>(0);
   const [selectedDefects, setSelectedDefects] = useState<DefectSlug[]>([]);
   const [hypothesis, setHypothesis] = useState("");
+  const [isDirty, setIsDirty] = useState(false);
   const [summary, setSummary] = useState<DiagnosticPayload | null>(null);
 
   const loadHistory = useCallback(async () => {
-    const raw = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
-    if (raw) {
-      const parsed: BakeHistoryItem[] = JSON.parse(raw);
-      setHistory(parsed);
+    try {
+      const [historyRaw, activeRaw] = await Promise.all([
+        AsyncStorage.getItem(BAKE_HISTORY_KEY),
+        AsyncStorage.getItem(BAKE_KEY),
+      ]);
+
+      let combined: BakeHistoryItem[] = [];
+      if (historyRaw) {
+        const parsed = JSON.parse(historyRaw);
+        if (Array.isArray(parsed)) combined = [...parsed];
+      }
+
+      if (activeRaw) {
+        const parsedActive = JSON.parse(activeRaw);
+        const activeBakes: BakeHistoryItem[] = Array.isArray(parsedActive) ? parsedActive : [parsedActive];
+        activeBakes.forEach(ab => {
+          if (ab && ab.id && !combined.some(h => h.id === ab.id)) {
+            combined.push(ab);
+          }
+        });
+      }
+
+      setHistory(combined);
 
       // 1. Try to find the specific bake requested via params
       if (bakeId) {
-        const found = parsed.find(b => b.id === bakeId);
+        const found = combined.find(b => b.id === bakeId);
         if (found) {
           setSelectedBake(found);
           return;
@@ -50,7 +71,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       }
 
       // 2. If no specific bake or it was deleted, look for the first unrated bake
-      const unrated = parsed.find(b => !b.outcome?.overallScore);
+      const unrated = combined.find(b => !b.outcome?.overallScore);
       if (unrated) {
         setSelectedBake(unrated);
         return;
@@ -58,19 +79,20 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
       // 3. Fallback: stay on current if valid, or take the most recent
       if (selectedBake?.id) {
-        const stillExists = parsed.find(b => b.id === selectedBake.id);
+        const stillExists = combined.find(b => b.id === selectedBake.id);
         if (stillExists) {
           setSelectedBake(stillExists);
           return;
         }
       }
 
-      if (parsed.length > 0) {
-        setSelectedBake(parsed[0]);
+      if (combined.length > 0) {
+        setSelectedBake(combined[0]);
       } else {
         setSelectedBake(null);
       }
-    } else {
+    } catch (e) {
+      console.error("[Diagnostic] loadHistory failed", e);
       setHistory([]);
       setSelectedBake(null);
     }
@@ -88,7 +110,10 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       setCrustScore(selectedBake.outcome?.crustScore || 0);
       setFlavorScore(selectedBake.outcome?.flavorScore || 0);
       setSelectedDefects(selectedBake.outcome?.defects || []);
-      setHypothesis(selectedBake.outcome?.reflectionNotes || selectedBake.outcome?.iterationHypothesis || "");
+
+      const existingNotes = selectedBake.outcome?.reflectionNotes || selectedBake.outcome?.iterationHypothesis || "";
+      setHypothesis(existingNotes);
+      if (existingNotes) setIsDirty(true);
     }
   }, [selectedBake]);
 
@@ -106,8 +131,13 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
     if (selectedBake) {
       const payload = generateDiagnosticSummary(selectedBake as any, selectedDefects, isTelemetryAuthentic);
       setSummary(payload);
+
+      // Pre-fill hypothesis if user hasn't typed anything yet
+      if (!isDirty && payload.suggestedHypothesis) {
+        setHypothesis(payload.suggestedHypothesis);
+      }
     }
-  }, [selectedDefects, selectedBake, isTelemetryAuthentic]);
+  }, [selectedDefects, selectedBake, isTelemetryAuthentic, isDirty]);
 
   const toggleDefect = (key: DefectSlug) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -192,7 +222,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               const sourceRecipe = recipes.find(r => r.id === selectedBake.recipeId);
               if (!sourceRecipe) throw new Error("Source recipe not found");
 
-              const masterId = sourceRecipe.parentRecipeId || sourceRecipe.id;
+              const masterId = resolveRootMasterId(sourceRecipe, recipes);
               const deviceId = await getDeviceId();
               const token = await getStoredToken().catch(() => null);
 
@@ -206,7 +236,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               };
               await updateBakeOutcomeInHistory(selectedBake.id, outcome);
 
-              const newName = sourceRecipe.parentRecipeId ? sourceRecipe.name : `${sourceRecipe.name} (Iterated)`;
+              const newName = sourceRecipe.name.includes('(Iterated)') ? sourceRecipe.name : `${sourceRecipe.name} (Iterated)`;
               const duplicated = await api.recipes.duplicate(
                 sourceRecipe.id,
                 newName,
@@ -214,13 +244,13 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
                 token ?? undefined
               );
 
-              const iterations = recipes.filter(r => r.parentRecipeId === masterId);
+              const iterations = recipes.filter(r => resolveRootMasterId(r, recipes) === masterId);
               const versionNumber = iterations.length + 2;
 
               const newSaved: SavedRecipe = {
                 id: duplicated.id,
                 name: duplicated.name,
-                overview: `Iteration Notes: ${hypothesis}${selectedBake.notes ? `\n\nBench Journal: ${selectedBake.notes}` : ''}\n\nObserved Traits: ${selectedDefects.map(d => DEFECT_LIBRARY[d].displayName).join(', ')}`,
+                overview: `Iteration Notes: ${hypothesis}${selectedBake.notes ? `\n\nBench Journal: ${selectedBake.notes}` : ''}\n\nObserved Traits: ${selectedDefects.map(d => DEFECT_LIBRARY[d].label).join(', ')}`,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 phases: duplicated.phases.map((p: any) => ({
@@ -232,10 +262,14 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
                 parentRecipeId: masterId,
                 versionLabel: `v1.${versionNumber}`,
                 yieldValue: sourceRecipe.yieldValue,
+                isUneditedIteration: true,
+                clonedFromBakeName: selectedBake.recipeName,
+                diagnosticHypothesis: hypothesis,
               };
 
               const updated = [newSaved, ...recipes];
               await writeRecipesLocal(updated);
+              await upsertRecipeRemote(newSaved);
               await archiveIntermediateIterations(masterId);
 
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -290,12 +324,12 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
       {/* Bench Notes Integration */}
       <View style={s.section}>
-        <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>Bench Notes</Text>
+        <Text selectable={true} style={[s.sectionTitle, { color: colors.mutedForeground }]}>Bench Notes</Text>
         <View style={[s.notesBox, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
           {selectedBake.notes ? (
-            <Text style={{ color: colors.foreground, fontFamily: fonts.sans }}>{selectedBake.notes}</Text>
+            <Text selectable={true} style={{ color: colors.foreground, fontFamily: fonts.sans }}>{selectedBake.notes}</Text>
           ) : (
-            <Text style={{ color: colors.mutedForeground, fontFamily: fonts.sans, fontStyle: 'italic', fontSize: 13 }}>
+            <Text selectable={true} style={{ color: colors.mutedForeground, fontFamily: fonts.sans, fontStyle: 'italic', fontSize: 13 }}>
               No bench notes recorded for this session.
             </Text>
           )}
@@ -305,39 +339,56 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       {/* Trait Tagging (Grouped) */}
       {CATEGORY_ORDER.map(cat => {
         const categorySelected = groupedDefects[cat].filter(slug => selectedDefects.includes(slug));
+        const categoryTargets = groupedDefects[cat].filter(slug => DEFECT_LIBRARY[slug].type === 'target');
+        const categoryDefects = groupedDefects[cat].filter(slug => DEFECT_LIBRARY[slug].type === 'defect');
+
+        const renderChip = (slug: DefectSlug) => {
+          const term = DEFECT_LIBRARY[slug];
+          const isSelected = selectedDefects.includes(slug);
+          const isTarget = term.type === 'target';
+
+          return (
+            <Pressable
+              key={slug}
+              onPress={() => !isGraded && toggleDefect(slug)}
+              disabled={isGraded}
+              style={[
+                s.defectChip,
+                {
+                  backgroundColor: isSelected ? (isTarget ? colors.accent : colors.primary) : colors.muted,
+                  borderColor: isSelected ? (isTarget ? colors.accent : colors.primary) : (isTarget ? colors.accent + '40' : colors.border),
+                  borderWidth: isTarget ? 1.5 : 1,
+                }
+              ]}
+            >
+              <Text style={[
+                s.defectChipText,
+                { color: isSelected ? (isTarget ? colors.accentForeground : colors.primaryForeground) : colors.foreground }
+              ]}>
+                {term.label}
+              </Text>
+              {isTarget && !isSelected && <Ionicons name="sparkles" size={10} color={colors.accent} style={{ marginLeft: 4 }} />}
+            </Pressable>
+          );
+        };
 
         return (
           <View key={cat} style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>{cat.toUpperCase()}</Text>
-            <View style={s.defectGrid}>
-              {groupedDefects[cat].map(slug => {
-                const term = DEFECT_LIBRARY[slug];
-                const isSelected = selectedDefects.includes(slug);
-                const isBenchmark = term.isBenchmark;
 
-                return (
-                  <Pressable
-                    key={slug}
-                    onPress={() => !isGraded && toggleDefect(slug)}
-                    disabled={isGraded}
-                    style={[
-                      s.defectChip,
-                      {
-                        backgroundColor: isSelected ? (isBenchmark ? colors.accent : colors.primary) : colors.muted,
-                        borderColor: isSelected ? (isBenchmark ? colors.accent : colors.primary) : colors.border
-                      }
-                    ]}
-                  >
-                    <Text style={[
-                      s.defectChipText,
-                      { color: isSelected ? (isBenchmark ? colors.accentForeground : colors.primaryForeground) : colors.foreground }
-                    ]}>
-                      {term.displayName}
-                    </Text>
-                    {isBenchmark && !isSelected && <Ionicons name="sparkles" size={10} color={colors.accent} style={{ marginLeft: 4 }} />}
-                  </Pressable>
-                );
-              })}
+            <View style={s.cardStack}>
+              {/* Targets Segment */}
+              <View style={s.defectGrid}>
+                {categoryTargets.map(renderChip)}
+              </View>
+
+              {/* Visual Divider */}
+              <View style={[s.divider, { backgroundColor: colors.border }]} />
+
+              {/* Defects Segment */}
+              <View style={s.defectGrid}>
+                {categoryDefects.map(renderChip)}
+              </View>
             </View>
 
             {/* Field Notes Stack for Category */}
@@ -345,9 +396,9 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               <Animated.View entering={FadeIn.duration(300)} style={s.fieldNotesStack}>
                 {categorySelected.map(slug => (
                   <View key={slug} style={s.fieldNoteItem}>
-                    <Text style={[s.fieldNoteBullet, { color: colors.primary }]}>—</Text>
-                    <Text style={[s.fieldNoteText, { color: colors.mutedForeground }]}>
-                      <Text style={s.fieldNoteName}>{DEFECT_LIBRARY[slug].displayName}:</Text>{" "}
+                    <Text selectable={true} style={[s.fieldNoteBullet, { color: DEFECT_LIBRARY[slug].type === 'target' ? colors.accent : colors.primary }]}>—</Text>
+                    <Text selectable={true} style={[s.fieldNoteText, { color: colors.mutedForeground }]}>
+                      <Text selectable={true} style={s.fieldNoteName}>{DEFECT_LIBRARY[slug].label}:</Text>{" "}
                       {DEFECT_LIBRARY[slug].shortDefinition}
                     </Text>
                   </View>
@@ -361,41 +412,46 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       {/* Unified Diagnostic Summary */}
       {summary && (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>Analysis Results</Text>
+          <Text selectable={true} style={[s.sectionTitle, { color: colors.mutedForeground }]}>Analysis Results</Text>
           <View style={[s.summaryCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
             <View style={s.summaryHeader}>
-              <Text style={[s.summaryHeaderText, { color: colors.foreground }]}>─── DIAGNOSTIC SUMMARY ───</Text>
+              <Text selectable={true} style={[s.summaryHeaderText, { color: colors.foreground }]}>─── DIAGNOSTIC SUMMARY ───</Text>
             </View>
 
             <View style={s.statusRowWrap}>
               <View style={[s.statusBadge, { backgroundColor: summary.bulkStatus.includes('OPTIMAL') ? colors.accent : colors.primary }]}>
-                <Text style={[s.statusBadgeText, { color: colors.primaryForeground }]}>{summary.bulkStatus.replace('FERMENTATION', 'FERM')}</Text>
+                <Text selectable={true} style={[s.statusBadgeText, { color: colors.primaryForeground }]}>{summary.bulkStatus.replace('FERMENTATION', 'FERM')}</Text>
               </View>
               <View style={[s.statusBadge, { backgroundColor: summary.proofStatus.includes('OPTIMAL') ? colors.accent : colors.primary }]}>
-                <Text style={[s.statusBadgeText, { color: colors.primaryForeground }]}>{summary.proofStatus}</Text>
+                <Text selectable={true} style={[s.statusBadgeText, { color: colors.primaryForeground }]}>{summary.proofStatus}</Text>
               </View>
+              {summary.iterationStatus === 'LOCK' && (
+                 <View style={[s.statusBadge, { backgroundColor: colors.accent }]}>
+                   <Text selectable={true} style={[s.statusBadgeText, { color: colors.accentForeground }]}>LOCK BASELINE</Text>
+                 </View>
+              )}
             </View>
 
-            <Text style={[s.summarySectionTitle, { color: colors.foreground }]}>1. ROOT CAUSE ANALYSIS</Text>
-            <Text style={[s.summaryBody, { color: colors.foreground }]}>{summary.rootCause}</Text>
+            <Text selectable={true} style={[s.summarySectionTitle, { color: colors.foreground }]}>1. ROOT CAUSE ANALYSIS</Text>
+            <Text selectable={true} style={[s.summaryBody, { color: colors.foreground }]}>{summary.rootCause}</Text>
 
-            <Text style={[s.summarySectionTitle, { color: colors.foreground }]}>2. TRIGGERING SYMPTOMS</Text>
+            <Text selectable={true} style={[s.summarySectionTitle, { color: colors.foreground }]}>2. TRIGGERING SYMPTOMS</Text>
             {summary.triggeringSymptoms.length > 0 ? (
               summary.triggeringSymptoms.map((symptom, i) => (
                 <View key={i} style={s.symptomItem}>
-                  <Text style={[s.symptomBullet, { color: colors.primary }]}>•</Text>
-                  <Text style={[s.summaryBody, { color: colors.mutedForeground }]}>{symptom}</Text>
+                  <Text selectable={true} style={[s.symptomBullet, { color: colors.primary }]}>•</Text>
+                  <Text selectable={true} style={[s.summaryBody, { color: colors.mutedForeground }]}>{symptom}</Text>
                 </View>
               ))
             ) : (
-              <Text style={[s.summaryBody, { color: colors.mutedForeground, fontStyle: 'italic' }]}>No specific traits tagged.</Text>
+              <Text selectable={true} style={[s.summaryBody, { color: colors.mutedForeground, fontStyle: 'italic' }]}>No specific traits tagged.</Text>
             )}
 
-            <Text style={[s.summarySectionTitle, { color: colors.foreground }]}>3. ACTIONS FOR NEXT BAKE</Text>
+            <Text selectable={true} style={[s.summarySectionTitle, { color: colors.foreground }]}>3. ACTIONS FOR NEXT BAKE</Text>
             {summary.actions.map((action, i) => (
               <View key={i} style={s.actionItem}>
-                <Text style={[s.actionBullet, { color: colors.accent }]}>•</Text>
-                <Text style={[s.summaryBody, { color: colors.foreground }]}>{action}</Text>
+                <Text selectable={true} style={[s.actionBullet, { color: colors.accent }]}>•</Text>
+                <Text selectable={true} style={[s.summaryBody, { color: colors.foreground }]}>{action}</Text>
               </View>
             ))}
           </View>
@@ -414,16 +470,75 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
       {/* Iteration Hypothesis / Final Notes */}
       <View style={s.section}>
-        <Text style={[s.sectionTitle, { color: colors.mutedForeground }]}>{isGraded ? "Bake Review" : (isSuccessful ? "Final Notes (Optional)" : "Iteration Hypothesis")}</Text>
-        <TextInput
-          style={[s.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground, borderWidth: 1 }]}
-          placeholder={isGraded ? "No notes recorded." : (isSuccessful ? "Any final thoughts on this successful bake?" : "What will you change next time?") }
-          placeholderTextColor={colors.mutedForeground}
-          multiline
-          value={hypothesis}
-          onChangeText={setHypothesis}
-          editable={!isGraded}
-        />
+        <View style={s.hypothesisHeader}>
+          <Text style={[s.sectionTitle, { color: colors.mutedForeground, marginBottom: 0 }]}>
+            {isGraded ? "Bake Review" : (isSuccessful ? "Final Notes (Optional)" : "Iteration Hypothesis")}
+          </Text>
+          {(!isDirty && !!summary?.suggestedHypothesis && !isGraded) && (
+            <View style={[s.draftBadge, { backgroundColor: colors.accent + '15' }]}>
+               <Text style={[s.draftBadgeText, { color: colors.accent }]}>✨ Smart Draft</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={s.inputContainer}>
+          <TextInput
+            style={[
+              s.input,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                color: (!isDirty && !!summary?.suggestedHypothesis) ? colors.mutedForeground : colors.foreground,
+                borderWidth: 1,
+                paddingRight: 40
+              }
+            ]}
+            placeholder={isGraded ? "No notes recorded." : (isSuccessful ? "Any final thoughts on this successful bake?" : "What will you change next time?") }
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            value={hypothesis}
+            onChangeText={(text) => {
+              setHypothesis(text);
+              setIsDirty(true);
+            }}
+            editable={!isGraded}
+          />
+
+          {(!isGraded && hypothesis.length > 0) && (
+             <Pressable
+               style={s.clearBtn}
+               onPress={() => {
+                 setHypothesis("");
+                 setIsDirty(true);
+                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+               }}
+             >
+               <Ionicons name="close-circle" size={20} color={colors.mutedForeground} />
+             </Pressable>
+          )}
+        </View>
+
+        {(!isGraded) && (
+          <View style={s.hypothesisFooter}>
+             {(!isDirty && !!summary?.suggestedHypothesis) ? (
+               <Text style={[s.subLabel, { color: colors.mutedForeground }]}>
+                 Edit, clear, or accept this hypothesis for your next bake.
+               </Text>
+             ) : (
+               (isDirty && !!summary?.suggestedHypothesis) && (
+                 <Pressable
+                   onPress={() => {
+                     setHypothesis(summary.suggestedHypothesis);
+                     setIsDirty(false);
+                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                   }}
+                 >
+                   <Text style={[s.resetLink, { color: colors.accent }]}>Reset to Suggestion</Text>
+                 </Pressable>
+               )
+             )}
+          </View>
+        )}
       </View>
 
       {!isGraded && (
@@ -472,10 +587,20 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 11, fontFamily: fonts.sansSemiBold, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
   notesBox: { padding: 16, borderRadius: radius.md, borderWidth: 1 },
   starRow: { flexDirection: 'row', gap: 12 },
+  cardStack: { gap: 12 },
+  divider: { height: 1, marginVertical: 4, opacity: 0.3 },
   defectGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   defectChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.full, borderWidth: 1, flexDirection: 'row', alignItems: 'center' },
   defectChipText: { fontSize: 13, fontFamily: fonts.sansMedium },
+  hypothesisHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  draftBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.xs },
+  draftBadgeText: { fontSize: 10, fontFamily: fonts.sansBold, letterSpacing: 0.5, textTransform: 'uppercase' },
+  inputContainer: { position: 'relative' },
   input: { padding: 16, borderRadius: radius.md, minHeight: 100, textAlignVertical: 'top' },
+  clearBtn: { position: 'absolute', right: 12, top: 12, padding: 4 },
+  hypothesisFooter: { marginTop: 8, minHeight: 20 },
+  subLabel: { fontSize: 12, fontFamily: fonts.sans, fontStyle: 'italic' },
+  resetLink: { fontSize: 12, fontFamily: fonts.sansSemiBold, textDecorationLine: 'underline' },
   actionRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
   logBtn: { flex: 1, paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
   logBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },

@@ -108,7 +108,7 @@ function ReadingHint({
 
       {open && (
         <View style={h.body}>
-          <Text style={[h.bodyText, { color: colors.foreground }]}>{body}</Text>
+          <Text selectable={true} style={[h.bodyText, { color: colors.foreground }]}>{body}</Text>
           <Pressable
             onPress={onAbout}
             style={({ pressed }) => [h.moreLink, pressed && { opacity: 0.6 }]}
@@ -246,7 +246,7 @@ export default function GraphScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Page heading ── */}
-        <Text style={[styles.pageTitle, { color: colors.foreground }]}>
+        <Text selectable={true} style={[styles.pageTitle, { color: colors.foreground }]}>
           Feed Analytics
         </Text>
 
@@ -254,10 +254,11 @@ export default function GraphScreen() {
         <TourStep order={11} name="acidification-index">
           <CopilotView>
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              <Text selectable={true} style={[styles.sectionTitle, { color: colors.foreground }]}>
                 Acidification Index
               </Text>
               <Text
+                selectable={true}
                 style={[
                   styles.sectionSubtitle,
                   { color: colors.mutedForeground },
@@ -276,10 +277,11 @@ export default function GraphScreen() {
         <TourStep order={12} name="lifting-index">
           <CopilotView style={{ marginTop: 32 }}>
             <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              <Text selectable={true} style={[styles.sectionTitle, { color: colors.foreground }]}>
                 Lifting Index
               </Text>
               <Text
+                selectable={true}
                 style={[
                   styles.sectionSubtitle,
                   { color: colors.mutedForeground },

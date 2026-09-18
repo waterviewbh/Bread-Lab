@@ -32,7 +32,7 @@ export const APP_STORAGE_KEYS = {
   TOUR_SEEN_V1: "bread_lab_tour_seen_v1",
   TOUR_SEEN_V2: "bread_lab_tour_seen_v2",
 
-  // Preferences (Wiping these ensures a fresh start for a new starter/user)
+  // Preferences
   TEMP_UNIT: "bread_lab_temp_unit_v1",
   WEIGHT_UNIT: "bread_lab_weight_unit_v1",
   TIME_FORMAT: "bread_lab_time_format_v1",
@@ -42,12 +42,13 @@ export const APP_STORAGE_KEYS = {
   TUTORIAL_DAY: "bread_lab_starter_tutorial_day_v1",
   TUTORIAL_BASELINE: "bread_lab_tutorial_baseline_volume_v1",
   TUTORIAL_METADATA: "bread_lab_tutorial_metadata_v1",
+
+  // Schema Version
+  SCHEMA_VERSION: "bread_lab_schema_version_v1",
 };
 
 /**
  * Perform an exhaustive wipe of all local app data.
- * Does NOT affect remote data on Supabase.
- * We exclude DEVICE_ID so the phone identity remains stable.
  */
 export async function clearAllAppData(): Promise<void> {
   const allKeys = Object.values(APP_STORAGE_KEYS);
@@ -58,3 +59,56 @@ export async function clearAllAppData(): Promise<void> {
     console.error("[StorageUtils] Failed to clear all app data", error);
   }
 }
+
+/**
+ * Defensive JSON parsing with type validation and shallow merging for objects.
+ */
+export function safeParse<T>(
+  json: string | null,
+  defaultValue: T,
+  validate?: (parsed: unknown) => boolean
+): T {
+  try {
+    if (!json) return defaultValue;
+    const parsed = JSON.parse(json);
+
+    // Type validation
+    if (validate && !validate(parsed)) {
+      console.warn("[StorageUtils] Validation failed for parsed data, using default.");
+      return defaultValue;
+    }
+
+    // Defensive Merging for objects (excluding arrays)
+    if (
+      typeof defaultValue === "object" &&
+      defaultValue !== null &&
+      !Array.isArray(defaultValue) &&
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+    ) {
+      return { ...defaultValue, ...parsed } as T;
+    }
+
+    return parsed as T;
+  } catch (e) {
+    console.error("[StorageUtils] Failed to parse JSON", e);
+    return defaultValue;
+  }
+}
+
+/**
+ * Simple Async Mutex to prevent race conditions during read-modify-write
+ * operations on AsyncStorage.
+ */
+class AsyncMutex {
+  private queue: Promise<void> = Promise.resolve();
+
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(task);
+    this.queue = result.then(() => {}).catch(() => {});
+    return result;
+  }
+}
+
+export const storageMutex = new AsyncMutex();

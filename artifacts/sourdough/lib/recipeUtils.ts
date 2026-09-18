@@ -1,6 +1,21 @@
-// lib/recipeUtils.ts
-// ─── Pure display/formatting utilities for recipe and bake data ───────────────
-// No React, no hooks, no AsyncStorage. Safe to import anywhere.
+import { CheckableLine } from '../types/recipe';
+import { RecipePhaseConfig, SavedRecipe, PHASE_DEFINITIONS } from './recipeTypes';
+
+/**
+ * resolveRootMasterId — Traverses the parentRecipeId chain to find the root formula.
+ */
+export function resolveRootMasterId(recipe: SavedRecipe, allRecipes: SavedRecipe[]): string {
+  let current = recipe;
+  // Safety counter to prevent infinite loops in case of corrupted circular refs
+  let depth = 0;
+  while (current.parentRecipeId && depth < 20) {
+    const parent = allRecipes.find(r => r.id === current.parentRecipeId);
+    if (!parent) break; // Parent was deleted or not found, current is the "functional" master
+    current = parent;
+    depth++;
+  }
+  return current.id;
+}
 
 /**
  * scalePhaseText — display-only quantity scaler for phase spec text blocks.
@@ -19,8 +34,6 @@
  * or when text is empty/falsy.
  */
 
-import { CheckableLine } from '../types/recipe';
-import { RecipePhaseConfig } from './recipeTypes';
 
 export function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
   const lines = (!text || typeof text !== 'string')
@@ -199,5 +212,28 @@ export function calculateRecipeMetrics(phases: any[]) {
     hydrationPct: totalFlour > 0 ? Math.round((totalWater / totalFlour) * 100) : 0,
     inoculationPct: totalFlour > 0 ? (effectiveStarter / totalFlour) * 100 : 20,
     saltPct: totalFlour > 0 ? (salt / totalFlour) * 100 : 0,
+    enriched: additionalWater > 0 || additionalSolids > 0,
   };
 }
+
+/**
+ * sortRecipePhases — Sorts recipe phases according to the canonical order in PHASE_DEFINITIONS.
+ */
+export function sortRecipePhases(phases: RecipePhaseConfig[]): RecipePhaseConfig[] {
+  const defOrder = new Map(PHASE_DEFINITIONS.map((d, i) => [d.key, i]));
+  return [...phases].sort((a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999));
+}
+
+/**
+ * createEmptyPhase — Instantiates a fresh recipe phase with a default empty checkable line item.
+ */
+export function createEmptyPhase(key: string, name: string): RecipePhaseConfig {
+  const randPrefix = Math.random().toString(36).substr(2, 9);
+  return {
+    key,
+    name,
+    ingredients: [{ id: `ing-${randPrefix}-empty`, text: '', is_checked: false, sort_order: 0 }],
+    instructions: [{ id: `ins-${randPrefix}-empty`, text: '', is_checked: false, sort_order: 0 }]
+  };
+}
+

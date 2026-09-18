@@ -112,8 +112,8 @@ export default function WelcomeHub() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }]}
     >
       <View style={styles.header}>
-        <Text style={[styles.greeting, { color: colors.text }]}>{greeting}</Text>
-        <Text style={[styles.subGreeting, { color: colors.mutedForeground }]}>
+        <Text selectable={true} style={[styles.greeting, { color: colors.text }]}>{greeting}</Text>
+        <Text selectable={true} style={[styles.subGreeting, { color: colors.mutedForeground }]}>
           {starterStatus.vitality > 0 
             ? `Your starter is currently at ${starterStatus.vitality}% activity. ${starterStatus.suggestion}`
             : starterStatus.suggestion
@@ -185,8 +185,8 @@ function HubPanel({ name, title, description, onPress, colors }: any) {
         <WelcomeIcon name={name} color={colors.primary}/>
       </View>
       <View style={styles.panelText}>
-        <Text style={[styles.panelTitle, { color: colors.text }]}>{title}</Text>
-        <Text style={[styles.panelDesc, { color: colors.mutedForeground }]}>{description}</Text>
+        <Text selectable={true} style={[styles.panelTitle, { color: colors.text }]}>{title}</Text>
+        <Text selectable={true} style={[styles.panelDesc, { color: colors.mutedForeground }]}>{description}</Text>
       </View>
       <View style={styles.panelArrow}>
         <Text style={{ color: colors.mutedForeground, fontSize: 20 }}>→</Text>
@@ -201,8 +201,8 @@ function ActionItem({ label, icon, onPress, colors }: any) {
       style={[styles.actionItem, { backgroundColor: colors.card, borderColor: colors.border }]} 
       onPress={onPress}
     >
-      <Text style={styles.actionIcon}>{icon}</Text>
-      <Text style={[styles.actionLabel, { color: colors.text }]}>{label}</Text>
+      <Text selectable={true} style={styles.actionIcon}>{icon}</Text>
+      <Text selectable={true} style={[styles.actionLabel, { color: colors.text }]}>{label}</Text>
     </TouchableOpacity>
   );
 }

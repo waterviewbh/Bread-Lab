@@ -106,6 +106,9 @@ export interface SavedRecipe {
   parentRecipeId?: string;
   versionLabel?: string;
   isArchived?: boolean;         // Soft archiving for intermediate iterations
+  isUneditedIteration?: boolean;
+  clonedFromBakeName?: string;
+  diagnosticHypothesis?: string;
 }
 
 // ─── Active bake phase (runner shape, extends builder config) ─────────────────
@@ -124,24 +127,45 @@ export interface BakePhase extends RecipePhaseConfig {
 // ─── Bake Lifecycle & Diagnostics ──────────────────────────────────────────
 export type BakeStatus = 'active' | 'completed' | 'aborted' | 'post_mortem';
 
-export type BakeDefect =
-  | 'FOOLS_CRUMB'
-  | 'GUMMY_BOTTOM'
-  | 'DENSE_CRUMB'
-  | 'OVER_PROOFED'
-  | 'UNDER_PROOFED'
-  | 'PALE_CRUST'
-  | 'STUCK_BANNETON'
-  | 'WEAK_SPRING';
+/**
+ * Universal identifiers for bake traits (defects and success targets).
+ * snake_case lowercase is the canonical format.
+ */
+export type DiagnosticTagSlug =
+  | 'pale_crust'
+  | 'torn_crust'
+  | 'matte_surface'
+  | 'blistered_skin'
+  | 'ideal_browning'
+  | 'fools_crumb'
+  | 'dense_crumb'
+  | 'gummy_bottom'
+  | 'fragile_webbing'
+  | 'wild_pockets'
+  | 'airy_soft'
+  | 'even_texture'
+  | 'pancake_profile'
+  | 'flat_top'
+  | 'asymmetric_rise'
+  | 'burst_score'
+  | 'collapsed_score'
+  | 'jagged_ear'
+  | 'sharp_edges'
+  | 'strong_rise'
+  | 'clean_form'
+  | 'explosive_spring'
+  | 'zero_spring'
+  | 'stuck_banneton';
 
 export interface BakeOutcome {
   crumbScore?: 1 | 2 | 3 | 4 | 5;
   crustScore?: 1 | 2 | 3 | 4 | 5;
   sournessScore?: 1 | 2 | 3 | 4 | 5;
   overallScore?: 1 | 2 | 3 | 4 | 5;
-  defects: BakeDefect[];
+  defects: DiagnosticTagSlug[];
   reflectionNotes?: string;
   iterationHypothesis?: string;
+  iterationStatus?: 'LOCK' | 'ITERATE' | 'NEUTRAL';
   crumbShotUri?: string;
   appliedDelta?: { variable: string, value: number }; // Persists the magnitude of the last step
 }

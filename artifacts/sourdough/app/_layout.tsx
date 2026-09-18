@@ -34,6 +34,7 @@ import { FontSizeProvider } from "@/contexts/FontSizeContext";
 import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { MigrationToastProvider } from "@/contexts/MigrationToastContext";
+import { runSchemaMigrations } from "@/lib/migrationPipeline";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -50,13 +51,19 @@ export default function RootLayout() {
     JetBrainsMono_500Medium,
   });
 
+  const [isHydrated, setIsHydrated] = useState(false);
   const [fontTimedOut, setFontTimedOut] = useState(false);
+
   useEffect(() => {
+    // Run schema migrations BEFORE hydration
+    runSchemaMigrations().catch(e => console.error("Migration error", e));
+
     const t = setTimeout(() => setFontTimedOut(true), 4000);
     return () => clearTimeout(t);
   }, []);
 
-  const appReady = fontsLoaded || !!fontError || fontTimedOut;
+  const appReady = (fontsLoaded || !!fontError || fontTimedOut) && isHydrated;
+
   useEffect(() => {
     if (appReady) {
       SplashScreen.hideAsync().catch(() => {});
@@ -70,7 +77,7 @@ export default function RootLayout() {
       onError={(error, stack) => console.error("[RootLayout ErrorBoundary]", error.message, stack)}
     >
       <SafeAreaProvider>
-        <PreferencesProvider>
+        <PreferencesProvider onHydrated={() => setIsHydrated(true)}>
           <FontSizeProvider>
             <QueryClientProvider client={queryClient}>
               <GestureHandlerRootView style={{ flex: 1 }}>

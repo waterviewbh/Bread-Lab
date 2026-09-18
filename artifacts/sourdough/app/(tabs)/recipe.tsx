@@ -49,6 +49,8 @@ import {
   scalePhaseText,
   formatTimer,
   formatDate,
+  sortRecipePhases,
+  createEmptyPhase,
 } from "@/lib/recipeUtils";
 import {
   loadAll as loadAllData,
@@ -306,11 +308,7 @@ const saveBakeToHistory = async (b: ActiveBake) => {
   };
 
   const openEditRecipe = (r: SavedRecipe) => {
-    const defOrder = new Map(PHASE_DEFINITIONS.map((d, i) => [d.key, i]));
-    const sorted = r.phases
-      .map((p) => ({ ...p }))
-      .sort((a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999));
-    setEditingRecipe({ ...r, phases: sorted });
+    setEditingRecipe({ ...r, phases: sortRecipePhases(r.phases || []) });
     setIsNewRecipe(false);
   };
 
@@ -319,7 +317,6 @@ const saveBakeToHistory = async (b: ActiveBake) => {
 
   // Receives the ordered keys confirmed in PhasePickerModal
   const handleConfirmPhases = (keysToAdd: string[]) => {
-    const defOrder = new Map(PHASE_DEFINITIONS.map((d, i) => [d.key, i]));
     setEditingRecipe((prev) => {
       if (!prev) return null;
       const existingKeys = new Set(prev.phases.map((p) => p.key));
@@ -327,29 +324,18 @@ const saveBakeToHistory = async (b: ActiveBake) => {
         .filter((key) => !existingKeys.has(key))
         .map((key) => {
           const def = PHASE_DEFINITIONS.find((p) => p.key === key)!;
-          return {
-            key,
-            name: def.name,
-            ingredients: [{ id: Math.random().toString(36).substr(2, 9), text: '', is_checked: false, sort_order: 0 }],
-            instructions: [{ id: Math.random().toString(36).substr(2, 9), text: '', is_checked: false, sort_order: 0 }]
-          } as RecipePhaseConfig;
+          return createEmptyPhase(key, def.name);
         });
-      const sorted = [...prev.phases, ...newPhases].sort(
-        (a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999)
-      );
-      return { ...prev, phases: sorted };
+      return { ...prev, phases: sortRecipePhases([...prev.phases, ...newPhases]) };
     });
     setShowPhasePicker(false);
   };
 
   const removePhaseFromEdit = (key: string) => {
-    const defOrder = new Map(PHASE_DEFINITIONS.map((d, i) => [d.key, i]));
     setEditingRecipe((prev) => {
       if (!prev) return null;
-      const filtered = prev.phases
-        .filter((p) => p.key !== key)
-        .sort((a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999));
-      return { ...prev, phases: filtered };
+      const filtered = prev.phases.filter((p) => p.key !== key);
+      return { ...prev, phases: sortRecipePhases(filtered) };
     });
   };
 

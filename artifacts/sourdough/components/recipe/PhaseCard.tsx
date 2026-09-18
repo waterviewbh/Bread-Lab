@@ -54,7 +54,7 @@ const CheckRow = ({
           color={isChecked ? colors.accent : colors.mutedForeground}
         />
       </View>
-      <Text style={textStyle}>
+      <Text selectable={true} style={textStyle}>
         {scalePhaseText(line.text, scaleMultiplier)}
       </Text>
     </Pressable>
@@ -99,7 +99,7 @@ export function PendingPhaseCard({
       >
         <Pressable onPress={() => hasPendingInfo && onToggleExpand()} style={s.compactRow}>
           <Ionicons name="ellipse-outline" size={18} color={colors.border} />
-          <Text style={[s.compactName, { color: colors.mutedForeground, fontFamily: fonts.sans, flex: 1 }]}>
+          <Text selectable={true} style={[s.compactName, { color: colors.mutedForeground, fontFamily: fonts.sans, flex: 1 }]}>
             {phase.name}
           </Text>
           {hasPendingInfo && (
@@ -178,8 +178,8 @@ export function DonePhaseCard({
       <Pressable onPress={onToggleExpand} style={({ pressed }) => [s.compactCard, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.85 : 1 }]}>
         <View style={s.compactRow}>
           <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-          <Text style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansMedium, flex: 1 }]}>{phase.name}</Text>
-          <Text style={[s.doneTime, { color: colors.mutedForeground }]}>
+          <Text selectable={true} style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansMedium, flex: 1 }]}>{phase.name}</Text>
+          <Text selectable={true} style={[s.doneTime, { color: colors.mutedForeground }]}>
             {phase.startedAt && phase.completedAt ? formatDone(phase.completedAt - phase.startedAt) : ""}
           </Text>
           <Feather name={isExpanded ? "chevron-up" : "chevron-down"} size={14} color={colors.mutedForeground} />
@@ -292,9 +292,9 @@ export function ActivePhaseCard({
         >
           <Ionicons name="radio-button-on" size={18} color={colors.accent} />
           <View style={{ flex: 1 }}>
-            <Text style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansSemiBold }]}>{phase.name}</Text>
+            <Text selectable={true} style={[s.compactName, { color: colors.foreground, fontFamily: fonts.sansSemiBold }]}>{phase.name}</Text>
           </View>
-          {!isBulk && <Text style={[s.timerLarge, { color: colors.accent }]}>{formatTimer(elapsedMs)}</Text>}
+          {!isBulk && <Text selectable={true} style={[s.timerLarge, { color: colors.accent }]}>{formatTimer(elapsedMs)}</Text>}
         </Pressable>
       </View>
 
@@ -327,10 +327,10 @@ export function ActivePhaseCard({
             <Text style={[s.heroTimerLabel, { color: colors.mutedForeground }]}>
               {bulkTimer.mode === "countdown" ? "EST. REMAINING" : bulkTimer.mode === "overtime" ? "PAST TARGET" : "TIME IN BULK"}
             </Text>
-            <Text style={[s.heroTimerText, { color: bulkTimer.mode === "overtime" ? colors.accent : colors.foreground }]}>
+            <Text selectable={true} style={[s.heroTimerText, { color: bulkTimer.mode === "overtime" ? colors.accent : colors.foreground }]}>
               {bulkTimer.label || formatTimer(elapsedMs)}
             </Text>
-            {bulkTargetLabel && <Text style={[s.heroTargetText, { color: colors.foreground }]}>{bulkTargetLabel}</Text>}
+            {bulkTargetLabel && <Text selectable={true} style={[s.heroTargetText, { color: colors.foreground }]}>{bulkTargetLabel}</Text>}
           </View>
 
           <View style={s.dashboardGrid}>
@@ -413,13 +413,13 @@ export function ActivePhaseCard({
                       style={s.readRowPressable}
                     >
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Text style={[s.readCol, { color: hasNote ? colors.primary : colors.mutedForeground, width: 70 }]}>{timeStr}</Text>
-                        <Text style={[s.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{displayPH}</Text>
-                        <Text style={[s.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{displayTemp}</Text>
-                        <Text style={[s.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{displayVol}</Text>
+                        <Text selectable={true} style={[s.readCol, { color: hasNote ? colors.primary : colors.mutedForeground, width: 70 }]}>{timeStr}</Text>
+                        <Text selectable={true} style={[s.readCol, { color: colors.foreground, flex: 1, fontFamily: fonts.sansSemiBold, textAlign: 'center' }]}>{displayPH}</Text>
+                        <Text selectable={true} style={[s.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{displayTemp}</Text>
+                        <Text selectable={true} style={[s.readCol, { color: colors.foreground, flex: 1, textAlign: 'center' }]}>{displayVol}</Text>
                       </View>
                       {hasNote && (
-                        <Text numberOfLines={isExpanded ? undefined : 1} style={[s.noteText, { color: colors.mutedForeground, paddingLeft: 70 }]}>
+                        <Text selectable={true} numberOfLines={isExpanded ? undefined : 1} style={[s.noteText, { color: colors.mutedForeground, paddingLeft: 70 }]}>
                           "{r.note}"
                         </Text>
                       )}

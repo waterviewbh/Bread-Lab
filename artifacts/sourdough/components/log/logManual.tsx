@@ -4,6 +4,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -22,6 +23,9 @@ import { useRouter } from "expo-router";
 import { DIAGNOSTIC_SCIENCE } from "@/constants/diagnosticContents";
 import { DEFECT_LIBRARY, GlossaryCategory, DefectSlug } from "@/lib/diagnosticLogic";
 import { Ionicons } from "@expo/vector-icons";
+import { useScienceArticles } from "@/hooks/useScienceArticle";
+import { getArticleSummary } from "@/lib/scienceArticles";
+import { useQueryClient } from "@tanstack/react-query";
 
 // --- Data ---
 import { HELP, CHANGELOG, ACIDIFICATION_DATA, LIFTING_DATA, BULK_ENGINE_DATA } from "@/constants/aboutContents";
@@ -60,12 +64,12 @@ function HelpAccordion({ tab, colors }: { tab: any; colors: any }) {
                 return (
                   <View key={bi} style={styles.bulletRow}>
                     <View style={[styles.bulletDot, { backgroundColor: colors.mutedForeground }]} />
-                    <Text style={[styles.bulletText, { color: colors.foreground }]}>
+                    <Text selectable={true} style={[styles.bulletText, { color: colors.foreground }]}>
                       {label ? (
                         <>
-                          <Text style={styles.bulletLabel}>{label}:</Text>{" "}
+                          <Text selectable={true} style={styles.bulletLabel}>{label}:</Text>{" "}
                           {body.startsWith("http") ? (
-                            <Text style={{ color: colors.primary, textDecorationLine: 'underline' }} onPress={() => Linking.openURL(body)}>{body}</Text>
+                            <Text selectable={true} style={{ color: colors.primary, textDecorationLine: 'underline' }} onPress={() => Linking.openURL(body)}>{body}</Text>
                           ) : body}
                         </>
                       ) : body}
@@ -98,34 +102,34 @@ function InterpretationCard({ data, colors }: { data: any; colors: any }) {
       </Pressable>
       {open && (
         <View style={{ padding: 16 }}>
-          <Text style={[styles.interpretBody, { color: colors.foreground, marginBottom: 12 }]}>{data.body}</Text>
+          <Text selectable={true} style={[styles.interpretBody, { color: colors.foreground, marginBottom: 12 }]}>{data.body}</Text>
           {data.sections.map((sec: any, i: number) => (
             <View key={i} style={{ marginTop: 16 }}>
-              <Text style={[styles.interpretBody, { color: colors.foreground, fontFamily: fonts.sansSemiBold, fontSize: 14, marginBottom: 4 }]}>{sec.heading}</Text>
-              <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-                <Text style={styles.interpretLabel}>Visual: </Text>{sec.visual}
+              <Text selectable={true} style={[styles.interpretBody, { color: colors.foreground, fontFamily: fonts.sansSemiBold, fontSize: 14, marginBottom: 4 }]}>{sec.heading}</Text>
+              <Text selectable={true} style={[styles.interpretBody, { color: colors.foreground }]}>
+                <Text selectable={true} style={styles.interpretLabel}>Visual: </Text>{sec.visual}
               </Text>
               {sec.diagnosticStandard && (
-                <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-                  <Text style={styles.interpretLabel}>Diagnostic [Standard]: </Text>{sec.diagnosticStandard}
+                <Text selectable={true} style={[styles.interpretBody, { color: colors.foreground }]}>
+                  <Text selectable={true} style={styles.interpretLabel}>Diagnostic [Standard]: </Text>{sec.diagnosticStandard}
                 </Text>
               )}
               {sec.diagnosticSweet && (
-                <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-                  <Text style={styles.interpretLabel}>[Sweet]: </Text>{sec.diagnosticSweet}
+                <Text selectable={true} style={[styles.interpretBody, { color: colors.foreground }]}>
+                  <Text selectable={true} style={styles.interpretLabel}>[Sweet]: </Text>{sec.diagnosticSweet}
                 </Text>
               )}
               {sec.diagnostic && (
-                <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-                  <Text style={styles.interpretLabel}>Diagnostic: </Text>{sec.diagnostic}
+                <Text selectable={true} style={[styles.interpretBody, { color: colors.foreground }]}>
+                  <Text selectable={true} style={styles.interpretLabel}>Diagnostic: </Text>{sec.diagnostic}
                 </Text>
               )}
-              <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-                <Text style={styles.interpretLabel}>Baker's Insight: </Text>{sec.insight}
+              <Text selectable={true} style={[styles.interpretBody, { color: colors.foreground }]}>
+                <Text selectable={true} style={styles.interpretLabel}>Baker's Insight: </Text>{sec.insight}
               </Text>
               {sec.status && (
-                <Text style={[styles.interpretBody, { color: colors.foreground }]}>
-                  <Text style={styles.interpretLabel}>Status: </Text>{sec.status}
+                <Text selectable={true} style={[styles.interpretBody, { color: colors.foreground }]}>
+                  <Text selectable={true} style={styles.interpretLabel}>Status: </Text>{sec.status}
                 </Text>
               )}
             </View>
@@ -136,8 +140,52 @@ function InterpretationCard({ data, colors }: { data: any; colors: any }) {
   );
 }
 
+function TroubleshootingDeepDivesCard({ colors, router }: { colors: any; router: any }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 16 }]}>
+      <Pressable
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => [
+          styles.accordionHeader,
+          { borderBottomWidth: open ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border },
+          pressed && { opacity: 0.7 }
+        ]}
+      >
+        <Text style={[styles.accordionTitle, { color: colors.foreground }]}>Troubleshooting Deep Dives</Text>
+        <Feather name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
+      </Pressable>
+      {open && (
+        <View style={{ padding: 12 }}>
+          <Text selectable={true} style={[styles.interpretBody, { color: colors.mutedForeground, marginBottom: 16, paddingHorizontal: 4 }]}>
+            Detailed analysis of bake defects, mechanics, and targeted interventions.
+          </Text>
+          {Object.entries(DIAGNOSTIC_SCIENCE).map(([slug, article]) => (
+            <Pressable
+              key={slug}
+              onPress={() => router.setParams({ slug })}
+              style={({ pressed }) => [
+                styles.deepDiveItem,
+                { borderBottomColor: colors.border, opacity: pressed ? 0.6 : 1 }
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                 <Text style={[styles.deepDiveTitle, { color: colors.foreground }]}>{article.title.replace('The Science of ', '')}</Text>
+                 <Text style={[styles.deepDiveSubtitle, { color: colors.mutedForeground }]} numberOfLines={1}>{article.primaryDriver}</Text>
+              </View>
+              <Feather name="arrow-right" size={14} color={colors.accent} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function ScienceDeepDivesCard({ colors, router }: { colors: any; router: any }) {
   const [open, setOpen] = useState(false);
+  const { data: articles } = useScienceArticles();
+
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 16 }]}>
       <Pressable
@@ -153,21 +201,23 @@ function ScienceDeepDivesCard({ colors, router }: { colors: any; router: any }) 
       </Pressable>
       {open && (
         <View style={{ padding: 12 }}>
-          <Text style={[styles.interpretBody, { color: colors.mutedForeground, marginBottom: 16, paddingHorizontal: 4 }]}>
-            Detailed analysis of bake outcomes, mechanics, and interventions.
+          <Text selectable={true} style={[styles.interpretBody, { color: colors.mutedForeground, marginBottom: 16, paddingHorizontal: 4 }]}>
+            Scholarly mini-articles exploring the physical, biological, and mathematical models behind fermentation.
           </Text>
-          {Object.entries(DIAGNOSTIC_SCIENCE).map(([slug, article]) => (
+          {articles?.map((article) => (
             <Pressable
-              key={slug}
-              onPress={() => router.setParams({ slug })}
+              key={article.slug}
+              onPress={() => router.setParams({ slug: article.slug })}
               style={({ pressed }) => [
                 styles.deepDiveItem,
                 { borderBottomColor: colors.border, opacity: pressed ? 0.6 : 1 }
               ]}
             >
               <View style={{ flex: 1 }}>
-                 <Text style={[styles.deepDiveTitle, { color: colors.foreground }]}>{article.title.replace('The Science of ', '')}</Text>
-                 <Text style={[styles.deepDiveSubtitle, { color: colors.mutedForeground }]} numberOfLines={1}>{article.primaryDriver}</Text>
+                 <Text style={[styles.deepDiveTitle, { color: colors.foreground }]}>{article.title}</Text>
+                 <Text style={[styles.deepDiveSubtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+                   {getArticleSummary(article)}
+                 </Text>
               </View>
               <Feather name="arrow-right" size={14} color={colors.accent} />
             </Pressable>
@@ -213,13 +263,14 @@ function TraitGlossaryCard({ colors }: { colors: any }) {
               <Text style={[styles.subHeading, { color: colors.mutedForeground, marginBottom: 8 }]}>{cat.toUpperCase()}</Text>
               {grouped[cat].map(slug => {
                 const term = DEFECT_LIBRARY[slug];
+                const isTarget = term.type === 'target';
                 return (
                   <View key={slug} style={styles.glossaryItem}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                      <Text style={[styles.glossaryTitle, { color: colors.foreground }]}>{term.displayName}</Text>
-                      {term.isBenchmark && <Ionicons name="sparkles" size={10} color={colors.accent} />}
+                      <Text selectable={true} style={[styles.glossaryTitle, { color: colors.foreground }]}>{term.label}</Text>
+                      {isTarget && <Ionicons name="sparkles" size={10} color={colors.accent} />}
                     </View>
-                    <Text style={[styles.glossaryText, { color: colors.mutedForeground }]}>{term.shortDefinition}</Text>
+                    <Text selectable={true} style={[styles.glossaryText, { color: colors.mutedForeground }]}>{term.shortDefinition}</Text>
                   </View>
                 );
               })}
@@ -234,12 +285,27 @@ function TraitGlossaryCard({ colors }: { colors: any }) {
 export function ResourcesSection() {
   const colors = useColors();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { fullFontSize, setFullFontSize } = useFontSize();
   const { showTour } = useTourSlideshow();
   const { tempUnit, setTempUnit, starterTutorialMode, setStarterTutorialMode } = usePreferences();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await queryClient.invalidateQueries({ queryKey: ["scienceArticles"] });
+    await queryClient.invalidateQueries({ queryKey: ["scienceArticle"] });
+    setRefreshing(false);
+  };
 
   return (
-    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+      }
+    >
       <Animated.View entering={FadeIn.duration(400)}>
         <View style={styles.pageHeader}>
           <Text style={[styles.pageTitle, { color: colors.foreground }]}>Resources</Text>
@@ -303,6 +369,7 @@ export function ResourcesSection() {
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground, borderBottomColor: colors.border, marginTop: 24 }]}>Science Hub</Text>
         <TraitGlossaryCard colors={colors} />
+        <TroubleshootingDeepDivesCard colors={colors} router={router} />
         <ScienceDeepDivesCard colors={colors} router={router} />
         <InterpretationCard data={ACIDIFICATION_DATA} colors={colors} />
         <InterpretationCard data={LIFTING_DATA} colors={colors} />

@@ -21,6 +21,7 @@ module.exports = {
   },
   ios: {
     supportsTablet: false,
+    unstable_interopComponents: ["RNMathView"],
     infoPlist: {
       NSCameraUsageDescription: "Used to photograph your dough and starter at each stage.",
       NSPhotoLibraryUsageDescription: "Used to select photos of your dough or starter."
@@ -28,6 +29,7 @@ module.exports = {
   },
   android: {
     package: "com.waterviewbakehouse.breadlab",
+    unstable_interopComponents: ["RNMathView"],
     versionCode: versionData.versionCode,
     permissions: [
       "android.permission.CAMERA",

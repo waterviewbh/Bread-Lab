@@ -53,6 +53,125 @@ export function lookupExpectedDuration(
   return warmestRow.hoursByInoculation[inoculationPercent] * 3600 * 1000;
 }
 
+/**
+ * Perform bilinear interpolation across the DOUGHLAB_PRIOR_TABLE matrix.
+ * Given a temperature in Fahrenheit and an inoculation percentage (e.g. 15.5%),
+ * returns the expected baseline duration in milliseconds.
+ */
+export function interpolateExpectedDuration(
+  doughTempF: number,
+  inoculationPct: number
+): number {
+  const rows = [...DOUGHLAB_PRIOR_TABLE].sort((a, b) => a.maxTempF - b.maxTempF);
+  const clampedInoc = Math.max(10, Math.min(30, inoculationPct));
+
+  let rowA = rows[0];
+  let rowB = rows[rows.length - 1];
+
+  if (doughTempF <= rowA.maxTempF) {
+    rowB = rowA;
+  } else if (doughTempF >= rowB.maxTempF) {
+    rowA = rowB;
+  } else {
+    for (let i = 0; i < rows.length - 1; i++) {
+      if (doughTempF >= rows[i].maxTempF && doughTempF <= rows[i + 1].maxTempF) {
+        rowA = rows[i];
+        rowB = rows[i + 1];
+        break;
+      }
+    }
+  }
+
+  let inocA = 10;
+  let inocB = 20;
+  if (clampedInoc >= 20) {
+    inocA = 20;
+    inocB = 30;
+  }
+
+  const q11 = rowA.hoursByInoculation[inocA as 10 | 20 | 30];
+  const q12 = rowA.hoursByInoculation[inocB as 10 | 20 | 30];
+  const q21 = rowB.hoursByInoculation[inocA as 10 | 20 | 30];
+  const q22 = rowB.hoursByInoculation[inocB as 10 | 20 | 30];
+
+  let rowA_val = q11;
+  if (inocB !== inocA) {
+    rowA_val = q11 + ((clampedInoc - inocA) / (inocB - inocA)) * (q12 - q11);
+  }
+
+  let rowB_val = q21;
+  if (inocB !== inocA) {
+    rowB_val = q21 + ((clampedInoc - inocA) / (inocB - inocA)) * (q22 - q21);
+  }
+
+  let finalHours = rowA_val;
+  if (rowB.maxTempF !== rowA.maxTempF) {
+    finalHours = rowA_val + ((doughTempF - rowA.maxTempF) / (rowB.maxTempF - rowA.maxTempF)) * (rowB_val - rowA_val);
+  }
+
+  return finalHours * 3600 * 1000;
+}
+
+/**
+ * Predicts the remaining baseline duration in ms from the current state,
+ * integrating Newton's Law of Cooling if ambient temperature is available.
+ */
+export function predictRemainingBaselineDuration(
+  currentTempF: number,
+  ambientTempF: number | null,
+  inoculationPct: number,
+  hydrationPct: number,
+  saltPct: number,
+  enriched: boolean,
+  startVolume: number,
+  targetVolume: number,
+  currentVolume: number
+): number {
+  const volumeFractionRemaining = (targetVolume - currentVolume) / (targetVolume - startVolume);
+  if (volumeFractionRemaining <= 0) return 0;
+
+  let progressNeeded = volumeFractionRemaining;
+  let simulatedTimeMs = 0;
+  let tempF = currentTempF;
+  const k_per_ms = 0.4 / (3600 * 1000); // k = 0.4 hr^-1
+  const stepMs = 10 * 60 * 1000; // 10 minute steps
+  const maxSimulationSteps = (48 * 60) / 10;
+  let steps = 0;
+
+  while (progressNeeded > 0 && steps < maxSimulationSteps) {
+    steps++;
+    if (ambientTempF !== null) {
+      tempF = ambientTempF + (tempF - ambientTempF) * Math.exp(-k_per_ms * stepMs);
+    }
+
+    const baseDurationMs = interpolateExpectedDuration(tempF, inoculationPct);
+
+    // Hydration Plateau
+    const hydrationBonus = Math.min(0.10, Math.max(0, hydrationPct - 70) * 0.008);
+    const hydrationMultiplier = Math.max(0.75, 1 - hydrationBonus);
+
+    // Salt Retardation
+    const saltMultiplier = 1 + (saltPct - 2.0) * 0.10;
+
+    // Enriched Osmotic Dampening
+    const enrichedMultiplier = enriched ? 1.15 : 1.0;
+
+    const modifiedDurationMs = baseDurationMs * hydrationMultiplier * saltMultiplier * enrichedMultiplier;
+    const stepProgress = stepMs / modifiedDurationMs;
+
+    if (stepProgress >= progressNeeded) {
+      const fractionOfStep = progressNeeded / stepProgress;
+      simulatedTimeMs += stepMs * fractionOfStep;
+      progressNeeded = 0;
+    } else {
+      simulatedTimeMs += stepMs;
+      progressNeeded -= stepProgress;
+    }
+  }
+
+  return simulatedTimeMs;
+}
+
 // ─── Helpers (lib/bulkFermentEngine.ts) ────────────────────────────────────────
 
 /**
@@ -64,7 +183,7 @@ export function estimateInoculationPercent(phases: { ingredients: any }[] = []):
 
   if (inoculationPct <= 15) return 10;
   if (inoculationPct >= 25) return 30;
-  return 20;  // 16% to 24% maps safely to the 20% baseline
+  return 20;
 }
 
 // ─── Main engine function ─────────────────────────────────────────────────────
@@ -92,13 +211,13 @@ export function computeBulkFermentState(
   phaseStartedAt?: number | null,
   manualStartVolume?: string
 ): BulkFermentState {
-  // Work with a shallow copy — we never mutate the caller's state
   const state: BulkFermentState = { ...existing };
 
   // Compute metrics using the unified Smart Hydration Engine
-  const { inoculationPct, hydrationPct } = calculateRecipeMetrics(allRecipePhases);
+  const metrics = calculateRecipeMetrics(allRecipePhases);
+  const { inoculationPct, hydrationPct, saltPct, enriched } = metrics as any;
 
-  // 1. Bucket Inoculation (10%, 20%, 30%) for matrix lookup
+  // Keep old discrete bucket assignment strictly for backwards-compatible state serialization shapes
   const inoculationBucket: 10 | 20 | 30 =
     inoculationPct <= 15 ? 10 : inoculationPct >= 25 ? 30 : 20;
   state.activeInoculationPercent = inoculationBucket;
@@ -132,6 +251,7 @@ export function computeBulkFermentState(
   // ── 3. Resolve Temperature & Target Rise ──────────────────────────────────
   const lastWithTemp = [...readings].reverse().find((r) => typeof r.doughTemp === "number");
   let currentTempF = lastWithTemp?.doughTemp ? toF(lastWithTemp.doughTemp, lastWithTemp.tempUnit) : 76;
+  const currentAmbientF = lastWithTemp?.ambientTemp ? toF(lastWithTemp.ambientTemp, lastWithTemp.tempUnit) : null;
 
   // ── 3. Calculate Target Rise ───────────────────────────────────────────────
   const targetFraction = lookupTargetFraction(currentTempF);
@@ -143,7 +263,6 @@ export function computeBulkFermentState(
     const curr = volReadings[volReadings.length - 1];
     let prev: { volume_ml: number; loggedAt: number } | null = null;
 
-    // Synthesize reading at t=0 if we have a manual start volume
     if (hasManualVol && phaseStartedAt && curr.loggedAt > phaseStartedAt) {
       prev = { volume_ml: manualVol, loggedAt: phaseStartedAt };
     } else if (volReadings.length >= 2) {
@@ -154,14 +273,13 @@ export function computeBulkFermentState(
       const dt = curr.loggedAt - prev.loggedAt;
       if (dt >= BULK_MIN_DERIVATIVE_GAP_MS) {
         const dVol = curr.volume_ml - prev.volume_ml;
-        // Including Velocity=0 due to recent fold (while it recovers)
         velocity =
           curr.postIntervention && dVol < 0 ? 0 : Math.max(dVol / dt, BULK_NEGATIVE_DERIVATIVE_CAP);
       }
     }
   }
 
-  // ── 5. Projection (Using Doughlab data + Hydration Scaling) ────────────────────────
+  // ── 5. Projection (Using Proportional Thermal Predictive Loop + Complementary Filter) ────────────────────────
   const remaining = state.targetVolume_ml - currentVol;
   if (remaining > 0) {
     const firstReading =
@@ -173,27 +291,28 @@ export function computeBulkFermentState(
     if (firstReading && lastReading) {
       const elapsedMs = lastReading.loggedAt - firstReading.loggedAt;
 
-      // A. Look up biological prior duration from the Doughlab matrix
-      let totalExpectedDurationMs = lookupExpectedDuration(currentTempF, inoculationBucket);
+      // Calculate remaining baseline duration integrating forward cooling curve
+      const remainingBaselineDurationMs = predictRemainingBaselineDuration(
+        currentTempF,
+        currentAmbientF,
+        inoculationPct,
+        hydrationPct,
+        saltPct,
+        enriched,
+        startVol,
+        state.targetVolume_ml,
+        currentVol
+      );
 
-      // B. Apply Hydration Scaling Factor
-      // Heuristic: -1.5% duration per 1% hydration above 70%
-      if (hydrationPct > 70) {
-        const hydrationBonus = (hydrationPct - 70) * 0.015;
-        const multiplier = Math.max(0.5, 1 - hydrationBonus); // Cap at 50% reduction
-        totalExpectedDurationMs *= multiplier;
-      }
+      const totalExpectedDurationMs = elapsedMs + remainingBaselineDurationMs;
+      const baselineVelocity = remainingBaselineDurationMs > 0 ? remaining / remainingBaselineDurationMs : 0;
 
-      const baselineVelocity = (state.targetVolume_ml - startVol) / totalExpectedDurationMs;
-
-      // C. Blend calculations using a dynamic time-weighted complementary model
       let blendedVelocity = baselineVelocity;
-      if (velocity !== null && velocity > 0) {
+      if (velocity !== null && velocity > 0 && totalExpectedDurationMs > 0) {
         const alpha = Math.min(1, elapsedMs / totalExpectedDurationMs);
         blendedVelocity = alpha * velocity + (1 - alpha) * baselineVelocity;
       }
 
-      // D. Extrapolate final baseline timeline parameters
       if (blendedVelocity > 0) {
         state.projectedTargetAt = lastReading.loggedAt + remaining / blendedVelocity;
       }

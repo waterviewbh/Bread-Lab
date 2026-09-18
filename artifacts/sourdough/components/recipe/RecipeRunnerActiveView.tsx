@@ -153,24 +153,24 @@ export function RecipeRunnerActiveView({
         {/* ── Compact header: recipe name + status + actions ───────────── */}
         <View style={s.trackerHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[s.trackerRecipeName, { color: colors.mutedForeground }]}>
+            <Text selectable={true} style={[s.trackerRecipeName, { color: colors.mutedForeground }]}>
               {bake.recipeName}
             </Text>
             <View style={s.statusRow}>
               {activePhase ? (
                 <>
                   <View style={[s.activeDot, { backgroundColor: colors.accent }]} />
-                  <Text style={[s.statusText, { color: colors.foreground }]}>
+                  <Text selectable={true} style={[s.statusText, { color: colors.foreground }]}>
                     {activePhase.name}
                   </Text>
-                  <Text style={[s.timerInline, { color: colors.accent }]}>
+                  <Text selectable={true} style={[s.timerInline, { color: colors.accent }]}>
                     {formatTimer(elapsed[activePhase.key] ?? 0)}
                   </Text>
                 </>
               ) : allDone ? (
-                <Text style={[s.statusText, { color: colors.accent }]}>Bake complete</Text>
+                <Text selectable={true} style={[s.statusText, { color: colors.accent }]}>Bake complete</Text>
               ) : (
-                <Text style={[s.statusText, { color: colors.mutedForeground }]}>
+                <Text selectable={true} style={[s.statusText, { color: colors.mutedForeground }]}>
                   Start a phase below
                 </Text>
               )}
@@ -340,8 +340,8 @@ export function RecipeRunnerActiveView({
             style={[s.allDoneCard, { backgroundColor: colors.accent + "14", borderColor: colors.accent + "35" }]}
           >
             <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
-            <Text style={[s.allDoneTitle, { color: colors.foreground }]}>Bake complete</Text>
-            <Text style={[s.allDoneBody, { color: colors.mutedForeground }]}>
+            <Text selectable={true} style={[s.allDoneTitle, { color: colors.foreground }]}>Bake complete</Text>
+            <Text selectable={true} style={[s.allDoneBody, { color: colors.mutedForeground }]}>
               All phases logged. Tap New Bake to start fresh.
             </Text>
             <View style={{ flexDirection: "row", gap: 8 }}>

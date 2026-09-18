@@ -52,7 +52,7 @@ export function ReadingHint({
 
       {open && (
         <View style={h.body}>
-          <Text style={[h.bodyText, { color: colors.foreground }]}>{body}</Text>
+          <Text selectable={true} style={[h.bodyText, { color: colors.foreground }]}>{body}</Text>
           <Pressable
             onPress={onAbout}
             style={({ pressed }) => [h.moreLink, pressed && { opacity: 0.6 }]}

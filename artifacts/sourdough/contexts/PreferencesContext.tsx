@@ -1,6 +1,7 @@
 // artifacts/sourdough/contexts/PreferencesContext.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { safeParse } from "@/lib/storageUtils";
 
 const TEMP_KEY = "bread_lab_temp_unit_v1";
 const WEIGHT_KEY = "bread_lab_weight_unit_v1";
@@ -48,7 +49,7 @@ export function usePreferences() {
   return useContext(PreferencesContext);
 }
 
-export function PreferencesProvider({ children }: { children: React.ReactNode }) {
+export function PreferencesProvider({ children, onHydrated }: { children: React.ReactNode; onHydrated?: () => void }) {
   const [tempUnit, setTempUnitState] = useState<"F" | "C">("F");
   const [weightUnit, setWeightUnitState] = useState<"g" | "oz">("g");
   const [timeFormat, setTimeFormatState] = useState<"12h" | "24h">("12h");
@@ -74,9 +75,13 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       if (tutorialActive !== null) setStarterTutorialModeState(tutorialActive === "true");
       if (day !== null) setTutorialDayState(parseInt(day, 10));
       if (baseline !== null) setBaselineVolumeState(parseFloat(baseline));
-      if (meta !== null) setTutorialMetadataState(JSON.parse(meta));
+      if (meta !== null) setTutorialMetadataState(safeParse(meta, {}));
+
+      onHydrated?.();
+    }).catch(() => {
+      onHydrated?.();
     });
-  }, []);
+  }, [onHydrated]);
 
   const setTempUnit = (value: "F" | "C") => {
     setTempUnitState(value);

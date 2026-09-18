@@ -119,6 +119,14 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
+      version: "v2.5.0", /* -- published 20260918 -- */
+      changes: [
+        { type: "Added", content: "We started a growing list of scholarly articles about kitchen science. To manage that, the app now includes full LaTeX support for equations." },
+        { type: "Changed", content: "Built a fair amount of code quality checks so that the app won't break as it scales. Linting, better documentation, more typechecks, etc." },
+        { type: "Fixed", content: "Phase Sorting: At some point, adding new phases to existing recipes caused them to append at the end. They now insert where they would in the baking process." },
+      ],
+    },
+    {
       version: "v2.4.0", /* -- published 20260911 -- */
       changes: [
         { type: "Added", content: "Concurrent Bakes: Support for two simultaneous active sessions via a tabbed interface." },

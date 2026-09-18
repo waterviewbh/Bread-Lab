@@ -1,7 +1,4 @@
 // lib/recipeStorage.ts
-// ─── AsyncStorage + API persistence helpers ───────────────────────────────────
-// No React, no hooks, no JSX. All functions are async-pure: they read/write
-// storage and call the API, but never touch component state directly.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
@@ -15,60 +12,63 @@ import {
   BAKE_HISTORY_KEY,
   DELETED_RECIPE_IDS_KEY,
 } from "@/lib/recipeTypes";
-import { textToCheckableLines } from "@/lib/recipeUtils" // this was my first manual import, not done by the agent
+import { textToCheckableLines, resolveRootMasterId } from "@/lib/recipeUtils";
+import { safeParse, storageMutex } from "@/lib/storageUtils";
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────
-// A tombstone prevents a locally-deleted recipe from being re-hydrated on the
-// next API sync before the server deletion has propagated.
 export async function addToRecipeTombstone(id: string): Promise<void> {
-  const raw = await AsyncStorage.getItem(DELETED_RECIPE_IDS_KEY).catch(() => null);
-  const set: string[] = raw ? JSON.parse(raw) : [];
-  if (!set.includes(id)) {
-    set.push(id);
-    await AsyncStorage.setItem(DELETED_RECIPE_IDS_KEY, JSON.stringify(set));
-  }
+  return storageMutex.run(async () => {
+    const raw = await AsyncStorage.getItem(DELETED_RECIPE_IDS_KEY).catch(() => null);
+    const set = safeParse<string[]>(raw, [], Array.isArray);
+    if (!set.includes(id)) {
+      set.push(id);
+      await AsyncStorage.setItem(DELETED_RECIPE_IDS_KEY, JSON.stringify(set));
+    }
+  });
 }
 
 export async function removeFromRecipeTombstone(id: string): Promise<void> {
-  const raw = await AsyncStorage.getItem(DELETED_RECIPE_IDS_KEY).catch(() => null);
-  if (!raw) return;
-  await AsyncStorage.setItem(
-    DELETED_RECIPE_IDS_KEY,
-    JSON.stringify((JSON.parse(raw) as string[]).filter((x) => x !== id))
-  );
+  return storageMutex.run(async () => {
+    const raw = await AsyncStorage.getItem(DELETED_RECIPE_IDS_KEY).catch(() => null);
+    if (!raw) return;
+    const set = safeParse<string[]>(raw, [], Array.isArray);
+    await AsyncStorage.setItem(
+      DELETED_RECIPE_IDS_KEY,
+      JSON.stringify(set.filter((x) => x !== id))
+    );
+  });
 }
 
 export async function getRecipeTombstone(): Promise<string[]> {
   const raw = await AsyncStorage.getItem(DELETED_RECIPE_IDS_KEY).catch(() => null);
-  return raw ? JSON.parse(raw) : [];
+  return safeParse<string[]>(raw, [], Array.isArray);
 }
 
 // ─── loadAll ──────────────────────────────────────────────────────────────────
-// Initial hydration: reads local storage first, then merges server data.
-// Returns the resolved recipes and bake so the component can call its own
-// setRecipes / setBake — this module never touches React state.
 export async function loadAll(): Promise<{
   recipes: SavedRecipe[];
   bakes: ActiveBake[];
-  bake: ActiveBake | null; // Compatibility field
+  bake: ActiveBake | null;
 }> {
   let recipes: SavedRecipe[] = [];
   let bakes: ActiveBake[] = [];
   let localBakesFound = false;
-  // ── Local read first (fast, offline-safe) ──────────────────────────────────
+
   try {
     const [recipeStr, bakeStr] = await Promise.all([
       AsyncStorage.getItem(RECIPES_KEY),
       AsyncStorage.getItem(BAKE_KEY),
     ]);
-    if (recipeStr) recipes = JSON.parse(recipeStr);
-    if (bakeStr) {
-      const parsed = JSON.parse(bakeStr);
-      bakes = Array.isArray(parsed) ? parsed : [parsed];
-      localBakesFound = true;
-    }
-  } catch {}
-  // ── API merge (may be skipped if offline) ──────────────────────────────────
+
+    recipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray);
+
+    const parsedBakes = safeParse<any>(bakeStr, [], (v) => Array.isArray(v) || (v !== null && typeof v === 'object'));
+    bakes = Array.isArray(parsedBakes) ? parsedBakes : (parsedBakes ? [parsedBakes] : []);
+    localBakesFound = bakes.length > 0;
+  } catch (e) {
+    console.error("[recipeStorage] loadAll local failed", e);
+  }
+
   try {
     const deviceId = await getDeviceId();
     const token = await getStoredToken().catch(() => null);
@@ -77,15 +77,15 @@ export async function loadAll(): Promise<{
       localBakesFound ? Promise.resolve(null) : api.history.bakes.active(deviceId),
       getRecipeTombstone(),
     ]);
-    const mapped: SavedRecipe[] = apiRecipes
+
+    const mapped: SavedRecipe[] = (apiRecipes || [])
       .filter((r) => !deletedRecipeIds.includes(r.id))
       .map((r) => ({
         id: r.id,
         name: r.name,
         overview: r.overview ?? undefined,
         createdAt: new Date(r.createdAt).getTime(),
-        updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : new Date(r.createdAt).getTime(),
-        // yieldValue lives on the recipe root, not per-phase
+        updatedAt: (r as any).updatedAt ? new Date((r as any).updatedAt).getTime() : new Date(r.createdAt).getTime(),
         yieldValue: (r.yield_value && r.yield_value > 0) ? r.yield_value.toString() : "",
         phases: r.phases.map((p) => ({
           key: p.key,
@@ -96,10 +96,12 @@ export async function loadAll(): Promise<{
         parentRecipeId: r.parent_recipe_id,
         versionLabel: r.version_label,
       }));
-    if (token || apiRecipes.length > 0) {
+
+    if (token || (apiRecipes && apiRecipes.length > 0)) {
       recipes = mapped;
-      await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(mapped));
+      await storageMutex.run(() => AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(mapped)));
     }
+
     if (!localBakesFound && activeBake) {
       const apiBake: ActiveBake = {
         id: activeBake.id,
@@ -122,46 +124,38 @@ export async function loadAll(): Promise<{
         })),
       };
       bakes = [apiBake];
-      await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes));
+      await storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes)));
     }
-  } catch {}
+  } catch (e) {
+    console.error("[recipeStorage] loadAll remote failed", e);
+  }
   return { recipes, bakes, bake: bakes[0] || null };
 }
 
-// ─── writeRecipesLocal ────────────────────────────────────────────────────────
-// Writes a recipe list to local storage only. The component handles setState
-// and API sync separately (via upsertRecipeRemote below).
 export async function writeRecipesLocal(recipes: SavedRecipe[]): Promise<void> {
-  await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(recipes));
+  return storageMutex.run(() => AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(recipes)));
 }
 
-// ─── writeBakeLocal ───────────────────────────────────────────────────────────
-// Writes a single active bake to the local storage collection.
 export async function writeBakeLocal(bake: ActiveBake): Promise<void> {
-  const raw = await AsyncStorage.getItem(BAKE_KEY).catch(() => null);
-  let bakes: ActiveBake[] = raw ? JSON.parse(raw) : [];
-  if (!Array.isArray(bakes)) bakes = bakes ? [bakes] : [];
+  return storageMutex.run(async () => {
+    const raw = await AsyncStorage.getItem(BAKE_KEY).catch(() => null);
+    let bakes = safeParse<ActiveBake[]>(raw, [], Array.isArray);
 
-  const idx = bakes.findIndex((b) => b.id === bake.id);
-  if (idx !== -1) {
-    bakes[idx] = bake;
-  } else {
-    // New bake: keep max 2 active slots
-    if (bakes.length < 2) bakes.push(bake);
-    else bakes[0] = bake; // replace first as fallback
-  }
-  await writeBakesLocal(bakes);
+    const idx = bakes.findIndex((b) => b.id === bake.id);
+    if (idx !== -1) {
+      bakes[idx] = bake;
+    } else {
+      if (bakes.length < 2) bakes.push(bake);
+      else bakes[0] = bake;
+    }
+    await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes));
+  });
 }
 
-// ─── writeBakesLocal ───────────────────────────────────────────────────────────
-// Writes the active bakes to local storage only.
 export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
-  await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes));
+  return storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes)));
 }
 
-// ─── upsertBakeRemote ─────────────────────────────────────────────────────────
-// Fire-and-forget API upsert for an in-progress bake. Intentionally does not
-// throw — the component's .catch(() => {}) pattern is preserved.
 export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
   return Promise.all([getDeviceId(), getStoredToken().catch(() => null)])
     .then(([deviceId, userId]) =>
@@ -195,7 +189,6 @@ export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
     .then(() => undefined);
 }
 
-// ─── upsertRecipeRemote ───────────────────────────────────────────────────────
 export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
   return Promise.all([getDeviceId(), getStoredToken().catch(() => null)])
     .then(([deviceId, userId]) =>
@@ -219,7 +212,6 @@ export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
     .then(() => undefined);
 }
 
-// ─── archiveBakeWithDiagnostics ─────────────────────────────────────────────
 export async function archiveBakeWithDiagnostics(
   bake: ActiveBake,
   callbacks: {
@@ -230,24 +222,24 @@ export async function archiveBakeWithDiagnostics(
 ): Promise<void> {
   const savedAt = Date.now();
 
-  // ── Local history append ───────────────────────────────────────────────────
-  try {
-    const stored = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
-    const existing = stored ? JSON.parse(stored) : [];
+  await storageMutex.run(async () => {
+    try {
+      const stored = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
+      const existing = safeParse<ActiveBake[]>(stored, [], Array.isArray);
 
-    const historyItem = {
-      ...bake,
-      savedAt,
-      status: bake.status === 'post_mortem' ? 'post_mortem' : 'completed',
-    };
+      const historyItem = {
+        ...bake,
+        savedAt,
+        status: (bake.status === 'post_mortem' ? 'post_mortem' : 'completed') as any,
+      };
 
-    existing.unshift(historyItem);
-    await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(existing.slice(0, 500)));
-  } catch (e) {
-    console.error("[recipeStorage] Archive failed local", e);
-  }
+      existing.unshift(historyItem);
+      await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(existing.slice(0, 500)));
+    } catch (e) {
+      console.error("[recipeStorage] Archive failed local", e);
+    }
+  });
 
-  // ── Remote upsert ──────────────────────────────────────────────────────────
   callbacks.reportSyncStart();
   const deviceId = await getDeviceId();
   const token = await getStoredToken().catch(() => null);
@@ -265,112 +257,120 @@ export async function archiveBakeWithDiagnostics(
     status: bake.status,
     outcome: bake.outcome,
     notes: bake.notes,
-    phases: bake.phases,
+    phases: bake.phases as any,
     inProgress: false,
   })
   .then(() => callbacks.reportSyncSuccess())
   .catch(() => callbacks.reportSyncFailure());
 }
 
-// ─── archiveIntermediateIterations ──────────────────────────────────────────
-// Enforces the "Stack of 3" rule: keep Master + 2 most recent iterations.
-// Archives (marks isArchived: true) instead of deleting intermediate versions.
 export async function archiveIntermediateIterations(masterId: string): Promise<void> {
-  try {
-    const recipeStr = await AsyncStorage.getItem(RECIPES_KEY);
-    if (!recipeStr) return;
+  return storageMutex.run(async () => {
+    try {
+      const recipeStr = await AsyncStorage.getItem(RECIPES_KEY);
+      const allRecipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray);
 
-    let allRecipes: SavedRecipe[] = JSON.parse(recipeStr);
+      const master = allRecipes.find(r => r.id === masterId);
+      if (!master) return;
 
-    // 1. Find the master
-    const master = allRecipes.find(r => r.id === masterId);
-    if (!master) return;
+      const iterations = allRecipes.filter(r => r.id !== master.id && resolveRootMasterId(r, allRecipes) === master.id)
+        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
 
-    // 2. Find all iterations belonging to this master lineage
-    const iterations = allRecipes.filter(r => r.parentRecipeId === masterId)
-      .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+      if (iterations.length <= 2) return;
 
-    if (iterations.length <= 2) return; // Nothing to archive
+      const toKeepIds = new Set([master.id, iterations[0].id, iterations[1].id]);
 
-    // 3. Keep the 2 most recent, archive the rest
-    const toKeepIds = new Set([master.id, iterations[0].id, iterations[1].id]);
+      const updatedRecipes = allRecipes.map(r => {
+        if (resolveRootMasterId(r, allRecipes) === master.id && !toKeepIds.has(r.id)) {
+          return { ...r, isArchived: true };
+        }
+        return r;
+      });
 
-    const updatedRecipes = allRecipes.map(r => {
-      if (r.parentRecipeId === masterId && !toKeepIds.has(r.id)) {
-        return { ...r, isArchived: true };
+      await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(updatedRecipes));
+
+      const deviceId = await getDeviceId();
+      const token = await getStoredToken().catch(() => null);
+
+      const toArchive = iterations.slice(2);
+      for (const r of toArchive) {
+          api.recipes.upsert({
+              ...r,
+              id: r.id,
+              deviceId,
+              userId: token ?? undefined,
+              name: r.name,
+              is_archived: true
+          } as any).catch(() => {});
       }
-      return r;
-    });
-
-    // 4. Update local storage
-    await writeRecipesLocal(updatedRecipes);
-
-    // 5. Update remote (isArchived property will be synced on next upsert)
-    const deviceId = await getDeviceId();
-    const token = await getStoredToken().catch(() => null);
-
-    const toArchive = iterations.slice(2);
-    for (const r of toArchive) {
-        api.recipes.upsert({
-            ...r,
-            id: r.id,
-            deviceId,
-            userId: token ?? undefined,
-            name: r.name,
-            is_archived: true // Assuming API supports this now
-        } as any).catch(() => {});
+    } catch (e) {
+      console.error("[recipeStorage] Archive failed", e);
     }
-  } catch (e) {
-    console.error("[recipeStorage] Archive failed", e);
-  }
+  });
 }
 
-/**
- * Updates the outcome of a bake already in history.
- * Used for "Log & Finish" flow where no iteration is created.
- */
 export async function updateBakeOutcomeInHistory(
     bakeId: string,
     outcome: BakeOutcome
 ): Promise<void> {
-    try {
-        const stored = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
-        if (!stored) return;
+    return storageMutex.run(async () => {
+        try {
+            const storedHistory = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
+            let history = safeParse<ActiveBake[]>(storedHistory, [], Array.isArray);
+            const index = history.findIndex(h => h.id === bakeId);
 
-        let history: ActiveBake[] = JSON.parse(stored);
-        const index = history.findIndex(h => h.id === bakeId);
+            let updatedBake: ActiveBake | null = null;
 
-        if (index !== -1) {
-            const updatedBake = {
-                ...history[index],
-                outcome: outcome
-            };
-            history[index] = updatedBake;
-            await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(history));
+            if (index !== -1) {
+                updatedBake = {
+                    ...history[index],
+                    outcome: outcome
+                };
+                history[index] = updatedBake;
+                await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(history));
+            } else {
+                const storedActive = await AsyncStorage.getItem(BAKE_KEY);
+                if (storedActive) {
+                    let activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
+                    const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
+                    if (activeIndex !== -1) {
+                        updatedBake = {
+                            ...activeBakes[activeIndex],
+                            outcome: outcome,
+                            status: 'completed',
+                            completedAt: activeBakes[activeIndex].completedAt || Date.now()
+                        };
+                        activeBakes.splice(activeIndex, 1);
+                        await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(activeBakes));
 
-            // FIRE-AND-FORGET REMOTE SYNC:
-            // We do NOT await this, so that slow device metadata fetching or API
-            // latency doesn't hang the critical local save path.
-            (async () => {
-                try {
-                    const deviceId = await getDeviceId();
-                    const token = await getStoredToken().catch(() => null);
-
-                    await api.history.bakes.upsert({
-                        ...updatedBake,
-                        deviceId,
-                        userId: token ?? undefined,
-                        yield_value: updatedBake.yieldValue ? parseInt(updatedBake.yieldValue, 10) : 0,
-                        savedAt: Date.now(),
-                        inProgress: false
-                    } as any);
-                } catch (remoteError) {
-                    console.warn("[recipeStorage] Remote sync failed, but local save succeeded", remoteError);
+                        history.unshift(updatedBake);
+                        await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(history.slice(0, 500)));
+                    }
                 }
-            })();
+            }
+
+            if (updatedBake) {
+                (async () => {
+                    try {
+                        const deviceId = await getDeviceId();
+                        const token = await getStoredToken().catch(() => null);
+
+                        await api.history.bakes.upsert({
+                            ...updatedBake,
+                            deviceId,
+                            userId: token ?? undefined,
+                            yield_value: updatedBake.yieldValue ? parseInt(updatedBake.yieldValue, 10) : 0,
+                            savedAt: Date.now(),
+                            inProgress: false
+                        } as any);
+                    } catch (remoteError) {
+                        console.warn("[recipeStorage] Remote sync failed, but local save succeeded", remoteError);
+                    }
+                })();
+            }
+        } catch (e) {
+            console.error("[recipeStorage] updateBakeOutcomeInHistory failed", e);
+            throw e;
         }
-    } catch (e) {
-        console.error("[recipeStorage] updateBakeOutcomeInHistory failed", e);
-        throw e;
-    }
+    });
 }

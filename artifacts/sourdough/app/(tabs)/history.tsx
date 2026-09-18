@@ -356,6 +356,17 @@ export default function HistoryScreen() {
     }, [retryPendingMigration])
   );
 
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState: AppStateStatus) => {
+      if (appStateRef.current !== "active" && nextState === "active") {
+        loadHistory();
+        retryPendingMigration();
+      }
+      appStateRef.current = nextState;
+    });
+    return () => sub.remove();
+  }, [retryPendingMigration]);
+
   const refresh = async () => {
     setRefreshing(true);
     await loadHistory();
@@ -621,7 +632,7 @@ export default function HistoryScreen() {
     await SafePrint.sharePdf(html, `Share ${bake.recipeName}`);
   };
 
-  const loadHistory = async () => {
+  async function loadHistory() {
     const mergeActiveBake = (
       list: BakeHistoryEntry[],
       activeRaw: string | null

@@ -1,7 +1,6 @@
 // artifacts/sourdough/components/bench/ActiveBakeSection.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, View, ScrollView, StyleSheet, Text, Platform } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Alert, View, StyleSheet, ActivityIndicator } from "react-native";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -16,17 +15,14 @@ import { RecipeRunnerSetupView } from "@/components/recipe/RecipeRunnerSetupView
 import { RecipeRunnerActiveView } from "@/components/recipe/RecipeRunnerActiveView";
 import { RecipePickerModal } from "@/components/recipe/RecipePickerModal";
 import { ReadingModal } from "@/components/recipe/ReadingModal";
+import { BakeSelectorTabs } from "@/components/recipe/BakeSelectorTabs";
 
 // --- Libs & Types ---
-import { api } from "@/lib/api";
-import { getDeviceId } from "@/lib/deviceId";
-import { getStoredToken } from "@/lib/auth";
 import {
   type ActiveBake,
   type BakePhase,
   type Reading,
   type SavedRecipe,
-  BAKE_KEY,
   VOLUME_TRACKING_PHASE_KEYS,
 } from "@/lib/recipeTypes";
 import {
@@ -34,13 +30,10 @@ import {
   writeBakeLocal,
   upsertBakeRemote,
   archiveBakeWithDiagnostics,
+  writeBakesLocal,
 } from "@/lib/recipeStorage";
-import { computeBulkFermentState, estimateInoculationPercent } from "@/lib/bulkFermentEngine";
-import { scalePhaseText } from "@/lib/recipeUtils";
-import { printHtml, shareHtmlAsPdf, buildBakeHtml, buildPhaseHtml } from "@/lib/recipeHtml";
-import { fonts } from "@/constants/theme";
-
-import { BakeSelectorTabs } from "@/components/recipe/BakeSelectorTabs";
+import { computeBulkFermentState } from "@/lib/bulkFermentEngine";
+import { shareHtmlAsPdf, buildBakeHtml, buildPhaseHtml, printHtml } from "@/lib/recipeHtml";
 
 export function ActiveBakeSection() {
   const colors = useColors();
@@ -55,6 +48,7 @@ export function ActiveBakeSection() {
   const [bakes, setBakes] = useState<ActiveBake[]>([]);
   const [activeBakeId, setActiveBakeId] = useState<string | null>(null);
   const [phaseStartVolumes, setPhaseStartVolumes] = useState<Record<string, string>>({});
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Expansion States
   const [expandedDone, setExpandedDone] = useState<Set<string>>(new Set());
@@ -69,20 +63,15 @@ export function ActiveBakeSection() {
 
   // Display Prefs
   const [scaleMultiplier, setScaleMultiplier] = useState(1);
-  const [isLargeTextMode, setIsLargeTextMode] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [bakeNotes, setBakeNotes] = useState("");
   const [overlayDraft, setOverlayDraft] = useState("");
   const [showNotesOverlay, setShowNotesOverlay] = useState(false);
 
-  // --- Derived Values (The Brain) ---
+  // --- Derived Values ---
   const bake = useMemo(() => bakes.find(b => b.id === activeBakeId) || null, [bakes, activeBakeId]);
-
-  // This finds the first phase that is started but not yet completed.
   const activePhase = bake?.phases.find((p) => p.startedAt && !p.completedAt);
-  // Count how many phases are done for the progress bar
   const completedCount = bake?.phases.filter((p) => p.completedAt).length ?? 0;
-  // True if every phase in the bake is finished
   const allDone = !!bake && completedCount === bake.phases.length && bake.phases.length > 0;
 
   // Active Timers
@@ -103,32 +92,34 @@ export function ActiveBakeSection() {
   // --- Data Loading ---
   const load = async () => {
     console.log("[ActiveBakeSection] Loading data...");
-    const data = await loadData();
-    setRecipes(data.recipes);
-    setBakes(data.bakes);
+    try {
+      const data = await loadData();
+      setRecipes(data.recipes);
+      setBakes(data.bakes);
 
-    if (data.bakes.length > 0) {
-      // Restore active slot or default to first
-      if (!activeBakeId || !data.bakes.find(b => b.id === activeBakeId)) {
-        setActiveBakeId(data.bakes[0].id);
-      }
+      if (data.bakes.length > 0) {
+        if (!activeBakeId || !data.bakes.find(b => b.id === activeBakeId)) {
+          setActiveBakeId(data.bakes[0].id);
+        }
 
-      const currentBake = data.bakes.find(b => b.id === (activeBakeId || data.bakes[0].id));
-      if (currentBake) {
-          setBakeNotes(currentBake.notes ?? "");
-          const active = currentBake.phases.find(p => p.startedAt && !p.completedAt);
-          if (active) {
-            setExpandedRecipeInfo(new Set([active.key]));
-          } else {
-            const firstPending = currentBake.phases.find(p => !p.startedAt);
-            if (firstPending) {
-              setExpandedPending(new Set([firstPending.key]));
+        const currentBake = data.bakes.find(b => b.id === (activeBakeId || data.bakes[0].id));
+        if (currentBake) {
+            setBakeNotes(currentBake.notes ?? "");
+            const active = currentBake.phases.find(p => p.startedAt && !p.completedAt);
+            if (active) {
+              setExpandedRecipeInfo(new Set([active.key]));
+            } else {
+              const firstPending = currentBake.phases.find(p => !p.startedAt);
+              if (firstPending) {
+                setExpandedPending(new Set([firstPending.key]));
+              }
             }
-          }
+        }
+      } else {
+        setActiveBakeId(null);
       }
-    } else {
-      setActiveBakeId(null);
-      console.log("[ActiveBakeSection] No active bake found in storage");
+    } finally {
+      setIsLoaded(true);
     }
   };
 
@@ -163,7 +154,6 @@ export function ActiveBakeSection() {
     upsertBakeRemote(newBake).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    // Auto-expand the first phase of a new bake
     if (phases.length > 0) {
       setExpandedPending(new Set([phases[0].key]));
     }
@@ -175,7 +165,6 @@ export function ActiveBakeSection() {
       if (p.key !== readingPhaseKey) return p;
       const updatedReadings = [...p.readings, reading];
 
-      // Integrate PD Engine for Bulk Ferment
       if (p.key === "bulk_fermenting") {
         const updatedState = computeBulkFermentState(
           updatedReadings as any,
@@ -205,8 +194,6 @@ export function ActiveBakeSection() {
               setBakes(nextBakes);
               if (nextBakes.length > 0) setActiveBakeId(nextBakes[0].id);
               else setActiveBakeId(null);
-
-              const { writeBakesLocal } = await import("@/lib/recipeStorage");
               await writeBakesLocal(nextBakes);
           }
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -216,63 +203,41 @@ export function ActiveBakeSection() {
 
   const handleStartPhase = async (key: string) => {
     if (!bake) return;
-
-    // Update timestamps: start the new one, stop any currently running one
     const phases = bake.phases.map((p) => {
       if (p.key === key) return { ...p, startedAt: Date.now() };
       if (p.startedAt && !p.completedAt) return { ...p, completedAt: Date.now() };
       return p;
     });
-
     const updatedBake = { ...bake, phases };
     setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    // Auto-expand the specs of the phase we just started
-    setExpandedRecipeInfo(prev => {
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
+    setExpandedRecipeInfo(prev => new Set(prev).add(key));
   };
 
   const handleCompletePhase = async (key: string) => {
     if (!bake) return;
-
-    // Mark the specific phase as completed
     const phases = bake.phases.map((p) =>
       p.key === key ? { ...p, completedAt: Date.now() } : p
     );
-
     const updatedBake = { ...bake, phases };
     setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    // Auto-expand the NEXT unstarted phase instead of looking back
     const currentIndex = bake.phases.findIndex(p => p.key === key);
     const nextPhase = bake.phases.slice(currentIndex + 1).find(p => !p.startedAt);
-
     if (nextPhase) {
-      setExpandedPending(prev => {
-        const next = new Set(prev);
-        next.add(nextPhase.key);
-        return next;
-      });
+      setExpandedPending(prev => new Set(prev).add(nextPhase.key));
     }
-
-    // Collapse the done card (removed looking back logic)
-    setRecentlyCompletedKey(null);
   };
 
   const handleToggleExpandDone = (key: string) => {
     setExpandedDone(prev => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };
@@ -280,8 +245,7 @@ export function ActiveBakeSection() {
   const handleToggleExpandRecipeInfo = (key: string) => {
     setExpandedRecipeInfo(prev => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };
@@ -289,26 +253,25 @@ export function ActiveBakeSection() {
   const handleToggleExpandPending = (key: string) => {
     setExpandedPending(prev => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   };
 
-    const handleStartVolumeChange = (key: string, value: string) => {
-      setPhaseStartVolumes(prev => ({ ...prev, [key]: value }));
-    };
+  const handleStartVolumeChange = (key: string, value: string) => {
+    setPhaseStartVolumes(prev => ({ ...prev, [key]: value }));
+  };
 
-    const handleStartVolumeCommit = async (key: string, value: string) => {
-      if (!bake) return;
-      const phases = bake.phases.map(p =>
-        p.key === key ? { ...p, startVolume: value } : p
-      );
-      const updatedBake = { ...bake, phases };
-      setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
-      await writeBakeLocal(updatedBake);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    };
+  const handleStartVolumeCommit = async (key: string, value: string) => {
+    if (!bake) return;
+    const phases = bake.phases.map(p =>
+      p.key === key ? { ...p, startVolume: value } : p
+    );
+    const updatedBake = { ...bake, phases };
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
+    await writeBakeLocal(updatedBake);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
 
   const handleToggleFold = async (key: string, idx: number) => {
     if (!bake) return;
@@ -318,7 +281,6 @@ export function ActiveBakeSection() {
       const next = current === idx + 1 ? idx : idx + 1;
       return { ...p, foldCount: next };
     });
-
     const updatedBake = { ...bake, phases };
     setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
@@ -333,7 +295,6 @@ export function ActiveBakeSection() {
         ? { ...p, readings: p.readings.filter((r) => r.id !== readingId) }
         : p
     );
-
     const updatedBake = { ...bake, phases };
     setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
@@ -355,10 +316,6 @@ export function ActiveBakeSection() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const handleOverlayDraftChange = (text: string) => {
-    setOverlayDraft(text);
-  };
-
   const handleSaveNotesOverlay = async () => {
     if (!bake) return;
     const updatedBake = { ...bake, notes: overlayDraft };
@@ -369,7 +326,14 @@ export function ActiveBakeSection() {
     setShowNotesOverlay(false);
   };
 
-  // --- Render ---
+  if (!isLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
@@ -427,63 +391,29 @@ export function ActiveBakeSection() {
         onCopyIngredients={async (key) => {
           const phase = bake?.phases.find(p => p.key === key);
           if (!phase) return;
-          console.log("[ActiveBakeSection] onCopyIngredients triggered for phase:", phase.name);
           const ingredients = phase.ingredients.map(i => i.text).join("\n");
           await Clipboard.setStringAsync(ingredients);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }}
         onShareSpec={(phase) => {
-          console.log("[ActiveBakeSection] onShareSpec triggered for phase:", phase.name);
-          try {
-            if (!bake) return;
-            const html = buildPhaseHtml(phase, bake.recipeName, scaleMultiplier);
-            console.log("[ActiveBakeSection] onShareSpec: HTML generated, sharing PDF...");
-            shareHtmlAsPdf(html, `${bake.recipeName} - ${phase.name}`);
-          } catch (error) {
-            console.error("[ActiveBakeSection] onShareSpec error:", error);
-          }
+          if (!bake) return;
+          const html = buildPhaseHtml(phase, bake.recipeName, scaleMultiplier);
+          shareHtmlAsPdf(html, `${bake.recipeName} - ${phase.name}`);
         }}
         onPrint={() => {
-          console.log("[ActiveBakeSection] onPrint triggered");
-          try {
-            if (!bake) {
-              console.warn("[ActiveBakeSection] onPrint: No active bake found in state");
-              return;
-            }
-            console.log("[ActiveBakeSection] onPrint: Preparing HTML for bake:", bake.recipeName, "(ID:", bake.id, ")");
-            console.log("[ActiveBakeSection] onPrint: Phase status:", completedCount, "/", bake.phases?.length || 0);
-
-            const html = buildBakeHtml(bake, bakeNotes, completedCount);
-            console.log("[ActiveBakeSection] onPrint: HTML generation successful, length:", html.length);
-
-            printHtml(html);
-          } catch (error) {
-            console.error("[ActiveBakeSection] onPrint error:", error);
-            Alert.alert("Print Error", "Failed to generate print document. Check console for details.");
-          }
+          if (!bake) return;
+          const html = buildBakeHtml(bake, bakeNotes, completedCount);
+          printHtml(html);
         }}
         onSharePdf={() => {
-          console.log("[ActiveBakeSection] onSharePdf triggered");
-          try {
-            if (!bake) {
-              console.warn("[ActiveBakeSection] onSharePdf: No active bake found in state");
-              return;
-            }
-            console.log("[ActiveBakeSection] onSharePdf: Preparing PDF for bake:", bake.recipeName, "(ID:", bake.id, ")");
-
-            const html = buildBakeHtml(bake, bakeNotes, completedCount);
-            console.log("[ActiveBakeSection] onSharePdf: HTML generation successful, length:", html.length);
-
-            shareHtmlAsPdf(html, bake.recipeName);
-          } catch (error) {
-            console.error("[ActiveBakeSection] onSharePdf error:", error);
-            Alert.alert("Share Error", "Failed to generate PDF. Check console for details.");
-          }
+          if (!bake) return;
+          const html = buildBakeHtml(bake, bakeNotes, completedCount);
+          shareHtmlAsPdf(html, bake.recipeName);
         }}
         onOpenNotesOverlay={() => { setOverlayDraft(bakeNotes); setShowNotesOverlay(true); }}
         onSaveNotesOverlay={handleSaveNotesOverlay}
         onCloseNotesOverlay={() => setShowNotesOverlay(false)}
-        onOverlayDraftChange={handleOverlayDraftChange}
+        onOverlayDraftChange={(text) => setOverlayDraft(text)}
         sessionChecks={sessionChecks}
         onToggleLineCheck={handleToggleLineCheck}
       />
@@ -516,3 +446,5 @@ export function ActiveBakeSection() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({});

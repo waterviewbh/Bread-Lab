@@ -141,6 +141,42 @@ CREATE TABLE IF NOT EXISTS starter_analytics (
   all_time_points   JSONB   NOT NULL DEFAULT '[]'
 );
 
+-- ── science_articles ──────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS science_articles (
+  id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug                 TEXT        UNIQUE NOT NULL,
+  title                TEXT        NOT NULL,
+  is_published         BOOLEAN     DEFAULT FALSE,
+  blocks               JSONB       NOT NULL,
+  further_study_topics JSONB       DEFAULT '[]'::jsonb,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Updated At Trigger
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_science_articles_updated_at
+    BEFORE UPDATE ON science_articles
+    FOR EACH ROW
+    EXECUTE PROCEDURE update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE science_articles ENABLE ROW LEVEL SECURITY;
+
+-- Public Read Policy
+CREATE POLICY "Allow public read access for all articles"
+  ON science_articles
+  FOR SELECT
+  USING (true);
+
 -- ── v1.0.8 migration: stamp tempUnit on existing feed readings ─────────────────
 -- Run this once in the Supabase SQL editor.
 -- Adds tempUnit:"F" to every reading that has a non-empty temp but no tempUnit.

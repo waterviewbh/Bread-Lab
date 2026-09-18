@@ -21,6 +21,7 @@ import { computeAcidificationSeries, computeLiftingSeries } from "@/lib/analytic
 import { loadAll as loadRecipeData, writeRecipesLocal, upsertRecipeRemote, addToRecipeTombstone, removeFromRecipeTombstone } from "@/lib/recipeStorage";
 import { buildRecipeHtml, printHtml, shareHtmlAsPdf } from "@/lib/recipeHtml";
 import { PHASE_DEFINITIONS, PHASE_CATEGORIES, BAKE_HISTORY_KEY } from "@/lib/recipeTypes";
+import { sortRecipePhases, createEmptyPhase, resolveRootMasterId } from "@/lib/recipeUtils";
 import { useSyncStatus } from "@/contexts/SyncContext";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
@@ -114,7 +115,11 @@ export function LabHub() {
   const handleSaveRecipe = async () => {
     if (!editingRecipe) return;
     const now = Date.now();
-    const saved = { ...editingRecipe, updatedAt: isNewRecipe ? undefined : now };
+    const saved = {
+      ...editingRecipe,
+      updatedAt: isNewRecipe ? undefined : now,
+      isUneditedIteration: false // Mark as tuned once manually saved
+    };
     const updated = isNewRecipe ? [saved, ...recipes] : recipes.map(r => r.id === saved.id ? saved : r);
     setRecipes(updated);
     await writeRecipesLocal(updated);
@@ -151,6 +156,8 @@ export function LabHub() {
           token ?? undefined
         );
 
+        const masterId = resolveRootMasterId(recipe, recipes);
+
         // Map ApiRecipe back to SavedRecipe shape
         const newSaved = {
           id: duplicatedApi.id,
@@ -165,13 +172,14 @@ export function LabHub() {
             ingredients: Array.isArray(p.ingredients) ? p.ingredients : [],
             instructions: Array.isArray(p.instructions) ? p.instructions : [],
           })),
-          parentRecipeId: duplicatedApi.parent_recipe_id,
+          parentRecipeId: masterId,
           versionLabel: duplicatedApi.version_label
         };
 
         const updated = [newSaved, ...recipes];
         setRecipes(updated);
         await writeRecipesLocal(updated);
+        await upsertRecipeRemote(newSaved);
         reportSyncSuccess();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -192,8 +200,13 @@ export function LabHub() {
   const handleConfirmPhases = (keys: string[]) => {
     setEditingRecipe((prev: any) => {
       if (!prev) return null;
-      const newPhases = keys.map(k => ({ key: k, name: PHASE_DEFINITIONS.find(d => d.key === k)?.name || k, ingredients: [], instructions: [] }));
-      return { ...prev, phases: [...prev.phases, ...newPhases] };
+      const existingKeys = new Set((prev.phases || []).map((p: any) => p.key));
+      const filteredKeys = keys.filter(k => !existingKeys.has(k));
+      const newPhases = filteredKeys.map(k => {
+        const def = PHASE_DEFINITIONS.find(d => d.key === k);
+        return createEmptyPhase(k, def?.name || k);
+      });
+      return { ...prev, phases: sortRecipePhases([...(prev.phases || []), ...newPhases]) };
     });
     setShowPhasePicker(false);
   };
@@ -262,7 +275,7 @@ export function LabHub() {
               letterFilter={letterFilter}
               refreshing={refreshing}
               onNewRecipe={() => { setEditingRecipe({ id: Date.now().toString(), name: "", createdAt: Date.now(), phases: [] }); setIsNewRecipe(true); }}
-              onEditRecipe={(r) => { setEditingRecipe(r); setIsNewRecipe(false); }}
+              onEditRecipe={(r) => { setEditingRecipe({ ...r, phases: sortRecipePhases(r.phases || []) }); setIsNewRecipe(false); }}
               onPrintRecipe={(r) => printHtml(buildRecipeHtml(r))}
               onShareRecipe={(r) => shareHtmlAsPdf(buildRecipeHtml(r), r.name)}
               onDuplicateRecipe={handleDuplicateRecipe}

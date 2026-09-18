@@ -255,23 +255,29 @@ export function HistorySection() {
     const mergeActiveBake = (list: BakeHistoryEntry[], activeRaw: string | null): BakeHistoryEntry[] => {
       if (!activeRaw) return list;
       try {
-        const active = JSON.parse(activeRaw);
-        if (!active?.id || !active?.startedAt) return list;
-        if (list.some((e) => e.id === active.id)) return list;
-        return [{
-          id: active.id,
-          recipeId: active.recipeId ?? "",
-          recipeName: active.recipeName,
-          savedAt: active.startedAt,
-          startedAt: active.startedAt,
-          phases: active.phases.map((p: any) => ({
-            key: p.key,
-            name: p.name,
-            startedAt: p.startedAt ?? null,
-            completedAt: p.completedAt ?? null,
-            foldCount: p.foldCount,
-          })),
-        }, ...list];
+        const parsed = JSON.parse(activeRaw);
+        const activeBakes: any[] = Array.isArray(parsed) ? parsed : [parsed];
+        let newList = [...list];
+        activeBakes.forEach((active) => {
+          if (!active?.id || !active?.startedAt) return;
+          if (newList.some((e) => e.id === active.id)) return;
+          newList.unshift({
+            id: active.id,
+            recipeId: active.recipeId ?? "",
+            recipeName: active.recipeName,
+            savedAt: active.startedAt,
+            startedAt: active.startedAt,
+            notes: active.notes,
+            phases: (active.phases || []).map((p: any) => ({
+              key: p.key,
+              name: p.name,
+              startedAt: p.startedAt ?? null,
+              completedAt: p.completedAt ?? null,
+              foldCount: p.foldCount,
+            })),
+          });
+        });
+        return newList;
       } catch { return list; }
     };
 
@@ -566,8 +572,8 @@ export function HistorySection() {
         <Animated.View entering={FadeIn.duration(400)} style={styles.pageHeader}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
             <View>
-              <Text style={[styles.pageTitle, { color: colors.foreground }]}>Calendar</Text>
-              <Text style={[styles.pageSubtitle, { color: colors.mutedForeground }]}>history and activity</Text>
+              <Text selectable={true} style={[styles.pageTitle, { color: colors.foreground }]}>Calendar</Text>
+              <Text selectable={true} style={[styles.pageSubtitle, { color: colors.mutedForeground }]}>history and activity</Text>
               {lastSynced !== null && <SyncLabel ts={lastSynced} />}
             </View>
             <Pressable onPress={() => setShowAuthModal(true)} style={[styles.accountBtn, { borderColor: colors.border, backgroundColor: currentUser ? colors.primary + "15" : colors.card }]}>
@@ -579,12 +585,12 @@ export function HistorySection() {
 
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statValue, { color: colors.foreground }]}>{streak}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>day streak</Text>
+            <Text selectable={true} style={[styles.statValue, { color: colors.foreground }]}>{streak}</Text>
+            <Text selectable={true} style={[styles.statLabel, { color: colors.mutedForeground }]}>day streak</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.statValue, { color: colors.foreground }]}>{totalThisMonth}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>this month</Text>
+            <Text selectable={true} style={[styles.statValue, { color: colors.foreground }]}>{totalThisMonth}</Text>
+            <Text selectable={true} style={[styles.statLabel, { color: colors.mutedForeground }]}>this month</Text>
           </View>
         </View>
 
@@ -641,18 +647,18 @@ export function HistorySection() {
               {selectedEntries.map((entry, idx) => (
                 <Pressable key={`${entry.id}-${idx}`} onPress={() => setSelectedFeedDetail(entry)} style={({ pressed }) => [styles.entryCard, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 12, opacity: pressed ? 0.92 : 1 }]}>
                   <View style={styles.entryHeader}>
-                    <Text style={[styles.entryTime, { color: colors.foreground }]}>{formatTime(entry.savedAt)}</Text>
+                    <Text selectable={true} style={[styles.entryTime, { color: colors.foreground }]}>{formatTime(entry.savedAt)}</Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      {entry.peak && <View style={[styles.peakedBadge, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "40" }]}><Ionicons name="checkmark-circle" size={12} color={colors.accent} /><Text style={[styles.peakedText, { color: colors.accent }]}>Peaked</Text></View>}
+                      {entry.peak && <View style={[styles.peakedBadge, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "40" }]}><Ionicons name="checkmark-circle" size={12} color={colors.accent} /><Text selectable={true} style={[styles.peakedText, { color: colors.accent }]}>Peaked</Text></View>}
                       <Pressable onPress={() => deleteEntry(entry.id)} hitSlop={8}><Feather name="trash-2" size={14} color={colors.mutedForeground} /></Pressable>
                     </View>
                   </View>
                   <View style={styles.entryGrid}>
-                    <View style={styles.entryGridItem}><Text style={[styles.entryVal, { color: colors.foreground }]}>{entry.starterWeight}g</Text><Text style={[styles.entryLbl, { color: colors.mutedForeground }]}>Starter</Text></View>
-                    <View style={styles.entryGridItem}><Text style={[styles.entryVal, { color: colors.primary }]}>{entry.ratioStr}</Text><Text style={[styles.entryLbl, { color: colors.mutedForeground }]}>Ratio</Text></View>
-                    {entry.initialPH && <View style={styles.entryGridItem}><Text style={[styles.entryVal, { color: colors.foreground }]}>{entry.initialPH}</Text><Text style={[styles.entryLbl, { color: colors.mutedForeground, textTransform: "none" }]}>pH</Text></View>}
+                    <View style={styles.entryGridItem}><Text selectable={true} style={[styles.entryVal, { color: colors.foreground }]}>{entry.starterWeight}g</Text><Text selectable={true} style={[styles.entryLbl, { color: colors.mutedForeground }]}>Starter</Text></View>
+                    <View style={styles.entryGridItem}><Text selectable={true} style={[styles.entryVal, { color: colors.primary }]}>{entry.ratioStr}</Text><Text selectable={true} style={[styles.entryLbl, { color: colors.mutedForeground }]}>Ratio</Text></View>
+                    {entry.initialPH && <View style={styles.entryGridItem}><Text selectable={true} style={[styles.entryVal, { color: colors.foreground }]}>{entry.initialPH}</Text><Text selectable={true} style={[styles.entryLbl, { color: colors.mutedForeground, textTransform: "none" }]}>pH</Text></View>}
                     {entry.peak && (
-                      <View style={styles.entryGridItem}><Text style={[styles.entryVal, { color: colors.accent }]}>+{entry.peak.volumeIncreasePct}%</Text><Text style={[styles.entryLbl, { color: colors.mutedForeground }]}>Rise</Text></View>
+                      <View style={styles.entryGridItem}><Text selectable={true} style={[styles.entryVal, { color: colors.accent }]}>+{entry.peak.volumeIncreasePct}%</Text><Text selectable={true} style={[styles.entryLbl, { color: colors.mutedForeground }]}>Rise</Text></View>
                     )}
                   </View>
                 </Pressable>
@@ -662,15 +668,15 @@ export function HistorySection() {
                   <View style={styles.entryHeader}>
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={[styles.entryTime, { color: colors.foreground }]}>{bake.recipeName}</Text>
+                        <Text selectable={true} style={[styles.entryTime, { color: colors.foreground }]}>{bake.recipeName}</Text>
                         {bake.outcome?.overallScore && (
                           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <Ionicons name="star" size={12} color="#F59E0B" />
-                            <Text style={{ fontSize: 12, fontFamily: fonts.mono, color: "#F59E0B", marginLeft: 2 }}>{bake.outcome.overallScore}</Text>
+                            <Text selectable={true} style={{ fontSize: 12, fontFamily: fonts.mono, color: "#F59E0B", marginLeft: 2 }}>{bake.outcome.overallScore}</Text>
                           </View>
                         )}
                       </View>
-                      <Text style={[styles.flourNote, { color: colors.mutedForeground, marginTop: 0 }]}>{formatTime(bake.savedAt)}</Text>
+                      <Text selectable={true} style={[styles.flourNote, { color: colors.mutedForeground, marginTop: 0 }]}>{formatTime(bake.savedAt)}</Text>
                     </View>
                     <Pressable onPress={() => deleteBakeEntry(bake.id)} hitSlop={8}><Feather name="trash-2" size={14} color={colors.mutedForeground} /></Pressable>
                   </View>
@@ -690,28 +696,28 @@ export function HistorySection() {
           <View style={{ flex: 1, backgroundColor: colors.background }}>
             <View style={[styles.detailHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
               <Pressable onPress={() => setSelectedFeedDetail(null)} hitSlop={12}><Ionicons name="close" size={22} color={colors.foreground} /></Pressable>
-              <View style={{ flex: 1, alignItems: "center" }}><Text style={[styles.detailTitle, { color: colors.foreground }]}>Feed Session</Text><Text style={[styles.detailSubtitle, { color: colors.mutedForeground }]}>{new Date(selectedFeedDetail.savedAt).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · {formatTime(selectedFeedDetail.savedAt)}</Text></View>
+              <View style={{ flex: 1, alignItems: "center" }}><Text selectable={true} style={[styles.detailTitle, { color: colors.foreground }]}>Feed Session</Text><Text selectable={true} style={[styles.detailSubtitle, { color: colors.mutedForeground }]}>{new Date(selectedFeedDetail.savedAt).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · {formatTime(selectedFeedDetail.savedAt)}</Text></View>
               <View style={{ flexDirection: "row", gap: 16 }}><Pressable onPress={() => shareFeedSession(selectedFeedDetail)}><Feather name="share" size={20} color={colors.primary} /></Pressable><Pressable onPress={() => printFeedSession(selectedFeedDetail)}><Feather name="printer" size={20} color={colors.primary} /></Pressable></View>
             </View>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 40 }}>
-              <Text style={styles.detailSectionLabel}>Feed</Text>
+              <Text selectable={true} style={styles.detailSectionLabel}>Feed</Text>
               <View style={[styles.entryCard, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 16 }]}>
                 <View style={styles.entryGrid}>
-                   <View style={styles.entryGridItem}><Text style={styles.entryVal}>{selectedFeedDetail.starterWeight}g</Text><Text style={styles.entryLbl}>Starter</Text></View>
-                   <View style={styles.entryGridItem}><Text style={styles.entryVal}>{selectedFeedDetail.flourWeight}g</Text><Text style={styles.entryLbl}>Flour</Text></View>
-                   <View style={styles.entryGridItem}><Text style={styles.entryVal}>{selectedFeedDetail.waterWeight}g</Text><Text style={styles.entryLbl}>Water</Text></View>
-                   {selectedFeedDetail.initialPH && <View style={styles.entryGridItem}><Text style={styles.entryVal}>{selectedFeedDetail.initialPH}</Text><Text style={styles.entryLbl}>pH</Text></View>}
+                   <View style={styles.entryGridItem}><Text selectable={true} style={styles.entryVal}>{selectedFeedDetail.starterWeight}g</Text><Text selectable={true} style={styles.entryLbl}>Starter</Text></View>
+                   <View style={styles.entryGridItem}><Text selectable={true} style={styles.entryVal}>{selectedFeedDetail.flourWeight}g</Text><Text selectable={true} style={styles.entryLbl}>Flour</Text></View>
+                   <View style={styles.entryGridItem}><Text selectable={true} style={styles.entryVal}>{selectedFeedDetail.waterWeight}g</Text><Text selectable={true} style={styles.entryLbl}>Water</Text></View>
+                   {selectedFeedDetail.initialPH && <View style={styles.entryGridItem}><Text selectable={true} style={styles.entryVal}>{selectedFeedDetail.initialPH}</Text><Text selectable={true} style={styles.entryLbl}>pH</Text></View>}
                 </View>
-                <Text style={styles.flourNote}>ratio {selectedFeedDetail.ratioStr}</Text>
+                <Text selectable={true} style={styles.flourNote}>ratio {selectedFeedDetail.ratioStr}</Text>
               </View>
               {(selectedFeedDetail.readings ?? []).length > 0 && (
                 <>
-                <Text style={styles.detailSectionLabel}>pH Readings</Text>
+                <Text selectable={true} style={styles.detailSectionLabel}>pH Readings</Text>
                 <View style={[styles.entryCard, { backgroundColor: colors.card, borderColor: colors.border, padding: 0, overflow: 'hidden', marginBottom: 16 }]}>
                   {selectedFeedDetail.readings!.map((r, i) => (
                     <View key={i} style={[styles.detailReadingRow, { borderBottomWidth: i < selectedFeedDetail.readings!.length - 1 ? StyleSheet.hairlineWidth : 0, borderBottomColor: colors.border }]}>
-                      <Text style={styles.detailReadingTime}>{Math.floor((r.loggedAt - selectedFeedDetail.savedAt) / 60000)}m</Text>
-                      <View style={{ flex: 1 }}><Text style={styles.detailReadingPH}>pH {r.pH}</Text>{r.note ? <Text style={styles.detailReadingNote}>{r.note}</Text> : null}</View>
+                      <Text selectable={true} style={styles.detailReadingTime}>{Math.floor((r.loggedAt - selectedFeedDetail.savedAt) / 60000)}m</Text>
+                      <View style={{ flex: 1 }}><Text selectable={true} style={styles.detailReadingPH}>pH {r.pH}</Text>{r.note ? <Text selectable={true} style={styles.detailReadingNote}>{r.note}</Text> : null}</View>
                       <Pressable onPress={() => deleteFeedReading(selectedFeedDetail.id, i)} hitSlop={8}><Feather name="trash-2" size={13} color={colors.mutedForeground} /></Pressable>
                     </View>
                   ))}
@@ -720,12 +726,12 @@ export function HistorySection() {
               )}
               {selectedFeedDetail.peak && (
                  <>
-                 <Text style={styles.detailSectionLabel}>Peak Results</Text>
+                 <Text selectable={true} style={styles.detailSectionLabel}>Peak Results</Text>
                  <View style={[styles.entryCard, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: 16 }]}>
                     <View style={styles.entryGrid}>
-                       <View style={styles.entryGridItem}><Text style={styles.entryVal}>{selectedFeedDetail.peak.pH}</Text><Text style={styles.entryLbl}>pH</Text></View>
-                       <View style={styles.entryGridItem}><Text style={[styles.entryVal, { color: colors.accent }]}>+{selectedFeedDetail.peak.volumeIncreasePct}%</Text><Text style={styles.entryLbl}>Rise</Text></View>
-                       <View style={styles.entryGridItem}><Text style={styles.entryVal}>{formatTimeToPeak(selectedFeedDetail.peak.timeToPeakMs)}</Text><Text style={styles.entryLbl}>Time</Text></View>
+                       <View style={styles.entryGridItem}><Text selectable={true} style={styles.entryVal}>{selectedFeedDetail.peak.pH}</Text><Text selectable={true} style={styles.entryLbl}>pH</Text></View>
+                       <View style={styles.entryGridItem}><Text selectable={true} style={[styles.entryVal, { color: colors.accent }]}>+{selectedFeedDetail.peak.volumeIncreasePct}%</Text><Text selectable={true} style={styles.entryLbl}>Rise</Text></View>
+                       <View style={styles.entryGridItem}><Text selectable={true} style={styles.entryVal}>{formatTimeToPeak(selectedFeedDetail.peak.timeToPeakMs)}</Text><Text selectable={true} style={styles.entryLbl}>Time</Text></View>
                     </View>
                  </View>
                  </>
@@ -740,14 +746,14 @@ export function HistorySection() {
           <View style={{ flex: 1, backgroundColor: colors.background }}>
             <View style={[styles.detailHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
               <Pressable onPress={() => setSelectedBakeDetail(null)} hitSlop={12}><Ionicons name="close" size={22} color={colors.foreground} /></Pressable>
-              <View style={{ flex: 1, alignItems: "center" }}><Text style={[styles.detailTitle, { color: colors.foreground }]}>{selectedBakeDetail.recipeName}</Text><Text style={[styles.detailSubtitle, { color: colors.mutedForeground }]}>{new Date(selectedBakeDetail.startedAt).toLocaleDateString()}</Text></View>
+              <View style={{ flex: 1, alignItems: "center" }}><Text selectable={true} style={[styles.detailTitle, { color: colors.foreground }]}>{selectedBakeDetail.recipeName}</Text><Text selectable={true} style={[styles.detailSubtitle, { color: colors.mutedForeground }]}>{new Date(selectedBakeDetail.startedAt).toLocaleDateString()}</Text></View>
               <View style={{ flexDirection: "row", gap: 16 }}><Pressable onPress={() => shareBakeDetail(selectedBakeDetail)}><Feather name="share" size={20} color={colors.primary} /></Pressable><Pressable onPress={() => printBakeDetail(selectedBakeDetail)}><Feather name="printer" size={20} color={colors.primary} /></Pressable></View>
             </View>
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 40 }}>
               {selectedBakeDetail.outcome?.overallScore ? (
                 <View style={[styles.scoreSummaryCard, { backgroundColor: colors.card, borderColor: "#F59E0B" + "40" }]}>
                    <View style={styles.scoreSummaryHeader}>
-                      <Text style={[styles.scoreSummaryTitle, { color: colors.foreground }]}>Diagnostic Outcome</Text>
+                      <Text selectable={true} style={[styles.scoreSummaryTitle, { color: colors.foreground }]}>Diagnostic Outcome</Text>
                       <View style={styles.scoreStars}>
                         {[1, 2, 3, 4, 5].map(s => (
                           <Ionicons key={s} name={selectedBakeDetail.outcome!.overallScore! >= s ? "star" : "star-outline"} size={16} color="#F59E0B" />
@@ -755,7 +761,7 @@ export function HistorySection() {
                       </View>
                    </View>
                    {selectedBakeDetail.outcome.defects.length > 0 && (
-                     <Text style={[styles.scoreSummaryDefects, { color: colors.mutedForeground }]}>
+                     <Text selectable={true} style={[styles.scoreSummaryDefects, { color: colors.mutedForeground }]}>
                        Defects: {selectedBakeDetail.outcome.defects.join(', ')}
                      </Text>
                    )}
@@ -769,28 +775,28 @@ export function HistorySection() {
                   style={[styles.reviewAction, { backgroundColor: colors.primary, borderColor: colors.primary }]}
                 >
                   <Feather name="activity" size={16} color={colors.primaryForeground} />
-                  <Text style={[styles.reviewActionText, { color: colors.primaryForeground }]}>SCORE & REVIEW BAKE</Text>
+                  <Text selectable={true} style={[styles.reviewActionText, { color: colors.primaryForeground }]}>SCORE & REVIEW BAKE</Text>
                 </Pressable>
               )}
 
-              {selectedBakeDetail.notes ? <View style={[styles.entryCard, { marginBottom: 16 }]}><Text style={styles.detailNoteText}>{selectedBakeDetail.notes}</Text></View> : null}
-              <Text style={styles.detailSectionLabel}>Phases</Text>
+              {selectedBakeDetail.notes ? <View style={[styles.entryCard, { marginBottom: 16 }]}><Text selectable={true} style={styles.detailNoteText}>{selectedBakeDetail.notes}</Text></View> : null}
+              <Text selectable={true} style={styles.detailSectionLabel}>Phases</Text>
               {selectedBakeDetail.phases.map((p, i) => {
                 const ingredients = p.ingredients || bakeRecipeMap[p.key]?.ingredients;
                 const instructions = p.instructions || bakeRecipeMap[p.key]?.instructions;
                 return (
                   <View key={i} style={[styles.entryCard, { marginBottom: 10, borderColor: p.completedAt ? colors.primary + "30" : colors.border }]}>
-                    <View style={styles.entryHeader}><Text style={styles.entryTime}>{p.name}</Text></View>
-                    {ingredients ? <View style={{ marginBottom: 8 }}><Text style={[styles.entryLbl, { marginBottom: 2 }]}>Ingredients</Text><Text style={styles.detailNoteText}>{ensureString(ingredients)}</Text></View> : null}
-                    {instructions ? <View style={{ marginBottom: 8 }}><Text style={[styles.entryLbl, { marginBottom: 2 }]}>Instructions</Text><Text style={styles.detailNoteText}>{ensureString(instructions)}</Text></View> : null}
+                    <View style={styles.entryHeader}><Text selectable={true} style={styles.entryTime}>{p.name}</Text></View>
+                    {ingredients ? <View style={{ marginBottom: 8 }}><Text selectable={true} style={[styles.entryLbl, { marginBottom: 2 }]}>Ingredients</Text><Text selectable={true} style={styles.detailNoteText}>{ensureString(ingredients)}</Text></View> : null}
+                    {instructions ? <View style={{ marginBottom: 8 }}><Text selectable={true} style={[styles.entryLbl, { marginBottom: 2 }]}>Instructions</Text><Text selectable={true} style={styles.detailNoteText}>{ensureString(instructions)}</Text></View> : null}
                     {(p.readings ?? []).length > 0 && (
                       <View style={[styles.peakBlock, { borderTopColor: colors.border }]}>
                         {p.readings!.map((r, ri) => (
                           <View key={ri} style={styles.detailReadingRow}>
-                             <Text style={styles.detailReadingTime}>{formatTime(r.loggedAt)}</Text>
+                             <Text selectable={true} style={styles.detailReadingTime}>{formatTime(r.loggedAt)}</Text>
                              <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
-                               {r.pH ? <Text style={styles.detailReadingPH}>pH {r.pH}</Text> : null}
-                               {r.temp ? <Text style={styles.detailReadingNote}>{r.temp}°{r.tempUnit}</Text> : null}
+                               {r.pH ? <Text selectable={true} style={styles.detailReadingPH}>pH {r.pH}</Text> : null}
+                               {r.temp ? <Text selectable={true} style={styles.detailReadingNote}>{r.temp}°{r.tempUnit}</Text> : null}
                              </View>
                              <Pressable onPress={() => deleteBakeReading(selectedBakeDetail.id, p.key, r.id, ri)} hitSlop={8}><Feather name="trash-2" size={13} color={colors.mutedForeground} /></Pressable>
                           </View>

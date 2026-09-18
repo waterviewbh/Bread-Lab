@@ -6,6 +6,27 @@ All notable changes to Bread Lab are recorded here.
 
 ## [Unreleased]
 
+## 2026-09-16 — Science Hub Supabase Migration (v2.5.0)
+
+### Added
+- **Dynamic Science Articles** — Scholarly articles in the Knowledge Hub are now fetched dynamically from Supabase, allowing for content updates without app store redeployments.
+- **Offline Resilience** — Integrated a fallback system that uses local article constants if the network is unavailable or the Supabase fetch fails.
+- **Dynamic Previews** — Implemented a summary extraction helper that generates article previews directly from the first paragraph block, keeping the database schema lean.
+- **Robust LaTeX Rendering** — Replaced the custom linear parser with a production-grade native engine (`react-native-math-view`). Supports full KaTeX syntax including exponents, square roots, and complex delimiters.
+
+### Changed
+- **Knowledge Hub UI** — Refactored the resource viewer to handle asynchronous loading states and dynamic block streams.
+- **Article Menu** — The Science Deep Dives list is now populated via React Query hooks for optimized caching and performance.
+
+## 2026-09-12 — Diagnostic Journal Notes Integration (v2.4.1)
+
+### Fixed
+- **Missing Bench Notes** — Resolved an issue where live notepad journal entries recorded during active bakes failed to pull into the Diagnostic review panel due to isolated historical lookups.
+- **Vulnerability Crashes** — Implemented comprehensive bounds checking, safe indexing fallback looks, and safe arrays lookup guards to completely isolate the hub from missing or deleted bake pointer crashes.
+
+### Changed
+- **Blended Session Lifecycle** — Logging an active session directly from the diagnostic panel rating matrix now smoothly archives the session text body, appends evaluation logs into history, and evicts it cleanly from live tracking pools.
+
 ---
 
 ## 2026-08-29 — Diagnostic Stability & Responsiveness (v2.2.1)

@@ -85,9 +85,9 @@ export function RecipeDeck({ master, iterations, onSelect }: Props) {
           <View style={s.headerRow}>
             <View>
               <View style={[s.badge, { backgroundColor: colors.primary + '15' }]}>
-                <Text style={[s.badgeText, { color: colors.primary }]}>MASTER FORMULA · UNTOUCHED</Text>
+                <Text selectable={true} style={[s.badgeText, { color: colors.primary }]}>MASTER FORMULA · UNTOUCHED</Text>
               </View>
-              <Text style={[s.title, { color: colors.foreground }]}>{master.name}</Text>
+              <Text selectable={true} style={[s.title, { color: colors.foreground }]}>{master.name}</Text>
             </View>
             <Feather name="chevron-right" size={20} color={colors.mutedForeground} />
           </View>
@@ -99,7 +99,7 @@ export function RecipeDeck({ master, iterations, onSelect }: Props) {
           </View>
 
           <View style={s.footer}>
-            <Text style={[s.footerText, { color: colors.mutedForeground }]}>
+            <Text selectable={true} style={[s.footerText, { color: colors.mutedForeground }]}>
               <Feather name="clock" size={10} /> Created {formatDate(master.createdAt)}
             </Text>
           </View>
@@ -116,9 +116,11 @@ export function RecipeDeck({ master, iterations, onSelect }: Props) {
           const isActive = recipe.id === activeRecipeId;
           const isMaster = recipe.id === master.id;
           const isLatest = !isMaster && recipe.id === iterations[0].id;
+          const isDraft = recipe.isUneditedIteration;
 
           let label = isMaster ? "Master" : (recipe.versionLabel || `v${iterations.length - (iterations.findIndex(it => it.id === recipe.id))}`);
-          if (isLatest) label += " (Latest)";
+          if (isLatest && !isDraft) label += " (Latest)";
+          if (isDraft) label += " (Draft)";
 
           return (
             <Pressable
@@ -133,7 +135,7 @@ export function RecipeDeck({ master, iterations, onSelect }: Props) {
               {isMaster ? (
                 <Feather name="shield" size={12} color={isActive ? colors.primary : "#82736b"} />
               ) : (
-                <Feather name="clock" size={12} color={isActive ? colors.accent : "#82736b"} />
+                <Feather name={isDraft ? "circle" : "clock"} size={12} color={isActive ? (isDraft ? "#E67E22" : colors.accent) : "#82736b"} fill={isDraft ? "#E67E22" : "transparent"} />
               )}
               <Text
                 style={[
@@ -163,12 +165,39 @@ export function RecipeDeck({ master, iterations, onSelect }: Props) {
           }
         ]}
       >
+        {activeRecipe.isUneditedIteration && (
+           <View style={[s.pendingBanner, { backgroundColor: '#FFF5F0', borderColor: '#FAD7C1' }]}>
+             <View style={s.pendingBannerHeader}>
+               <Feather name="edit-3" size={16} color="#E67E22" style={{ marginTop: 2 }} />
+               <View style={{ flex: 1 }}>
+                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                   <Text selectable={true} style={[s.pendingTitle, { color: '#844B1D' }]}>BENCH FORMULATION PENDING</Text>
+                   <View style={[s.draftBadge, { backgroundColor: '#FAD7C1' }]}>
+                     <Text selectable={true} style={[s.draftBadgeText, { color: '#844B1D' }]}>Unadjusted Duplicate</Text>
+                   </View>
+                 </View>
+                 <Text selectable={true} style={[s.pendingBody, { color: '#844B1D' }]}>
+                   Cloned from <Text selectable={true} style={{ fontFamily: fonts.sansBold }}>{activeRecipe.clonedFromBakeName || 'previous bake'}</Text> with diagnostic notes attached. Formula values still match parent until you record bench changes.
+                 </Text>
+                 <Pressable
+                  onPress={handlePress}
+                  style={({ pressed }) => [s.tuneBtn, { opacity: pressed ? 0.8 : 1 }]}
+                 >
+                   <Feather name="edit" size={12} color="#FFFFFF" />
+                   <Text style={s.tuneBtnText}>Tune Timings & Hydration</Text>
+                   <Text style={s.autoMarksText}>Auto-marks tuned</Text>
+                 </Pressable>
+               </View>
+             </View>
+           </View>
+        )}
+
         <View style={s.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={[s.lineageChip, { color: colors.mutedForeground }]}>
-              {isMasterActive ? 'BASELINE V1.6' : 'ITERATION COPY'} · {iterations.length} {iterations.length === 1 ? 'Iteration' : 'Iterations'}
+            <Text selectable={true} style={[s.lineageChip, { color: colors.mutedForeground }]}>
+              {activeRecipe.isUneditedIteration ? 'UNADJUSTED DUPLICATE' : (isMasterActive ? 'BASELINE V1.6' : 'ITERATION ACTIVE')} · {iterations.length} {iterations.length === 1 ? 'Iteration' : 'Iterations'}
             </Text>
-            <Text style={[s.title, { color: colors.foreground }]} numberOfLines={2}>
+            <Text selectable={true} style={[s.title, { color: colors.foreground }]} numberOfLines={2}>
               {cleanTitle(activeRecipe.name)}
             </Text>
           </View>
@@ -183,10 +212,20 @@ export function RecipeDeck({ master, iterations, onSelect }: Props) {
 
         {!isMasterActive && deltas.length > 0 && (
           <View style={[s.deltaBox, { backgroundColor: colors.accent + '08' }]}>
-            <Text style={[s.deltaText, { color: colors.foreground }]}>
-              <Text style={{ fontFamily: fonts.sansSemiBold, color: colors.accent }}>Delta vs Master: </Text>
-              {deltas.map(d => `${d.direction === 'increase' ? '+' : ''}${d.value} ${d.label.toLowerCase()}`).join('; ')}.
+            <Text selectable={true} style={[s.deltaText, { color: colors.foreground }]}>
+              <Text selectable={true} style={{ fontFamily: fonts.sansSemiBold, color: colors.accent }}>Delta vs Master: </Text>
+              {deltas.map(d => `${d.value} ${d.label.toLowerCase()}`).join('; ')}.
             </Text>
+          </View>
+        )}
+
+        {activeRecipe.diagnosticHypothesis && (
+          <View style={[s.obsBox, { borderColor: colors.border }]}>
+             <View style={s.obsHeader}>
+               <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.mutedForeground} />
+               <Text selectable={true} style={[s.obsHeaderText, { color: colors.mutedForeground }]}>ATTACHED DIAGNOSTIC OBSERVATION</Text>
+             </View>
+             <Text selectable={true} style={[s.obsText, { color: colors.foreground }]}>"{activeRecipe.diagnosticHypothesis}"</Text>
           </View>
         )}
 
@@ -197,7 +236,7 @@ export function RecipeDeck({ master, iterations, onSelect }: Props) {
         )}
 
         <View style={s.footer}>
-          <Text style={[s.footerText, { color: colors.mutedForeground }]}>
+          <Text selectable={true} style={[s.footerText, { color: colors.mutedForeground }]}>
              Baked {formatDate(activeRecipe.updatedAt || activeRecipe.createdAt)}
           </Text>
           <Text style={[s.footerLink, { color: colors.accent }]}>
@@ -212,8 +251,8 @@ export function RecipeDeck({ master, iterations, onSelect }: Props) {
 function Metric({ label, value, color }: { label: string, value: string, color: string }) {
   return (
     <View style={s.metricItem}>
-      <Text style={[s.metricValue, { color }]}>{value}</Text>
-      <Text style={[s.metricLabel, { color }]}>{label.toUpperCase()}</Text>
+      <Text selectable={true} style={[s.metricValue, { color }]}>{value}</Text>
+      <Text selectable={true} style={[s.metricLabel, { color }]}>{label.toUpperCase()}</Text>
     </View>
   );
 }
@@ -320,6 +359,83 @@ const s = StyleSheet.create({
     fontFamily: fonts.sans,
     fontSize: 12,
     lineHeight: 18,
+  },
+  pendingBanner: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 16,
+  },
+  pendingBannerHeader: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  pendingTitle: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  draftBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  draftBadgeText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 9,
+  },
+  pendingBody: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  tuneBtn: {
+    backgroundColor: '#4A3728', // Darker earthy tone for the button
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+  },
+  tuneBtnText: {
+    color: '#FFFFFF',
+    fontFamily: fonts.sansBold,
+    fontSize: 12,
+  },
+  autoMarksText: {
+    color: '#844B1D',
+    fontFamily: fonts.sans,
+    fontSize: 10,
+    fontStyle: 'italic',
+    marginLeft: 4,
+  },
+  obsBox: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: radius.md,
+    padding: 12,
+    marginBottom: 16,
+  },
+  obsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  obsHeaderText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  obsText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    lineHeight: 19,
+    fontStyle: 'italic',
   },
   archiveLink: {
     fontFamily: fonts.sansSemiBold,

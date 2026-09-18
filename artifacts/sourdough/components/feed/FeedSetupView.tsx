@@ -239,14 +239,14 @@ const pickPhoto = (onPhoto: (uri: string) => void) => {
           showsVerticalScrollIndicator={false}
         >
           <Animated.View entering={FadeIn.duration(400)} style={styles.appHeader}>
-            <Text style={[styles.appTitle, { color: colors.foreground }]}>Feed Tracker</Text>
-            <Text style={[styles.appSubtitle, { color: colors.mutedForeground }]}>Refreshes and Levains</Text>
+            <Text selectable={true} style={[styles.appTitle, { color: colors.foreground }]}>Feed Tracker</Text>
+            <Text selectable={true} style={[styles.appSubtitle, { color: colors.mutedForeground }]}>Refreshes and Levains</Text>
           </Animated.View>
 
           {starterTutorialMode && (
             <Animated.View entering={FadeInDown.duration(400)} style={[styles.tutorialBanner, { backgroundColor: colors.accent + "15" }]}>
               <Feather name="info" size={16} color={colors.accent} />
-              <Text style={[styles.tutorialBannerText, { color: colors.accent }]}>{getInstruction()}</Text>
+              <Text selectable={true} style={[styles.tutorialBannerText, { color: colors.accent }]}>{getInstruction()}</Text>
             </Animated.View>
           )}
 
@@ -328,11 +328,11 @@ const pickPhoto = (onPhoto: (uri: string) => void) => {
                   <Animated.View entering={FadeIn.duration(250)} style={styles.calcRow}>
                     <View style={[styles.calcChip, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "28" }]}>
                       <Feather name="sliders" size={13} color={colors.primary} />
-                      <Text style={[styles.calcChipText, { color: colors.primary }]}>ratio {derivedRatioStr}</Text>
+                      <Text selectable={true} style={[styles.calcChipText, { color: colors.primary }]}>ratio {derivedRatioStr}</Text>
                     </View>
                   </Animated.View>
                 ) : (
-                  <Text style={[styles.calcHint, { color: colors.mutedForeground }]}>Enter all three weights to see ratio</Text>
+                  <Text selectable={true} style={[styles.calcHint, { color: colors.mutedForeground }]}>Enter all three weights to see ratio</Text>
                 )}
               </CopilotView>
             </TourStep>
@@ -393,7 +393,7 @@ const pickPhoto = (onPhoto: (uri: string) => void) => {
                     </View>
                   </View>
                   {isDay1 && (
-                    <Text style={[styles.onboardingTip, { color: isVolumeInaccurate ? colors.accent : colors.primary }]}>
+                    <Text selectable={true} style={[styles.onboardingTip, { color: isVolumeInaccurate ? colors.accent : colors.primary }]}>
                       {isVolumeInaccurate
                         ? "That volume seems inaccurate for your ingredient mass. Are you using a standard narrow jar? Standard jars ensure accurate growth tracking."
                         : `Based on your ingredients, your starting volume should be around ${predictedVolume}. Look at your jar's markings and enter the exact number you see to lock in your baseline!`}
