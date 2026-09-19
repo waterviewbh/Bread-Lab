@@ -70,34 +70,34 @@ export default function RootLayout() {
     }
   }, [appReady]);
 
-  if (!appReady) return null;
-
   return (
     <ErrorBoundary
       onError={(error, stack) => console.error("[RootLayout ErrorBoundary]", error.message, stack)}
     >
       <SafeAreaProvider>
         <PreferencesProvider onHydrated={() => setIsHydrated(true)}>
-          <FontSizeProvider>
-            <QueryClientProvider client={queryClient}>
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <KeyboardProviderCompat>
-                  <SyncProvider>
-                    <MigrationToastProvider>
-                      <Stack screenOptions={{ headerShown: false }}>
-                        <Stack.Screen name="index" options={{ headerShown: false }} />
-                        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                        <Stack.Screen name="tools/bfmodule" options={{
-                          title: 'Bulk Ferment Estimator',
-                          headerShown: true
-                        }} />
-                      </Stack>
-                    </MigrationToastProvider>
-                  </SyncProvider>
-                </KeyboardProviderCompat>
-              </GestureHandlerRootView>
-            </QueryClientProvider>
-          </FontSizeProvider>
+          {appReady ? (
+            <FontSizeProvider>
+              <QueryClientProvider client={queryClient}>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <KeyboardProviderCompat>
+                    <SyncProvider>
+                      <MigrationToastProvider>
+                        <Stack screenOptions={{ headerShown: false }}>
+                          <Stack.Screen name="index" options={{ headerShown: false }} />
+                          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                          <Stack.Screen name="tools/bfmodule" options={{
+                            title: 'Bulk Ferment Estimator',
+                            headerShown: true
+                          }} />
+                        </Stack>
+                      </MigrationToastProvider>
+                    </SyncProvider>
+                  </KeyboardProviderCompat>
+                </GestureHandlerRootView>
+              </QueryClientProvider>
+            </FontSizeProvider>
+          ) : null}
         </PreferencesProvider>
       </SafeAreaProvider>
     </ErrorBoundary>
