@@ -6,6 +6,20 @@ All notable changes to Bread Lab are recorded here.
 
 ## [Unreleased]
 
+## 2026-09-18 — Code Audit & Stability Improvements (v2.5.1)
+
+### Fixed
+- **Startup White Screen** — Resolved a hydration deadlock in `RootLayout` where initialization providers were nested inside their own ready-check, preventing the app from booting.
+- **AsyncStorage Race Conditions** — Implemented a `storageMutex` to prevent concurrent write corruption during rapid logging events.
+- **Corrupted Data Protection** — Introduced `safeParse` with defensive merging and validation to prevent application crashes when encountering legacy or malformed storage schemas.
+
+### Added
+- **Migration Pipeline** — Established a versioned data transformation architecture to safely evolve local storage schemas (e.g., Schema V1 to V2).
+- **Hydration Gate** — Reinforced the startup sequence to ensure visual consistency and state integrity before the splash screen is dismissed.
+
+### Changed
+- **Provider Architecture** — Hoisted core infrastructure providers (`Preferences`, `SafeArea`) to the root to ensure consistent initialization signaling.
+
 ## 2026-09-16 — Science Hub Supabase Migration (v2.5.0)
 
 ### Added

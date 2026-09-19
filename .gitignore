@@ -62,3 +62,7 @@ Thumbs.db
 # Wrongs
 /androidwrong/
 /.expowrong/
+
+# Generated native folders
+**/android/
+**/ios/
