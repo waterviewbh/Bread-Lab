@@ -3,7 +3,8 @@
 // THE SINGLE SOURCE OF TRUTH IS: artifacts/sourdough/version.json
 // ============================================================================
 
-const versionData = require('./version.json');
+const path = require('path');
+const versionData = require(path.resolve(__dirname, './version.json'));
 
 module.exports = {
   name: "Bread Lab",
