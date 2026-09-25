@@ -70,6 +70,8 @@ export interface BulkFermentState {
   maxVolume_ml?: number;
   /* Target rise percentage (0.0–1.0) resolved from the temp-lookup table */
   targetRiseFraction?: number;
+  /* Latched target rise fraction at phase start */
+  latchedTargetRiseFraction?: number;
   /* Absolute target volume in ml: startVolume_ml * (1 + targetRiseFraction) */
   targetVolume_ml?: number;
   /* Unix ms timestamp when the PD engine's projection is set to hit zero */
@@ -82,6 +84,18 @@ export interface BulkFermentState {
   activeInoculationPercent?: 10 | 20 | 30;
   /* Timestamp when the baker confirmed "Complete" during/after overtime */
   completedAt?: number | null;
+  /* Engine confidence quality score (0.0 to 1.0) */
+  confidenceScore?: number;
+  /* Diagnostic status code (e.g., STABLE_TREND, INSUFFICIENT_DATA, POST_INTERVENTION_DAMPED) */
+  diagnosticCode?: string;
+  /* Cumulative expected thermal exposure progress (0.0 to 1.0) */
+  thermalExposureDegreeHours?: number;
+  /* Observed volume rise velocity in ml/hr */
+  observedVolumeRateMlHr?: number;
+  /* P/D rate correction multiplier applied to thermal baseline */
+  correctedRateMultiplier?: number;
+  /* Optional P-memory horizon window in ms (null = full-history P) */
+  pMemoryHorizonMs?: number | null;
 }
 
 // ─── Recipe phase (builder config, persisted shape) ───────────────────────────
@@ -120,8 +134,26 @@ export interface BakePhase extends RecipePhaseConfig {
   /* Legacy display string (non-bulk volume phases) */
   startVolume?: string;
   foldCount?: number;
+  /** Elapsed minutes at each fold event; parallel to foldCount (index 0 = 1st fold) */
+  foldTimestamps?: (number | null)[];
   /* Populated only when key === "bulk_fermenting" */
   bulkFermentState?: BulkFermentState;
+}
+
+// ─── Bulk Estimator State (Per-Bake Input Dashboard) ──────────────────────────
+export interface BulkEstimatorState {
+  /* Manual weight overrides (defaults pulled from recipe parse) */
+  flourG?: string;
+  waterG?: string;
+  starterG?: string;
+  yeastG?: string;
+  saltG?: string;
+  /* Auto-detected yeast metadata */
+  yeastType?: 'instant' | 'dry' | 'wild';
+  /* The baseline temp used for the initial "Ready At" prediction (degrees) */
+  targetTemp?: string;
+  /* Baseline container volume in ml */
+  startVolume_ml?: string;
 }
 
 // ─── Bake Lifecycle & Diagnostics ──────────────────────────────────────────
@@ -182,6 +214,8 @@ export interface ActiveBake {
   notes?: string;
   yieldValue?: string;
   outcome?: BakeOutcome;
+  /* Integrated estimator inputs, unique to this session */
+  estimatorState?: BulkEstimatorState;
 }
 
 export interface BakeHistoryItem extends Omit<ActiveBake, 'status'> {

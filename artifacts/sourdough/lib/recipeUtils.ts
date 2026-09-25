@@ -1,5 +1,5 @@
 import { CheckableLine } from '../types/recipe';
-import { RecipePhaseConfig, SavedRecipe, PHASE_DEFINITIONS } from './recipeTypes';
+import { RecipePhaseConfig, SavedRecipe, PHASE_CATEGORIES } from './recipeTypes';
 
 /**
  * resolveRootMasterId — Traverses the parentRecipeId chain to find the root formula.
@@ -105,6 +105,43 @@ export function formatTime(ts: number): string {
 /** "Jan 5" — used for recipe creation date display */
 export function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/**
+ * detectYeastType — Specifically looks at the incorporating or fermentolysing phases
+ * to determine if the recipe uses 'instant', 'dry', or 'wild' yeast.
+ */
+export function detectYeastType(phases: { key: string; ingredients: any }[]): 'instant' | 'dry' | 'wild' {
+  const targetPhases = phases.filter(p => p.key === 'incorporating' || p.key === 'fermentolysing');
+
+  // Priority: if no target phases, scan all just in case
+  const scanPhases = targetPhases.length > 0 ? targetPhases : phases;
+
+  let hasStarter = false;
+  let commercialType: 'instant' | 'dry' | null = null;
+
+  scanPhases.forEach(p => {
+    const lines: string[] = Array.isArray(p.ingredients)
+      ? p.ingredients.map((i: any) => i.text.toLowerCase())
+      : typeof p.ingredients === "string"
+      ? p.ingredients.toLowerCase().split("\n")
+      : [];
+
+    lines.forEach(line => {
+      if (line.includes("starter") || line.includes("levain") || line.includes("leaven")) {
+        hasStarter = true;
+      }
+      if (line.includes("yeast")) {
+        if (line.includes("instant") || line.includes("saf")) commercialType = "instant";
+        else if (line.includes("dry") || line.includes("active")) commercialType = "dry";
+        else if (!commercialType) commercialType = "instant"; // Default to instant if "yeast" found
+      }
+    });
+  });
+
+  if (commercialType) return commercialType;
+  if (hasStarter) return 'wild';
+  return 'wild'; // Default fallback
 }
 
 /**
@@ -217,10 +254,18 @@ export function calculateRecipeMetrics(phases: any[]) {
 }
 
 /**
- * sortRecipePhases — Sorts recipe phases according to the canonical order in PHASE_DEFINITIONS.
+ * sortRecipePhases — Sorts recipe phases according to the canonical order in PHASE_CATEGORIES / PHASE_DEFINITIONS.
  */
 export function sortRecipePhases(phases: RecipePhaseConfig[]): RecipePhaseConfig[] {
-  const defOrder = new Map(PHASE_DEFINITIONS.map((d, i) => [d.key, i]));
+  const defOrder = new Map<string, number>();
+  let idx = 0;
+  for (const cat of PHASE_CATEGORIES) {
+    if (!defOrder.has(cat.key)) defOrder.set(cat.key, idx);
+    for (const phase of cat.phases) {
+      if (!defOrder.has(phase.key)) defOrder.set(phase.key, idx);
+      idx++;
+    }
+  }
   return [...phases].sort((a, b) => (defOrder.get(a.key) ?? 999) - (defOrder.get(b.key) ?? 999));
 }
 

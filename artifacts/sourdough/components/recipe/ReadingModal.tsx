@@ -253,15 +253,17 @@ return (
       onRequestClose={handleClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
         style={{ flex: 1, backgroundColor: colors.background }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         <ScrollView
           contentContainerStyle={[
             s.modalContent,
-            { paddingTop: insets.top + webTop + 24, paddingBottom: insets.bottom + 80 },
+            { paddingTop: insets.top + webTop + 24, paddingBottom: 40 },
           ]}
           keyboardShouldPersistTaps="handled"
+          style={{ flex: 1 }}
         >
           {/* ── Header: close / title / save ──────────────────────────────── */}
           <View style={s.modalHeader}>
@@ -384,18 +386,6 @@ return (
                   thumbColor={colors.card}
                 />
               </View>
-              {/* Primary save CTA — matches Feed tab's "Save Reading" button style */}
-              <Pressable
-                onPress={handleSave}
-                style={({ pressed }) => [
-                  s.saveReadingBtn,
-                  { backgroundColor: colors.primary, borderRadius: 10, opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <Text style={[s.saveReadingBtnText, { color: colors.primaryForeground }]}>
-                  Save Reading
-                </Text>
-              </Pressable>
             </>
           ) : (
 
@@ -482,6 +472,21 @@ return (
             </>
           )}
         </ScrollView>
+
+        {/* Sticky Footer for Save Action */}
+        <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 24), borderTopColor: colors.border, backgroundColor: colors.background }]}>
+          <Pressable
+            onPress={handleSave}
+            style={({ pressed }) => [
+              s.saveReadingBtn,
+              { backgroundColor: colors.primary, borderRadius: 10, opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Text style={[s.saveReadingBtnText, { color: colors.primaryForeground }]}>
+              Save Reading
+            </Text>
+          </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -578,11 +583,14 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     height: 52,
-    marginTop: 24,
-    marginBottom: 0,
   },
   saveReadingBtnText: {
     fontFamily: fonts.sansSemiBold,          // HankenGrotesk_600SemiBold — primary action
     fontSize: 16,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
 });

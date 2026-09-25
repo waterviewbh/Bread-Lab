@@ -1,6 +1,7 @@
 // artifacts/sourdough/app/tools/bfmodule.tsx
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -30,8 +31,9 @@ const DashboardInput = ({ label, value, onChange, placeholder = "—", colors }:
 export default function BulkTool() {
   const colors = useColors();
 
+  const [isLoaded, setIsLoaded] = useState(false);
+
   // --- Formula Inputs ---
-  // Defaulting to empty strings per user request
   const [flour, setFlour] = useState('');
   const [starter, setStarter] = useState('');
   const [water, setWater] = useState('');
@@ -42,6 +44,28 @@ export default function BulkTool() {
   // --- Timeline & Volume ---
   const [startVolume, setStartVolume] = useState('');
   const [startTime, setStartTime] = useState(new Date());
+
+  useEffect(() => {
+    AsyncStorage.getItem('global_bulk_estimator_v1').then(raw => {
+      if (raw) {
+        const data = JSON.parse(raw);
+        setFlour(data.flour || '');
+        setStarter(data.starter || '');
+        setWater(data.water || '');
+        setYeast(data.yeast || '');
+        setSalt(data.salt || '');
+        setTemp(data.temp || '');
+        setStartVolume(data.startVolume || '');
+      }
+      setIsLoaded(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const data = { flour, starter, water, yeast, salt, temp, startVolume };
+    AsyncStorage.setItem('global_bulk_estimator_v1', JSON.stringify(data));
+  }, [flour, starter, water, yeast, salt, temp, startVolume, isLoaded]);
 
   // Keep a "Now" ticker for the Ready At calculation
   const [now, setNow] = useState(new Date());

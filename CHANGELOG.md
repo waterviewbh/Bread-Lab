@@ -6,6 +6,22 @@ All notable changes to Bread Lab are recorded here.
 
 ## [Unreleased]
 
+### Added
+- **8-Layer Bulk Fermentation Estimator** — Upgraded `bulkFermentEngine` to an 8-layer state estimator architecture featuring Causal Thermal Exposure integration, P/D rate correction ($S_{PD}$), latched target rise fraction, and confidence scoring (High/Med/Low).
+- **Estimator Settings & Weight Overrides** — Added `BulkEstimatorSettingsModal` and inline dough temperature inputs to the Bulk Dashboard, allowing bakers to tweak ingredient weights and target temperature for real-time projection recalculation without altering recipe formulas.
+- **Fold Timing Chits** — Added elapsed minute badges (`+Xm`) below completed fold indicators in `PhaseCard` to track fold intervals relative to phase start.
+- **Validation Harness & Benchmark Evaluator** — Implemented a pure TypeScript validation harness (`validationHarness.ts`) for offline benchmark testing of bulk fermentation estimators against historical bake logs with strict causal chronology.
+- **Bulk Tool Persistence** — Integrated `AsyncStorage` state persistence in `bfmodule.tsx` to remember formula inputs across sessions.
+
+### Changed
+- **Peak Window Advisor Calibration** — Recalibrated the starter model intercept (7.65) to standardize a 1:1:1 refresh at 74°F to 4.0 hours, and updated hydration acceleration scaling in `aboutContents.ts`.
+- **Active Bake Auto-Scroll & Navigation** — Active bake runner now auto-scrolls smoothly to the next pending phase upon completing a phase.
+- **Reading Modal Experience** — Refactored `ReadingModal` with sticky footer action buttons and improved keyboard-avoiding behavior on mobile platforms.
+
+### Fixed
+- **Storage Self-Healing** — Added defensive filtering in `recipeStorage` to automatically clean up duplicate or zombie active bakes that were already archived into history.
+- **Model Training Guards** — Enhanced input validation in `predictions.ts` to prevent invalid or zero-mass feed sessions from polluting prediction models.
+
 ## 2026-09-18 — Code Audit & Stability Improvements (v2.5.1)
 
 ### Fixed

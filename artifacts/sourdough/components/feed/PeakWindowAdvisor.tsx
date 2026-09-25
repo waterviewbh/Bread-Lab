@@ -37,9 +37,9 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
   const { tempUnit } = usePreferences(); // Get the global unit
 
   // --- State ---
-  const [totalMass, setTotalMass] = useState("");
   const unitDefault = tempUnit === "F" ? "74" : "23";
-  const [temp, setTemp] = useState("");
+  const [totalMass, setTotalMass] = useState("100");
+  const [temp, setTemp] = useState(defaultTemp || unitDefault);
   const [targetHours, setTargetHours] = useState(6); // Default 6 hour plan
 
    // ── Levain hydration slider state ──────────────────────────────────────────
@@ -99,10 +99,13 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
 
   // Use targetHours here as it's the direct input to the nudge calculation
   const nudges = useMemo(() => {
-    const mass = parseFloat(totalMass) || 200;
-    const t = parseFloat(temp) || 74;
+    const mass = parseFloat(totalMass) || 100;
+    let t = parseFloat(temp) || parseFloat(unitDefault);
+    if (tempUnit === "C") {
+      t = (t * 9/5) + 32;
+    }
     return getPeakWindowNudges(targetHours, mass, t, levainHydration, model);
-  }, [targetHours, totalMass, temp, model]);
+  }, [targetHours, totalMass, temp, model, tempUnit, unitDefault]);
 
   const isInSleepWindow = useMemo(() => isInDeadZone(currentPlan.peakTime), [currentPlan.peakTime]);
 
@@ -281,12 +284,12 @@ export default function PeakWindowAdvisor({ history, onApplyRecipe, defaultTemp 
                   { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 }
                 ]}
               >
-                <View style={s.nudgeInfo}>
+                <View style={styles.nudgeInfo}>
                   <Text selectable={true} style={[styles.nudgeType, { color: colors.foreground }]}>
                     {nudge.type === "early" ? "Early Bird" : "Morning Fresh"}
                   </Text>
                   <Text selectable={true} style={[styles.nudgeDesc, { color: colors.mutedForeground }]}>
-                    {'Peak by {formatTime(nudge.peakTime)} ({nudge.ratioStr})'}
+                    {`Peak by ${formatTime(nudge.peakTime)} (${nudge.ratioStr})`}
                   </Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={colors.mutedForeground} />

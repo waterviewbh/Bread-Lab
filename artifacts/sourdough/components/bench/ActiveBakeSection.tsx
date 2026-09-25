@@ -1,6 +1,7 @@
 // artifacts/sourdough/components/bench/ActiveBakeSection.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, View, StyleSheet, ActivityIndicator } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, View, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -32,8 +33,9 @@ import {
   archiveBakeWithDiagnostics,
   writeBakesLocal,
 } from "@/lib/recipeStorage";
-import { computeBulkFermentState } from "@/lib/bulkFermentEngine";
+import { computeBulkFermentState, estimateInoculationPercent } from "@/lib/bulkFermentEngine";
 import { shareHtmlAsPdf, buildBakeHtml, buildPhaseHtml, printHtml } from "@/lib/recipeHtml";
+import { parseIngredientsForMetrics, detectYeastType } from "@/lib/recipeUtils";
 
 export function ActiveBakeSection() {
   const colors = useColors();
@@ -48,6 +50,7 @@ export function ActiveBakeSection() {
   const [bakes, setBakes] = useState<ActiveBake[]>([]);
   const [activeBakeId, setActiveBakeId] = useState<string | null>(null);
   const [phaseStartVolumes, setPhaseStartVolumes] = useState<Record<string, string>>({});
+  const [phaseTargetTemps, setPhaseTargetTemps] = useState<Record<string, string>>({});
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Expansion States
@@ -68,11 +71,27 @@ export function ActiveBakeSection() {
   const [overlayDraft, setOverlayDraft] = useState("");
   const [showNotesOverlay, setShowNotesOverlay] = useState(false);
 
+  // Refs for Auto-scroll
+  const runnerScrollRef = useRef<ScrollView>(null);
+  const phaseCardYOffsets = useRef<Record<string, number>>({});
+  const phasesContainerY = useRef(0);
+
   // --- Derived Values ---
   const bake = useMemo(() => bakes.find(b => b.id === activeBakeId) || null, [bakes, activeBakeId]);
   const activePhase = bake?.phases.find((p) => p.startedAt && !p.completedAt);
   const completedCount = bake?.phases.filter((p) => p.completedAt).length ?? 0;
   const allDone = !!bake && completedCount === bake.phases.length && bake.phases.length > 0;
+
+  const INOCULATION_ANCHOR_PRIORITY = ["fermentolysing", "incorporating", "building_levain"] as const;
+  const inoculationAnchorKey: string | null = useMemo(() => {
+    if (!bake) return null;
+    const bakePhaseKeys = new Set(bake.phases.filter(p => !!p).map((p) => p.key));
+    return INOCULATION_ANCHOR_PRIORITY.find((k) => bakePhaseKeys.has(k)) ?? null;
+  }, [bake]);
+
+  const inoculationPercent: 10 | 20 | 30 | null = useMemo(() => {
+    return bake ? estimateInoculationPercent(bake.phases) : null;
+  }, [bake]);
 
   // Active Timers
   const elapsed1 = useActiveBakeTimer(bakes[0] || null);
@@ -90,7 +109,7 @@ export function ActiveBakeSection() {
   }, [bake]);
 
   // --- Data Loading ---
-  const load = async () => {
+  const load = useCallback(async () => {
     console.log("[ActiveBakeSection] Loading data...");
     try {
       const data = await loadData();
@@ -121,14 +140,36 @@ export function ActiveBakeSection() {
     } finally {
       setIsLoaded(true);
     }
-  };
+  }, [activeBakeId]);
 
-  useEffect(() => { load(); }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  useEffect(() => {
+    if (bake) {
+      const vols: Record<string, string> = {};
+      const temps: Record<string, string> = {};
+      bake.phases.forEach((p) => {
+        vols[p.key] = p.startVolume ?? bake.estimatorState?.startVolume_ml ?? "";
+        if (p.key === 'bulk_fermenting') {
+          temps[p.key] = bake.estimatorState?.targetTemp ?? "";
+        }
+      });
+      setPhaseStartVolumes(vols);
+      setPhaseTargetTemps(temps);
+      setBakeNotes(bake.notes ?? "");
+    }
+  }, [bake]);
 
   // --- Handlers ---
   const handleStartBakeWithRecipe = async (recipe: SavedRecipe) => {
     const phases: BakePhase[] = recipe.phases
       .map((p) => ({ ...p, startedAt: null, completedAt: null, readings: [] }));
+
+    const { flour, water, starter, yeast, salt } = parseIngredientsForMetrics(phases);
 
     const newBake: ActiveBake = {
       id: Date.now().toString(),
@@ -138,6 +179,16 @@ export function ActiveBakeSection() {
       status: 'active',
       phases,
       yieldValue: recipe.yieldValue || "1",
+      estimatorState: {
+        flourG: flour.toString(),
+        waterG: water.toString(),
+        starterG: starter.toString(),
+        yeastG: yeast.toString(),
+        saltG: salt.toString(),
+        yeastType: detectYeastType(phases),
+        targetTemp: "76",
+        startVolume_ml: "",
+      }
     };
 
     const nextBakes = [...bakes];
@@ -171,7 +222,9 @@ export function ActiveBakeSection() {
           p.bulkFermentState ?? {},
           bake.phases,
           p.startedAt,
-          p.startVolume
+          p.startVolume,
+          bake.estimatorState?.targetTemp,
+          bake.estimatorState
         );
         return { ...p, readings: updatedReadings, bulkFermentState: updatedState };
       }
@@ -221,16 +274,35 @@ export function ActiveBakeSection() {
     const phases = bake.phases.map((p) =>
       p.key === key ? { ...p, completedAt: Date.now() } : p
     );
-    const updatedBake = { ...bake, phases };
+
+    const isLastPhase = phases.every(p => !!p.completedAt);
+    const updatedBake: ActiveBake = {
+        ...bake,
+        phases,
+        status: isLastPhase ? 'completed' : 'active',
+        completedAt: isLastPhase ? Date.now() : undefined
+    };
+
+    setRecentlyCompletedKey(key);
+    setTimeout(() => setRecentlyCompletedKey(null), 800);
+
     setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     upsertBakeRemote(updatedBake).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const currentIndex = bake.phases.findIndex(p => p.key === key);
-    const nextPhase = bake.phases.slice(currentIndex + 1).find(p => !p.startedAt);
+    const nextPhase = phases.find(p => !p.completedAt);
     if (nextPhase) {
       setExpandedPending(prev => new Set(prev).add(nextPhase.key));
+
+      // Auto-scroll logic
+      setTimeout(() => {
+        const cardY = phaseCardYOffsets.current[nextPhase.key];
+        if (cardY !== undefined && runnerScrollRef.current) {
+          const scrollY = phasesContainerY.current + cardY - 16;
+          runnerScrollRef.current.scrollTo({ y: Math.max(0, scrollY), animated: true });
+        }
+      }, 320);
     }
   };
 
@@ -264,13 +336,79 @@ export function ActiveBakeSection() {
 
   const handleStartVolumeCommit = async (key: string, value: string) => {
     if (!bake) return;
-    const phases = bake.phases.map(p =>
-      p.key === key ? { ...p, startVolume: value } : p
-    );
-    const updatedBake = { ...bake, phases };
+    const phases = bake.phases.map(p => {
+      if (p.key !== key) return p;
+      let nextP = { ...p, startVolume: value };
+      if (p.key === "bulk_fermenting") {
+        const bulkReadings = p.readings as import("@/lib/recipeTypes").BulkFermentReading[];
+        nextP.bulkFermentState = computeBulkFermentState(
+          bulkReadings,
+          p.bulkFermentState ?? {},
+          bake.phases,
+          p.startedAt,
+          value,
+          bake.estimatorState?.targetTemp,
+          bake.estimatorState
+        );
+      }
+      return nextP;
+    });
+    const nextEstimator = { ...bake.estimatorState, startVolume_ml: value };
+    const updatedBake = { ...bake, phases, estimatorState: nextEstimator };
     setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleTargetTempChange = (key: string, value: string) => {
+    setPhaseTargetTemps(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleTargetTempCommit = async (key: string, value: string) => {
+    if (!bake || key !== 'bulk_fermenting') return;
+
+    const phases = bake.phases.map(p => {
+      if (p.key !== 'bulk_fermenting') return p;
+      const bulkReadings = p.readings as import("@/lib/recipeTypes").BulkFermentReading[];
+      const updatedState = computeBulkFermentState(
+        bulkReadings,
+        p.bulkFermentState ?? {},
+        bake.phases,
+        p.startedAt,
+        p.startVolume,
+        value,
+        bake.estimatorState
+      );
+      return { ...p, bulkFermentState: updatedState };
+    });
+
+    const nextEstimator = { ...bake.estimatorState, targetTemp: value };
+    const updatedBake = { ...bake, phases, estimatorState: nextEstimator };
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
+    await writeBakeLocal(updatedBake);
+  };
+
+  const handleSaveEstimatorFormula = async (state: import("@/lib/recipeTypes").BulkEstimatorState) => {
+    if (!bake) return;
+
+    const phases = bake.phases.map(p => {
+        if (p.key !== 'bulk_fermenting') return p;
+        const bulkReadings = p.readings as import("@/lib/recipeTypes").BulkFermentReading[];
+        const updatedState = computeBulkFermentState(
+          bulkReadings,
+          p.bulkFermentState ?? {},
+          bake.phases,
+          p.startedAt,
+          p.startVolume,
+          state.targetTemp,
+          state
+        );
+        return { ...p, bulkFermentState: updatedState };
+      });
+
+    const updatedBake = { ...bake, phases, estimatorState: state };
+    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
+    await writeBakeLocal(updatedBake);
   };
 
   const handleToggleFold = async (key: string, idx: number) => {
@@ -369,8 +507,8 @@ export function ActiveBakeSection() {
         allDone={allDone}
         completedCount={completedCount}
         recipeStale={false}
-        inoculationAnchorKey={null}
-        inoculationPercent={null}
+        inoculationAnchorKey={inoculationAnchorKey}
+        inoculationPercent={inoculationPercent}
         expandedDone={expandedDone}
         expandedRecipeInfo={expandedRecipeInfo}
         expandedPending={expandedPending}
@@ -378,9 +516,10 @@ export function ActiveBakeSection() {
         nextHighlightKey={null}
         copiedIngredientsKey={null}
         phaseStartVolumes={phaseStartVolumes}
-        scrollRef={{ current: null } as any}
-        phaseCardYOffsets={{ current: {} } as any}
-        phasesContainerY={{ current: 0 } as any}
+        phaseTargetTemps={phaseTargetTemps}
+        scrollRef={runnerScrollRef}
+        phaseCardYOffsets={phaseCardYOffsets}
+        phasesContainerY={phasesContainerY}
         onToggleExpandDone={handleToggleExpandDone}
         onToggleExpandRecipeInfo={handleToggleExpandRecipeInfo}
         onToggleExpandPending={handleToggleExpandPending}
@@ -388,6 +527,9 @@ export function ActiveBakeSection() {
         onIncrementFold={handleToggleFold}
         onStartVolumeChange={handleStartVolumeChange}
         onStartVolumeCommit={handleStartVolumeCommit}
+        onTargetTempChange={handleTargetTempChange}
+        onTargetTempCommit={handleTargetTempCommit}
+        onSaveEstimatorFormula={handleSaveEstimatorFormula}
         onCopyIngredients={async (key) => {
           const phase = bake?.phases.find(p => p.key === key);
           if (!phase) return;

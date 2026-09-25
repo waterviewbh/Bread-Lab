@@ -51,6 +51,8 @@ import {
   formatDate,
   sortRecipePhases,
   createEmptyPhase,
+  parseIngredientsForMetrics,
+  detectYeastType,
 } from "@/lib/recipeUtils";
 import {
   loadAll as loadAllData,
@@ -182,6 +184,7 @@ export default function RecipeScreen() {
   const [showReadingModal, setShowReadingModal] = useState(false);
   const [readingPhaseKey, setReadingPhaseKey] = useState<string | null>(null);
   const [phaseStartVolumes, setPhaseStartVolumes] = useState<Record<string, string>>({});
+  const [phaseTargetTemps, setPhaseTargetTemps] = useState<Record<string, string>>({});
   const [bakeNotes, setBakeNotes] = useState("");
   // FAB notepad overlay
   const [showNotesOverlay, setShowNotesOverlay] = useState(false);
@@ -218,10 +221,15 @@ const elapsed = activeBakeId === bakes[0]?.id ? elapsed1 : elapsed2;
   useEffect(() => {
     if (bake) {
       const vols: Record<string, string> = {};
+      const temps: Record<string, string> = {};
       bake.phases.forEach((p) => {
-        vols[p.key] = p.startVolume ?? "";
+        vols[p.key] = p.startVolume ?? bake.estimatorState?.startVolume_ml ?? "";
+        if (p.key === 'bulk_fermenting') {
+          temps[p.key] = bake.estimatorState?.targetTemp ?? "";
+        }
       });
       setPhaseStartVolumes(vols);
+      setPhaseTargetTemps(temps);
       setBakeNotes(bake.notes ?? "");
     }
   }, [bake]);
@@ -233,25 +241,9 @@ const elapsed = activeBakeId === bakes[0]?.id ? elapsed1 : elapsed2;
   };
 
 const loadAll = async () => {
-  const { recipes: loadedRecipes, bakes: loadedBakes } = await loadAllData();
+  const { bakes: loadedBakes, recipes: loadedRecipes } = await loadAllData();
 
-  // Backward compatibility: Migrate any legacy recipes on load
-      const migratedRecipes = loadedRecipes.map(r => {
-        const isLegacy = typeof r.phases[0]?.ingredients === 'string';
-        if (isLegacy) {
-          return {
-            ...r,
-            phases: r.phases.map(p => ({
-              ...p,
-              ingredients: textToCheckableLines(p.ingredients as any, 'ing'), // <── 'ing' prefix
-              instructions: textToCheckableLines(p.instructions as any, 'ins'), // <── 'ins' prefix
-            }))
-          };
-        }
-        return r;
-      });
-
-  if (migratedRecipes.length > 0) setRecipes(migratedRecipes);
+  if (loadedRecipes.length > 0) setRecipes(loadedRecipes);
   setBakes(loadedBakes);
   if (loadedBakes.length > 0 && !activeBakeId) {
     setActiveBakeId(loadedBakes[0].id);
@@ -445,6 +437,9 @@ const saveBakeToHistory = async (b: ActiveBake) => {
       Alert.alert("Select at least one phase to start.");
       return;
     }
+
+    const { flour, water, starter, yeast, salt } = parseIngredientsForMetrics(phases);
+
     const newBake: ActiveBake = {
       id: Date.now().toString(),
       recipeId: selectedRecipe.id,
@@ -453,6 +448,16 @@ const saveBakeToHistory = async (b: ActiveBake) => {
       status: 'active',
       phases,
       yieldValue: selectedRecipe.yieldValue || "1",
+      estimatorState: {
+        flourG: flour.toString(),
+        waterG: water.toString(),
+        starterG: starter.toString(),
+        yeastG: yeast.toString(),
+        saltG: salt.toString(),
+        yeastType: detectYeastType(phases),
+        targetTemp: "76",
+        startVolume_ml: "",
+      }
     };
 
     const nextBakes = [...bakes];
@@ -527,7 +532,7 @@ const saveBakeToHistory = async (b: ActiveBake) => {
     await persistBake({ ...bake, phases, status: 'active' });
 
     // 2. Auto-expand the "Phase Specs" panel if there is content to show
-    const startedPhase = bake.phases.find((p) => p.key === key);
+    const startedPhase = phases.find((p) => p.key === key);
     const hasContent = (field: any) => Array.isArray(field) ? field.length > 0 : !!field?.trim();
 
     if (startedPhase && (hasContent(startedPhase.ingredients) || hasContent(startedPhase.instructions))) {
@@ -580,15 +585,34 @@ const saveBakeToHistory = async (b: ActiveBake) => {
 
   const toggleFold = async (key: string, idx: number) => {
     if (!bake) return;
+    const now = Date.now();
     const phases = bake.phases.map((p) => {
       if (p.key !== key) return p;
       // Tapping the nth circle fills circles 0..n, clears if already at n+1
       const current = p.foldCount ?? 0;
       const next = current === idx + 1 ? idx : idx + 1;
-      return { ...p, foldCount: next };
+
+      // Handle timing chits (elapsed minutes since phase start)
+      let timestamps = [...(p.foldTimestamps || [])];
+      if (next > current) {
+        // Filling: all newly filled circles get the same current timestamp
+        const elapsed = p.startedAt ? Math.floor((now - p.startedAt) / 60000) : 0;
+        for (let i = 0; i < next; i++) {
+          if (timestamps[i] === null || timestamps[i] === undefined) {
+            timestamps[i] = elapsed;
+          }
+        }
+      } else {
+        // Unfilling: purge timestamps for removed folds
+        for (let i = next; i < (p.foldTimestamps?.length || 0); i++) {
+          timestamps[i] = null;
+        }
+      }
+
+      return { ...p, foldCount: next, foldTimestamps: timestamps };
     });
-      await persistBake({ ...bake, phases });
-      Haptics.selectionAsync();
+    await persistBake({ ...bake, phases });
+    Haptics.selectionAsync();
   };
 
   const openReadingModal = (key: string) => {
@@ -607,8 +631,10 @@ const saveBakeToHistory = async (b: ActiveBake) => {
           bulkReadings,
           p.bulkFermentState ?? {},
           bake.phases,
-          p.startedAt,      // Pass start time
-          p.startVolume     // Pass manual start volume
+          p.startedAt,
+          p.startVolume,
+          bake.estimatorState?.targetTemp,
+          bake.estimatorState
         );
         return { ...p, readings: updatedReadings, bulkFermentState: updatedState };
       }
@@ -668,12 +694,60 @@ const saveBakeToHistory = async (b: ActiveBake) => {
           p.bulkFermentState ?? {},
           bake.phases,
           p.startedAt,
-          value // Pass the NEW value directly
+          value, // Pass the NEW volume
+          bake.estimatorState?.targetTemp, // Pass existing temp override
+          bake.estimatorState // Pass formula overrides
         );
       }
       return nextP;
     });
-    await persistBake({ ...bake, phases });
+
+    // Sync estimator state
+    const nextEstimator = { ...bake.estimatorState, startVolume_ml: value };
+    await persistBake({ ...bake, phases, estimatorState: nextEstimator });
+  };
+
+  const updatePhaseTargetTemp = async (key: string, value: string) => {
+    if (!bake || key !== 'bulk_fermenting') return;
+
+    const phases = bake.phases.map(p => {
+      if (p.key !== 'bulk_fermenting') return p;
+      const bulkReadings = p.readings as import("@/lib/recipeTypes").BulkFermentReading[];
+      const updatedState = computeBulkFermentState(
+        bulkReadings,
+        p.bulkFermentState ?? {},
+        bake.phases,
+        p.startedAt,
+        p.startVolume,
+        value // Pass the NEW temp
+      );
+      return { ...p, bulkFermentState: updatedState };
+    });
+
+    const nextEstimator = { ...bake.estimatorState, targetTemp: value };
+    await persistBake({ ...bake, phases, estimatorState: nextEstimator });
+  };
+
+  const handleSaveEstimatorFormula = async (state: import("@/lib/recipeTypes").BulkEstimatorState) => {
+    if (!bake) return;
+
+    // Refresh bulk state with new weights
+    const phases = bake.phases.map(p => {
+        if (p.key !== 'bulk_fermenting') return p;
+        const bulkReadings = p.readings as import("@/lib/recipeTypes").BulkFermentReading[];
+        const updatedState = computeBulkFermentState(
+          bulkReadings,
+          p.bulkFermentState ?? {},
+          bake.phases,
+          p.startedAt,
+          p.startVolume,
+          state.targetTemp,
+          state // Pass the NEW overrides
+        );
+        return { ...p, bulkFermentState: updatedState };
+      });
+
+    await persistBake({ ...bake, phases, estimatorState: state });
   };
 
   const saveBakeNotes = async (text: string) => {
@@ -733,7 +807,7 @@ const saveBakeToHistory = async (b: ActiveBake) => {
 const INOCULATION_ANCHOR_PRIORITY = ["fermentolysing", "incorporating", "building_levain"] as const;
 const inoculationAnchorKey: string | null = (() => {
   if (!bake) return null;
-  const bakePhaseKeys = new Set(bake.phases.map((p) => p.key));
+  const bakePhaseKeys = new Set(bake.phases.filter(p => !!p).map((p) => p.key));
   return INOCULATION_ANCHOR_PRIORITY.find((k) => bakePhaseKeys.has(k)) ?? null;
 })();
 
@@ -916,6 +990,7 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
             nextHighlightKey={nextHighlightKey}
             copiedIngredientsKey={copiedIngredientsKey}
             phaseStartVolumes={phaseStartVolumes}
+            phaseTargetTemps={phaseTargetTemps}
             scrollRef={runnerScrollRef}
             phaseCardYOffsets={phaseCardYOffsets}
             phasesContainerY={phasesContainerY}
@@ -930,6 +1005,9 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
             onIncrementFold={toggleFold}
             onStartVolumeChange={(key, v) => setPhaseStartVolumes((prev) => ({ ...prev, [key]: v }))}
             onStartVolumeCommit={updatePhaseStartVolume}
+            onTargetTempChange={(key, v) => setPhaseTargetTemps((prev) => ({ ...prev, [key]: v }))}
+            onTargetTempCommit={updatePhaseTargetTemp}
+            onSaveEstimatorFormula={handleSaveEstimatorFormula}
             onCopyIngredients={async (key) => {
               const phase = bake.phases.find((p) => p.key === key);
               if (!phase) return;

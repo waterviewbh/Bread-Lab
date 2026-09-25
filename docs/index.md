@@ -25,12 +25,20 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [📓 Journal](file:///E:/Bread-Lab/docs/journal/)
 **Purpose**: A chronological record of work sessions, obstacles encountered, and high-level progress. Use this to get a sense of the project's recent trajectory.
-*2.5.0*
+#### 📦 Version 2.5.1
+- [Session: PD-Informed State Estimator Refactoring & Validation Harness (2026-09-25)](file:///E:/Bread-Lab/docs/journal/2026-09-25_pd_informed_state_estimator_refactoring.artifact.md)
+- [Session: Feed Planner Nudge & Calibration Refinements (2026-09-20)](file:///E:/Bread-Lab/docs/journal/2026-09-20_feed_planner_nudge_and_calibration_refinements.artifact.md)
+- [Session: Self-Healing Active Bake Zombie Cleanups (2026-09-20)](file:///E:/Bread-Lab/docs/journal/2026-09-20_self_healing_zombie_bake_cleanups.artifact.md)
+- [Session: Automatic Removal of Reviewed Bakes (2026-09-19)](file:///E:/Bread-Lab/docs/journal/2026-09-19_automatic_removal_of_reviewed_bakes.artifact.md)
+- [Session: Isolated Bulk Estimators for Concurrent Bakes (2026-09-19)](file:///E:/Bread-Lab/docs/journal/2026-09-19_isolated_bulk_estimators.artifact.md)
+
+#### 📦 Version 2.5.0
+- [Session: EAS Version Sync Failure & SDK 36 Compatibility (2026-09-18 PM)](file:///E:/Bread-Lab/docs/journal/2026-09-18_eas_version_sync_failure.artifact.md)
 - [Session: Code Audit & Resilience Reinforcement (2026-09-18)](file:///E:/Bread-Lab/docs/journal/2026-09-18_code_audit_and_resilience_reinforcement.artifact.md)
 - [Session: Universal Data-Driven LaTeX Equation Parser Integration (2026-09-16)](file:///E:/Bread-Lab/docs/journal/2026-09-16_universal_latex_parser.artifact.md)
 - [Session: Science Hub Restructuring & Scholarly Articles Integration (2026-09-15)](file:///E:/Bread-Lab/docs/journal/2026-09-15_science_hub_restructuring.artifact.md)
 - [Session: Bulk Fermentation Engine Overhaul & Thermal Modeling (2026-09-15)](file:///E:/Bread-Lab/docs/journal/2026-09-15_bulk_fermentation_engine_overhaul.artifact.md)
-*2.4.0*
+#### 📦 Version 2.4.0
 - [Session: Advanced Diagnostics & Iteration Workflow (2026-09-13)](file:///E:/Bread-Lab/docs/journal/2026-09-13_advanced_diagnostics_and_iteration_workflow.artifact.md)
 - [Session: Canonical Phase Sorting & Builder Unification (2026-09-12)](file:///E:/Bread-Lab/docs/journal/2026-09-12_canonical_phase_sorting.artifact.md)
 - [Session: Diagnostic Notes Integration (2026-09-12)](file:///E:/Bread-Lab/docs/journal/2026-09-12_diagnostic_notes_integration.artifact.md)
@@ -60,6 +68,12 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🎨 Walkthroughs](file:///E:/Bread-Lab/docs/walkthroughs/)
 **Purpose**: Demonstrations and summaries of completed features, including UI screenshots and technical breakdowns.
+- [PD-Informed State Estimator & Validation Harness (2026-09-25)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-25_pd_informed_state_estimator_refactoring.artifact.md)
+- [Feed Planner Nudge & Calibration Refinements (2026-09-20)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-20_feed_planner_nudge_and_calibration_refinements.artifact.md)
+- [Self-Healing Active Bake Zombie Cleanups (2026-09-20)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-20_self_healing_zombie_bake_cleanups.artifact.md)
+- [Automatic Removal of Reviewed Bakes (2026-09-19)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-19_automatic_removal_of_reviewed_bakes.artifact.md)
+- [Isolated Bulk Estimators for Concurrent Bakes (2026-09-19)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-19_isolated_bulk_estimators.artifact.md)
+- [Android SDK 36 Device Compatibility & Versioning (2026-09-18 PM)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-18_android_sdk_36_device_compatibility.artifact.md)
 - [Code Audit & Resilience Reinforcement (2026-09-18)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-18_code_audit_and_resilience_reinforcement.artifact.md)
 - [Universal Data-Driven LaTeX Equation Parser (2026-09-16)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-16_universal_latex_parser.artifact.md)
 - [Science Hub Restructuring & Scholarly Articles Integration (2026-09-15)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-15_science_hub_restructuring.artifact.md)

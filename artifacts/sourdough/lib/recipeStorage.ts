@@ -12,7 +12,7 @@ import {
   BAKE_HISTORY_KEY,
   DELETED_RECIPE_IDS_KEY,
 } from "@/lib/recipeTypes";
-import { textToCheckableLines, resolveRootMasterId } from "@/lib/recipeUtils";
+import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, detectYeastType } from "@/lib/recipeUtils";
 import { safeParse, storageMutex } from "@/lib/storageUtils";
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────
@@ -63,7 +63,53 @@ export async function loadAll(): Promise<{
     recipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray);
 
     const parsedBakes = safeParse<any>(bakeStr, [], (v) => Array.isArray(v) || (v !== null && typeof v === 'object'));
-    bakes = Array.isArray(parsedBakes) ? parsedBakes : (parsedBakes ? [parsedBakes] : []);
+    const rawBakes: ActiveBake[] = Array.isArray(parsedBakes) ? parsedBakes : (parsedBakes ? [parsedBakes] : []);
+
+    // Unified migration and initialization
+    bakes = rawBakes.map(b => {
+      // Ensure b is an object
+      if (!b || typeof b !== 'object') return b;
+
+      // 1. Ensure phases are objects and have checkable lines and readings
+      b.phases = (b.phases || []).map(p => {
+        const ingredients = Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing');
+        const instructions = Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins');
+        return {
+          ...p,
+          ingredients,
+          instructions,
+          readings: Array.isArray(p.readings) ? p.readings : [],
+          startedAt: p.startedAt ?? null,
+          completedAt: p.completedAt ?? null,
+        };
+      });
+
+      // 2. Initialize estimator if missing
+      if (!b.estimatorState) {
+        const { flour, water, starter, yeast, salt } = parseIngredientsForMetrics(b.phases);
+        const yeastType = detectYeastType(b.phases);
+        const bulkPhase = b.phases.find(p => p.key === 'bulk_fermenting');
+
+        b.estimatorState = {
+          flourG: flour.toString(),
+          waterG: water.toString(),
+          starterG: starter.toString(),
+          yeastG: yeast.toString(),
+          saltG: salt.toString(),
+          yeastType,
+          targetTemp: "76",
+          startVolume_ml: bulkPhase?.startVolume || "",
+        };
+      }
+
+      // 3. Ensure other top-level fields
+      b.notes = b.notes ?? "";
+      b.yieldValue = b.yieldValue ?? "1";
+      b.status = b.status ?? 'active';
+
+      return b;
+    });
+
     localBakesFound = bakes.length > 0;
   } catch (e) {
     console.error("[recipeStorage] loadAll local failed", e);
@@ -122,13 +168,48 @@ export async function loadAll(): Promise<{
           readings: p.readings ?? [],
           startVolume: p.startVolume,
         })),
+        estimatorState: activeBake.estimatorState,
       };
+
+      if (!apiBake.estimatorState) {
+        const { flour, water, starter, yeast, salt } = parseIngredientsForMetrics(apiBake.phases);
+        const yeastType = detectYeastType(apiBake.phases);
+        const bulkPhase = apiBake.phases.find(p => p.key === 'bulk_fermenting');
+
+        apiBake.estimatorState = {
+          flourG: flour.toString(),
+          waterG: water.toString(),
+          starterG: starter.toString(),
+          yeastG: yeast.toString(),
+          saltG: salt.toString(),
+          yeastType,
+          targetTemp: "76",
+          startVolume_ml: bulkPhase?.startVolume || "",
+        };
+      }
+
       bakes = [apiBake];
       await storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes)));
     }
   } catch (e) {
     console.error("[recipeStorage] loadAll remote failed", e);
   }
+
+  // Defensive self-healing: ensure bakes containing completed diagnostic outcomes or already existing in history are automatically cleaned from active lists
+  try {
+    const rawHistory = await AsyncStorage.getItem(BAKE_HISTORY_KEY).catch(() => null);
+    const historyList = safeParse<ActiveBake[]>(rawHistory, [], Array.isArray);
+    const historyIds = new Set(historyList.map(h => h?.id).filter(Boolean));
+
+    const activeBakesCleaned = bakes.filter(b => b && !b.outcome?.overallScore && !historyIds.has(b.id));
+    if (activeBakesCleaned.length !== bakes.length) {
+      bakes = activeBakesCleaned;
+      await storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes))).catch(() => {});
+    }
+  } catch (err) {
+    console.error("[recipeStorage] self-healing filtering failed", err);
+  }
+
   return { recipes, bakes, bake: bakes[0] || null };
 }
 
@@ -172,6 +253,7 @@ export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
         status: bake.status,
         outcome: bake.outcome,
         notes: bake.notes,
+        estimatorState: bake.estimatorState,
         phases: bake.phases.map((p) => ({
           key: p.key,
           name: p.name,
@@ -328,6 +410,17 @@ export async function updateBakeOutcomeInHistory(
                 };
                 history[index] = updatedBake;
                 await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(history));
+
+                // Also defensively remove from active bakes if a zombie duplicate resides there
+                const storedActive = await AsyncStorage.getItem(BAKE_KEY).catch(() => null);
+                if (storedActive) {
+                    let activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
+                    const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
+                    if (activeIndex !== -1) {
+                        activeBakes.splice(activeIndex, 1);
+                        await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(activeBakes));
+                    }
+                }
             } else {
                 const storedActive = await AsyncStorage.getItem(BAKE_KEY);
                 if (storedActive) {

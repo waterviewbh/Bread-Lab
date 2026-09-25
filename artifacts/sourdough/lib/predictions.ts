@@ -32,7 +32,13 @@ export interface PlannedRecipe {
 export function trainModel(history: FeedSession[]): PredictionModel {
   const validEntries = history
     .filter(
-      (s) => s.peak?.timeToPeakMs && s.initialTemp && !isNaN(parseFloat(s.initialTemp))
+      (s) => {
+        if (!s.peak?.timeToPeakMs || !s.initialTemp || isNaN(parseFloat(s.initialTemp))) return false;
+        const sw = parseFloat(s.starterWeight);
+        const fw = parseFloat(s.flourWeight);
+        const ww = parseFloat(s.waterWeight);
+        return !isNaN(sw) && !isNaN(fw) && !isNaN(ww) && sw > 0 && (fw + ww) > 0;
+      }
     )
     .sort((a, b) => b.savedAt - a.savedAt) // Sort newest first
     .slice(0, 15); // Recency Window: 15 sessions
@@ -44,8 +50,8 @@ export function trainModel(history: FeedSession[]): PredictionModel {
 
 
   // Default Intercept: This is what we "tune" to the user's starter.
-  // 14.5 is a safe middle-ground starting point.
-  let intercept = 14.5;
+  // 7.65 calibrates a standard 1:1:1 refresh at 74°F to exactly 4.0 hours.
+  let intercept = 7.65;
   let isHeuristic = true;
 
   if (validEntries.length > 0) {

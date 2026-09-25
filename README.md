@@ -92,6 +92,7 @@ The app follows a modular component structure, organized by feature hubs.
 
 - **[RecipeDeck.tsx]**: Implements the Overlapping Index Tabs pattern for recipe navigation and iteration comparison.
 - **[PhaseCard.tsx]**: State-aware UI cards for recipe phases (Pending/Active/Done). Includes the Bulk Dashboard.
+- **[BulkEstimatorSettingsModal.tsx]**: Modal dialog for overriding ingredient weights and baseline parameters for the bulk fermentation estimator.
 - **[ContinuousListInput.tsx]**: High-efficiency text input for ingredient/instruction lists.
 - **[RecipeBuilderEditView.tsx]**: Full-screen editor for recipe configuration.
 
@@ -118,7 +119,8 @@ The `lib/` directory houses the core mathematical models, synchronization logic,
 - **[recipeTypes.ts]**: The centralized source of truth for TypeScript interfaces and canonical phase definitions.
 - **[recipeStorage.ts]**: Async persistence logic that merges local AsyncStorage reads with Supabase API calls. Handles "tombstoning" for robust deletions.
 - **[recipeUtils.ts]**: Display utilities, including the regex-based mass quantity scaler and ingredient metric parsers.
-- **[bulkFermentEngine.ts]**: A Proportional-Derivative (PD) engine that calculates real-time fermentation velocity and projects completion times based on volume readings.
+- **[bulkFermentEngine.ts]**: An 8-layer PD-informed state estimator that calculates real-time fermentation velocity, thermal degree-hours exposure, and projects target completion times.
+- **[validationHarness.ts]**: Pure TypeScript evaluation framework for offline benchmarking of bulk fermentation estimators against historical bake logs with strict causal chronology.
 - **[bulkFermentUtils.ts]**: Formatting logic for the Bulk Dashboard's countdown and rise progress indicators.
 - **[recipeHtml.ts]**: Generates standalone HTML documents for printing and PDF sharing.
 - **[recipeMigration.ts]**: Utility for promoting legacy flat-string recipes into the structured Universal Recipe format.

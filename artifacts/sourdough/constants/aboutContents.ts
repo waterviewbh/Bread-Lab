@@ -119,6 +119,15 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
+      version: "v2.5.1", /* -- published 20260925 -- */
+      changes: [
+        { type: "Added", content: "Upgraded Bulk Ferment Engine: rebuilt it as an 8-layer state estimator architecture featuring Causal Thermal Exposure integration, P/D rate correction, latched target rise fraction, and confidence scoring (High/Med/Low)." },
+        { type: "Added", content: "Fold Timing Chits: Added elapsed minute badges (+Xm) below completed fold indicators in PhaseCard to track fold intervals relative to phase start." },
+        { type: "Changed", content: "Better Quality: Built a fair amount of code quality checks so that the app won't break as it scales, namely validation testing and harnessing." },
+        { type: "Fixed", content: "Storage Self-Healing: Added defensive filtering in recipeStorage to automatically clean up duplicate or zombie active bakes that were already archived into history." },
+      ],
+    },
+    {
       version: "v2.5.0", /* -- published 20260918 -- */
       changes: [
         { type: "Added", content: "Articles in Resources: We started a growing list of scholarly articles about kitchen science. To manage that, the app now includes full LaTeX support for equations." },
@@ -403,7 +412,7 @@ export const BULK_ENGINE_DATA = {
     {
       heading: "Smart Hydration Scaling",
       visual: "Recognizes the water content of Milk (87%), Eggs (75%), Honey (18%), and other hydrators.",
-      diagnostic: "Higher hydration reduces projected bulk time by -1.5% for every 1% hydration above 70%.",
+      diagnostic: "Higher hydration reduces projected bulk time by 0.8% for every 1% hydration above 70% (capped at 10%).",
       insight: "High-hydration doughs offer less physical resistance to expansion and higher nutrient mobility for yeast. The engine automatically accelerates its baseline projections to account for this increased metabolic speed."
     },
     {
@@ -415,7 +424,7 @@ export const BULK_ENGINE_DATA = {
     {
       heading: "The Complementary Filter (Alpha)",
       visual: "A time-weighted 'Alpha' value that blends Baseline Velocity with Measured Velocity.",
-      diagnostic: "As bulk progresses, the engine trust your specific dough's measured expansion rate more and more.",
+      diagnostic: "As bulk progresses, the engine trusts your specific dough's measured expansion rate more and more.",
       insight: "By the time you are near the target, the engine has virtually ignored the starting charts and is calculating your finish time based purely on the actual physics of your bowl."
     }
   ]

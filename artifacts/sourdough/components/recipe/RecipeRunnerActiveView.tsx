@@ -25,8 +25,9 @@ import {
   ActivePhaseCard,
 } from "@/components/recipe/PhaseCard";
 import { formatTimer } from "@/lib/recipeUtils";
-import type { ActiveBake, BakePhase } from "@/lib/recipeTypes";
+import type { ActiveBake, BakePhase, BulkEstimatorState } from "@/lib/recipeTypes";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
+import { BulkEstimatorSettingsModal } from "./BulkEstimatorSettingsModal";
 
 interface Props {
   bake: ActiveBake;
@@ -49,6 +50,7 @@ interface Props {
   nextHighlightKey: string | null;
   copiedIngredientsKey: string | null;
   phaseStartVolumes: Record<string, string>;
+  phaseTargetTemps: Record<string, string>;
   scrollRef: RefObject<ScrollView>;
   phaseCardYOffsets: React.MutableRefObject<Record<string, number>>;
   phasesContainerY: React.MutableRefObject<number>;
@@ -63,6 +65,9 @@ interface Props {
   onIncrementFold: (key: string, idx: number) => void;
   onStartVolumeChange: (key: string, value: string) => void;
   onStartVolumeCommit: (key: string, value: string) => void;
+  onTargetTempChange: (key: string, value: string) => void;
+  onTargetTempCommit: (key: string, value: string) => void;
+  onSaveEstimatorFormula: (state: BulkEstimatorState) => void;
   onCopyIngredients: (key: string) => void;
   onShareSpec: (phase: BakePhase) => void;
   onAbandonBake: () => void;
@@ -98,6 +103,7 @@ export function RecipeRunnerActiveView({
   nextHighlightKey,
   copiedIngredientsKey,
   phaseStartVolumes,
+  phaseTargetTemps,
   scrollRef,
   phaseCardYOffsets,
   phasesContainerY,
@@ -112,6 +118,9 @@ export function RecipeRunnerActiveView({
   onIncrementFold,
   onStartVolumeChange,
   onStartVolumeCommit,
+  onTargetTempChange,
+  onTargetTempCommit,
+  onSaveEstimatorFormula,
   onCopyIngredients,
   onShareSpec,
   onAbandonBake,
@@ -129,6 +138,8 @@ export function RecipeRunnerActiveView({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tabBarPad = Platform.OS === "web" ? 84 : 60;
+
+  const [showEstimatorModal, setShowEstimatorModal] = useState(false);
 
   return (
     <>
@@ -263,7 +274,7 @@ export function RecipeRunnerActiveView({
           style={{ gap: 8 }}
           onLayout={(e) => { phasesContainerY.current = e.nativeEvent.layout.y; }}
         >
-          {bake.phases.map((phase) => {
+          {bake.phases.filter(p => !!p).map((phase) => {
             const isDone = !!phase.completedAt;
             if (!phase.startedAt) {
               return (
@@ -275,7 +286,7 @@ export function RecipeRunnerActiveView({
                   isExpanded={expandedPending.has(phase.key)}
                   onToggleExpand={() => onToggleExpandPending(phase.key)}
                   onStart={() => onStartPhase(phase.key)}
-                  onLayout={(y) => { phaseCardYOffsets.current[phase.key] = y; }}
+                  onLayout={(y) => { if (phaseCardYOffsets?.current) phaseCardYOffsets.current[phase.key] = y; }}
                   scaleMultiplier={scaleMultiplier}
                   sessionChecks={sessionChecks}
                   onToggleLineCheck={onToggleLineCheck}
@@ -293,7 +304,7 @@ export function RecipeRunnerActiveView({
                   onToggleExpand={() => onToggleExpandDone(phase.key)}
                   onOpenReadingModal={() => onOpenReadingModal(phase.key)}
                   onDeleteReading={(readingId) => onDeleteReading(phase.key, readingId)}
-                  onLayout={(y) => { phaseCardYOffsets.current[phase.key] = y; }}
+                  onLayout={(y) => { if (phaseCardYOffsets?.current) phaseCardYOffsets.current[phase.key] = y; }}
                   scaleMultiplier={scaleMultiplier}
                   sessionChecks={sessionChecks}
                   onToggleLineCheck={onToggleLineCheck}
@@ -305,7 +316,6 @@ export function RecipeRunnerActiveView({
               phase.key === inoculationAnchorKey ? inoculationPercent : null;
             // Active phase
             return (
-              // this is the <ActivePhaseCard> JSX; not sure what a JSX is...these are also called props I guess
               <ActivePhaseCard
                 key={`${phase.key}-active`}
                 phase={phase}
@@ -315,6 +325,10 @@ export function RecipeRunnerActiveView({
                 startVolumeInput={phaseStartVolumes[phase.key] ?? ""}
                 onStartVolumeChange={(v) => onStartVolumeChange(phase.key, v)}
                 onStartVolumeCommit={(v) => onStartVolumeCommit(phase.key, v)}
+                targetTempInput={phaseTargetTemps[phase.key] ?? ""}
+                onTargetTempChange={(v) => onTargetTempChange(phase.key, v)}
+                onTargetTempCommit={(v) => onTargetTempCommit(phase.key, v)}
+                onOpenEstimatorSettings={() => setShowEstimatorModal(true)}
                 copiedIngredientsKey={copiedIngredientsKey}
                 onCopyIngredients={() => onCopyIngredients(phase.key)}
                 isSpecExpanded={expandedRecipeInfo.has(phase.key)}
@@ -323,12 +337,12 @@ export function RecipeRunnerActiveView({
                 onLogReading={() => onOpenReadingModal(phase.key)}
                 onComplete={() => onCompletePhase(phase.key)}
                 onShareSpec={() => onShareSpec(phase)}
-                onLayout={(y) => { phaseCardYOffsets.current[phase.key] = y; }}
+                onLayout={(y) => { if (phaseCardYOffsets?.current) phaseCardYOffsets.current[phase.key] = y; }}
                 inoculationPercent={phaseInoculationPercent}
                 sessionChecks={sessionChecks}
                 onToggleLineCheck={onToggleLineCheck}
               />
-          );
+            );
           })}
         </View>
         {/* Affiliate carousel — shown during active bake beneath all phase cards */}
@@ -435,6 +449,14 @@ export function RecipeRunnerActiveView({
           bottomInset={insets.bottom}
         />
       </Modal>
+
+      <BulkEstimatorSettingsModal
+        visible={showEstimatorModal}
+        initialState={bake.estimatorState || {}}
+        recipePhases={bake.phases}
+        onSave={onSaveEstimatorFormula}
+        onClose={() => setShowEstimatorModal(false)}
+      />
     </>
   );
 }  // end of Props

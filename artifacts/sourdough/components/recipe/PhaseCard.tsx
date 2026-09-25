@@ -233,6 +233,10 @@ export interface ActivePhaseCardProps {
   startVolumeInput: string;
   onStartVolumeChange: (value: string) => void;
   onStartVolumeCommit: (value: string) => void;
+  targetTempInput: string;
+  onTargetTempChange: (value: string) => void;
+  onTargetTempCommit: (value: string) => void;
+  onOpenEstimatorSettings: () => void;
   copiedIngredientsKey: string | null;
   onCopyIngredients: () => void;
   isSpecExpanded: boolean;
@@ -255,6 +259,10 @@ export function ActivePhaseCard({
   startVolumeInput,
   onStartVolumeChange,
   onStartVolumeCommit,
+  targetTempInput,
+  onTargetTempChange,
+  onTargetTempCommit,
+  onOpenEstimatorSettings,
   copiedIngredientsKey,
   onCopyIngredients,
   isSpecExpanded,
@@ -303,19 +311,29 @@ export function ActivePhaseCard({
         <View style={[s.foldTracker, { borderTopColor: colors.border + "40" }]}>
           <Text style={[s.foldLabel, { color: colors.mutedForeground }]}>Folds Completed</Text>
           <View style={s.foldRow}>
-            {[0, 1, 2, 3].map((i) => (
-              <Pressable
-                key={i}
-                onPress={() => onToggleFold(i)}
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-              >
-                <Ionicons
-                  name={i < currentFolds ? "radio-button-on" : "radio-button-off"}
-                  size={28}
-                  color={i < currentFolds ? colors.accent : colors.border}
-                />
-              </Pressable>
-            ))}
+            {/* Dev Team Note: Fixed at 4 circles until dynamic fold spec is finalized */}
+            {[0, 1, 2, 3].map((i) => {
+              const timestamp = phase.foldTimestamps?.[i];
+              const isFilled = i < currentFolds;
+              return (
+                <Pressable
+                  key={i}
+                  onPress={() => onToggleFold(i)}
+                  style={({ pressed }) => [s.circleColumn, { opacity: pressed ? 0.6 : 1 }]}
+                >
+                  <Ionicons
+                    name={isFilled ? "radio-button-on" : "radio-button-off"}
+                    size={28}
+                    color={isFilled ? colors.accent : colors.border}
+                  />
+                  <View style={s.chitContainer}>
+                    {isFilled && timestamp !== null && timestamp !== undefined && (
+                      <Text style={s.chitText}>{`+${timestamp}`}</Text>
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
       )}
@@ -324,9 +342,27 @@ export function ActivePhaseCard({
         <View style={s.bulkDashboard}>
           {/* Hero Timer & Target */}
           <View style={s.heroTimerSection}>
-            <Text style={[s.heroTimerLabel, { color: colors.mutedForeground }]}>
-              {bulkTimer.mode === "countdown" ? "EST. REMAINING" : bulkTimer.mode === "overtime" ? "PAST TARGET" : "TIME IN BULK"}
-            </Text>
+            <View style={s.heroHeaderRow}>
+              <Text style={[s.heroTimerLabel, { color: colors.mutedForeground }]}>
+                {bulkTimer.mode === "countdown" ? "EST. REMAINING" : bulkTimer.mode === "overtime" ? "PAST TARGET" : "TIME IN BULK"}
+              </Text>
+              {phase.bulkFermentState?.confidenceScore !== undefined && (
+                <View style={[s.confidenceBadge, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "40" }]}>
+                  <Text style={[s.confidenceText, { color: colors.accent }]}>
+                    {phase.bulkFermentState.confidenceScore >= 0.7
+                      ? "HIGH CONFIDENCE"
+                      : phase.bulkFermentState.confidenceScore >= 0.45
+                      ? "MED CONFIDENCE"
+                      : phase.bulkFermentState.confidenceScore >= 0.25
+                      ? "LOW CONFIDENCE"
+                      : "LIMITED DATA"}
+                  </Text>
+                </View>
+              )}
+              <Pressable onPress={onOpenEstimatorSettings} style={s.settingsBtn} hitSlop={12}>
+                <Feather name="settings" size={14} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
             <Text selectable={true} style={[s.heroTimerText, { color: bulkTimer.mode === "overtime" ? colors.accent : colors.foreground }]}>
               {bulkTimer.label || formatTimer(elapsedMs)}
             </Text>
@@ -336,7 +372,7 @@ export function ActivePhaseCard({
           <View style={s.dashboardGrid}>
             {/* Start Volume Column */}
             <View style={s.dashboardCol}>
-              <Text style={[s.colLabel, { color: colors.mutedForeground }]}>STARTING VOLUME{"\n"}(ML)</Text>
+              <Text style={[s.colLabel, { color: colors.mutedForeground }]}>START VOLUME{"\n"}(ML)</Text>
               <TextInput
                 style={[s.dashboardInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted + '40' }]}
                 value={startVolumeInput}
@@ -350,9 +386,25 @@ export function ActivePhaseCard({
 
             <View style={[s.vDivider, { backgroundColor: colors.border }]} />
 
+            {/* Target Temp Column */}
+            <View style={s.dashboardCol}>
+              <Text style={[s.colLabel, { color: colors.mutedForeground }]}>DOUGH TEMP{"\n"}(°F)</Text>
+              <TextInput
+                style={[s.dashboardInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.muted + '40' }]}
+                value={targetTempInput}
+                onChangeText={onTargetTempChange}
+                onBlur={() => onTargetTempCommit(targetTempInput)}
+                placeholder="76"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={[s.vDivider, { backgroundColor: colors.border }]} />
+
             {/* Rise Progress Column */}
             <View style={s.dashboardCol}>
-              <Text style={s.colLabel}>RISE</Text>
+              <Text style={s.colLabel}>RISE{"\n"} </Text>
               <View style={s.riseDisplayCenter}>
                 <Text style={[s.riseValueHero, { color: colors.accent }]}>
                   {(() => {
@@ -532,6 +584,19 @@ const s = StyleSheet.create({
     gap: 16,
     paddingBottom: 2,
   },
+  circleColumn: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  chitContainer: {
+    height: 16,
+    justifyContent: 'center',
+  },
+  chitText: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: '#8C7A6B',
+  },
   bulkTimerSub: { fontFamily: fonts.sansMedium, fontSize: 11, marginTop: 1 },
   bulkDashboard: {
     paddingHorizontal: 17,
@@ -542,6 +607,30 @@ const s = StyleSheet.create({
   heroTimerSection: {
     alignItems: "center",
     marginBottom: 20,
+  },
+  heroHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+    width: '100%',
+    justifyContent: 'center',
+    paddingLeft: 22, // balance the gear icon
+  },
+  settingsBtn: {
+    padding: 4,
+  },
+  confidenceBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  confidenceText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 9,
+    letterSpacing: 0.5,
   },
   heroTimerLabel: {
     fontFamily: fonts.sansSemiBold,
