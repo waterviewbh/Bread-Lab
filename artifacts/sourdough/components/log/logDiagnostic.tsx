@@ -146,8 +146,12 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
     );
   };
 
+  const actualDefects = useMemo(() => {
+    return selectedDefects.filter(slug => DEFECT_LIBRARY[slug]?.type === 'defect');
+  }, [selectedDefects]);
+
   const overallScore = Math.round((crumbScore + crustScore + flavorScore) / 3);
-  const isSuccessful = overallScore >= 4 && selectedDefects.length <= 1;
+  const isSuccessful = overallScore >= 4 && actualDefects.length <= 1;
   const isGraded = !!selectedBake?.outcome?.overallScore;
 
   const StarRating = ({ label, score, onSet }: { label: string, score: number, onSet: (s: number) => void }) => (
@@ -244,8 +248,8 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
                 token ?? undefined
               );
 
-              const iterations = recipes.filter(r => resolveRootMasterId(r, recipes) === masterId);
-              const versionNumber = iterations.length + 2;
+              const childIterations = recipes.filter(r => r.id !== masterId && resolveRootMasterId(r, recipes) === masterId);
+              const versionNumber = childIterations.length + 1;
 
               const newSaved: SavedRecipe = {
                 id: duplicated.id,
@@ -543,21 +547,37 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
       {!isGraded && (
         <View style={s.actionRow}>
-          {isSuccessful && (
-            <Pressable
-              style={[s.logBtn, { borderColor: colors.primary, borderWidth: 1, opacity: isSaving ? 0.5 : 1 }]}
-              onPress={handleLogOnly}
-              disabled={isSaving}
-            >
-              <Text style={[s.logBtnText, { color: colors.primary }]}>{isSaving ? "SAVING..." : "LOG & FINISH"}</Text>
-            </Pressable>
-          )}
           <Pressable
-            style={[s.iterateBtn, { backgroundColor: colors.primary, flex: isSuccessful ? 1.5 : 1, opacity: isSaving ? 0.5 : 1 }]}
+            style={[
+              s.logBtn,
+              {
+                backgroundColor: isSuccessful ? colors.primary : 'transparent',
+                borderColor: colors.primary,
+                borderWidth: 1,
+                opacity: isSaving ? 0.5 : 1
+              }
+            ]}
+            onPress={handleLogOnly}
+            disabled={isSaving}
+          >
+            <Text style={[s.logBtnText, { color: isSuccessful ? colors.primaryForeground : colors.primary }]}>
+              {isSaving ? "SAVING..." : "LOG & FINISH"}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              s.iterateBtn,
+              {
+                backgroundColor: isSuccessful ? 'transparent' : colors.primary,
+                borderColor: colors.primary,
+                borderWidth: 1,
+                opacity: isSaving ? 0.5 : 1
+              }
+            ]}
             onPress={handleIterate}
             disabled={isSaving}
           >
-            <Text style={[s.iterateBtnText, { color: colors.primaryForeground }]}>
+            <Text style={[s.iterateBtnText, { color: isSuccessful ? colors.primary : colors.primaryForeground }]}>
               {isSaving ? "SAVING..." : (isSuccessful ? "ITERATE ANYWAY" : "COMMIT ITERATION")}
             </Text>
           </Pressable>
@@ -604,7 +624,7 @@ const s = StyleSheet.create({
   actionRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
   logBtn: { flex: 1, paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
   logBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },
-  iterateBtn: { paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
+  iterateBtn: { flex: 1, paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
   iterateBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },
   gradedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: radius.lg, marginTop: 12 },
   gradedBadgeText: { fontSize: 14, fontFamily: fonts.sansBold, letterSpacing: 1 },

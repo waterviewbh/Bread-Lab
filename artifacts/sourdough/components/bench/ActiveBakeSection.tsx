@@ -1,7 +1,7 @@
 // artifacts/sourdough/components/bench/ActiveBakeSection.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, View, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useKeepAwake } from "expo-keep-awake";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -40,6 +40,7 @@ import { parseIngredientsForMetrics, detectYeastType } from "@/lib/recipeUtils";
 export function ActiveBakeSection() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { reportSyncStart, reportSyncSuccess, reportSyncFailure } = useSyncStatus();
 
   // Bench Optimization: Screen on during active bake
@@ -564,8 +565,8 @@ export function ActiveBakeSection() {
         hasRecipes={recipes.length > 0}
         onOpenRecipePicker={() => setShowRecipePicker(true)}
         refreshing={refreshing}
-        onGoToBuilder={() => {}}
-        onCreateRecipe={() => {}}
+        onGoToBuilder={() => router.push({ pathname: "/lab", params: { section: "recipe builder" } })}
+        onCreateRecipe={() => router.push({ pathname: "/lab", params: { section: "recipe builder", action: "new" } })}
         onRefresh={load}
       />
       )}

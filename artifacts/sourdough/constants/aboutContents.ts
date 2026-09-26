@@ -119,6 +119,15 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
+      version: "v2.5.2", /* -- published 20260925 -- */
+      changes: [
+        { type: "Fixed", content: "Diagnostic Success Evaluation: Positive bake attributes (like Airy Crumb or Strong Rise) no longer count as defects." },
+        { type: "Fixed", content: "Iteration Versioning: Master recipes no longer contribute to the iteration count." },
+        { type: "Added", content: "Flexible Bake Finish: Log & Finish button is no longer hidden, even when it wouldn't make sense to press it." },
+        { type: "Fixed", content: "Recipe Linking: The Go to Recipe Builder button on the Recipe Runner landing page stopped working. We started it again." },
+      ],
+    },
+    {
       version: "v2.5.1", /* -- published 20260925 -- */
       changes: [
         { type: "Added", content: "Upgraded Bulk Ferment Engine: rebuilt it as an 8-layer state estimator architecture featuring Causal Thermal Exposure integration, P/D rate correction, latched target rise fraction, and confidence scoring (High/Med/Low)." },

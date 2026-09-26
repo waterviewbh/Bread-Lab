@@ -25,6 +25,10 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [📓 Journal](file:///E:/Bread-Lab/docs/journal/)
 **Purpose**: A chronological record of work sessions, obstacles encountered, and high-level progress. Use this to get a sense of the project's recent trajectory.
+#### 📦 Version 2.5.2
+- [Session: Recipe Runner Navigation Fix (2026-09-25)](file:///E:/Bread-Lab/docs/journal/2026-09-25_recipe_runner_navigation_fix.artifact.md)
+- [Session: Diagnostic Bake Finishing & Version Numbering Fixes (2026-09-25)](file:///E:/Bread-Lab/docs/journal/2026-09-25_diagnostic_bake_finishing_and_version_numbering.artifact.md)
+
 #### 📦 Version 2.5.1
 - [Session: PD-Informed State Estimator Refactoring & Validation Harness (2026-09-25)](file:///E:/Bread-Lab/docs/journal/2026-09-25_pd_informed_state_estimator_refactoring.artifact.md)
 - [Session: Feed Planner Nudge & Calibration Refinements (2026-09-20)](file:///E:/Bread-Lab/docs/journal/2026-09-20_feed_planner_nudge_and_calibration_refinements.artifact.md)
@@ -68,6 +72,8 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🎨 Walkthroughs](file:///E:/Bread-Lab/docs/walkthroughs/)
 **Purpose**: Demonstrations and summaries of completed features, including UI screenshots and technical breakdowns.
+- [Recipe Runner Navigation Fix (2026-09-25)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-25_recipe_runner_navigation_fix.artifact.md)
+- [Diagnostic Bake Finishing & Version Numbering (2026-09-25)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-25_diagnostic_bake_finishing_and_version_numbering.artifact.md)
 - [PD-Informed State Estimator & Validation Harness (2026-09-25)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-25_pd_informed_state_estimator_refactoring.artifact.md)
 - [Feed Planner Nudge & Calibration Refinements (2026-09-20)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-20_feed_planner_nudge_and_calibration_refinements.artifact.md)
 - [Self-Healing Active Bake Zombie Cleanups (2026-09-20)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-20_self_healing_zombie_bake_cleanups.artifact.md)
