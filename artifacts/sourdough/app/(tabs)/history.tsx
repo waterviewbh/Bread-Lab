@@ -563,13 +563,18 @@ export default function HistoryScreen() {
              </div>`
           : "";
 
-        const foldHtml = p.key === "stretching_folding"
+        const foldHtml = (p.key === "stretching_folding" || /fold|stretch/i.test(p.name))
           ? (() => {
               const count = (p as any).foldCount ?? 0;
-              const circles = [0,1,2,3].map(i =>
-                `<span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid #6E7558;background:${i < count ? '#6E7558' : 'transparent'};margin-right:6px"></span>`
-              ).join('');
-              return `<div class="section"><div class="label">Folds</div><div>${circles}</div></div>`;
+              const timestamps = (p as any).foldTimestamps as (number | null)[] | undefined;
+              const circles = [0,1,2,3].map(i => {
+                const ts = timestamps?.[i];
+                const chit = i < count && ts !== null && ts !== undefined
+                  ? `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#8C7A6B;margin-top:2px">+${ts}</div>`
+                  : `<div style="height:12px"></div>`;
+                return `<div style="display:inline-flex;flex-direction:column;align-items:center;margin-right:12px"><span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid #6E7558;background:${i < count ? '#6E7558' : 'transparent'}"></span>${chit}</div>`;
+              }).join('');
+              return `<div class="section"><div class="label">Folds</div><div style="display:flex;flex-direction:row;align-items:flex-start">${circles}</div></div>`;
             })()
           : "";
 
@@ -662,6 +667,7 @@ export default function HistoryScreen() {
               startedAt: p.startedAt ?? null,
               completedAt: p.completedAt ?? null,
               foldCount: (p as any).foldCount,
+              foldTimestamps: (p as any).foldTimestamps,
             })),
           },
           ...list,
@@ -751,6 +757,7 @@ export default function HistoryScreen() {
           })),
           startVolume: p.startVolume,
           foldCount: (p as any).foldCount,
+          foldTimestamps: (p as any).foldTimestamps,
         })),
       }));
 

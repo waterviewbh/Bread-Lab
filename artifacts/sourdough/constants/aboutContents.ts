@@ -119,12 +119,22 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
+      version: "v2.5.3", /* -- published 20261002 -- */
+      changes: [
+        { type: "Fixed", content: "Fold Timing Chits: The feature was built but never turned on. That's done now." },
+        { type: "Added", content: "Recipe Picker Cards: Replaced horizontal list rows with standalone recipe cards." },
+        { type: "Changed", content: "Fraction Preservation: Fractions entered into Recipe Builder are no longer scaled as decimals, but will retain their fraction-ness." },
+        { type: "Changed", content: "Inoculation Parser: Commercial yeasts are now counted before wild yeast preferments, and those are detected better. Terms like discard, sponge, mother all count as sourdough starter." },
+      ],
+    },
+    {
       version: "v2.5.2", /* -- published 20260925 -- */
       changes: [
         { type: "Fixed", content: "Diagnostic Success Evaluation: Positive bake attributes (like Airy Crumb or Strong Rise) no longer count as defects." },
         { type: "Fixed", content: "Iteration Versioning: Master recipes no longer contribute to the iteration count." },
         { type: "Added", content: "Flexible Bake Finish: Log & Finish button is no longer hidden, even when it wouldn't make sense to press it." },
         { type: "Fixed", content: "Recipe Linking: The Go to Recipe Builder button on the Recipe Runner landing page stopped working. We started it again." },
+        { type: "Fixed", content: "Fold Timing Chits: The feature was built but never turned on. That's done now." },
       ],
     },
     {

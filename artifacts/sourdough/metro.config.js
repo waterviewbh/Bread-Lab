@@ -13,6 +13,26 @@ config.resolver.nodeModulesPaths = [
     path.resolve(workspaceRoot, 'node_modules'),
 ];
 
+// Exclude non-source directories, documentation, and test artifacts from Metro file watcher
+// so file writes in docs/, .artifacts/, .maestro/, or screenshots do not trigger Fast Refresh reloads.
+const nonSourceExclusions = [
+    /[/\\]\.git\/.*/,
+    /[/\\]\.artifacts\/.*/,
+    /[/\\]\.maestro\/.*/,
+    /[/\\]docs\/.*/,
+    /[/\\]artifacts\/.*\/screenshots\/.*/,
+    /[/\\]artifacts\/screenshots\/.*/,
+];
+
+const existingBlockList = config.resolver.blockList;
+if (Array.isArray(existingBlockList)) {
+    config.resolver.blockList = [...existingBlockList, ...nonSourceExclusions];
+} else if (existingBlockList instanceof RegExp) {
+    config.resolver.blockList = [existingBlockList, ...nonSourceExclusions];
+} else {
+    config.resolver.blockList = nonSourceExclusions;
+}
+
 // resolver.alias was insufficient: pnpm symlink paths and their real paths
 // were registering as two separate Metro module cache entries, causing
 // ReactSharedInternals.H (the dispatcher) to be set on one React instance

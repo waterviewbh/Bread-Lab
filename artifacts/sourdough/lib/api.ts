@@ -64,6 +64,10 @@ export type ApiRecipe = {
   hydration_pct?: number;
   parent_recipe_id?: string;
   version_label?: string;
+  isArchived?: boolean;
+  diagnosticHypothesis?: string;
+  isUneditedIteration?: boolean;
+  clonedFromBakeName?: string;
 };
 
 export type ApiFeedSession = {
@@ -206,6 +210,9 @@ function rowToApiRecipe(r: RecipeRow): ApiRecipe {
     parent_recipe_id: r.parent_recipe_id ?? undefined,
     version_label: r.version_label ?? undefined,
     isArchived: r.is_archived,
+    diagnosticHypothesis: r.recipe_data?.diagnosticHypothesis ?? undefined,
+    isUneditedIteration: r.recipe_data?.isUneditedIteration ?? undefined,
+    clonedFromBakeName: r.recipe_data?.clonedFromBakeName ?? undefined,
   };
 }
 

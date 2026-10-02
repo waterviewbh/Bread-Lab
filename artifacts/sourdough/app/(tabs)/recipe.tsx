@@ -596,7 +596,7 @@ const saveBakeToHistory = async (b: ActiveBake) => {
       let timestamps = [...(p.foldTimestamps || [])];
       if (next > current) {
         // Filling: all newly filled circles get the same current timestamp
-        const elapsed = p.startedAt ? Math.floor((now - p.startedAt) / 60000) : 0;
+        const elapsed = p.startedAt ? Math.max(0, Math.floor((now - p.startedAt) / 60000)) : 0;
         for (let i = 0; i < next; i++) {
           if (timestamps[i] === null || timestamps[i] === undefined) {
             timestamps[i] = elapsed;

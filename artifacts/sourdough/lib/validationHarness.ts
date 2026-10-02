@@ -331,3 +331,81 @@ export function compareEstimators(
 ) {
   return estimators.map((e) => evaluateCorpus(corpus, e.fn, e.label, e.options));
 }
+
+export interface FuzzingOptions {
+  /** Pseudo-random seed for deterministic noise generation */
+  seed?: number;
+  /** Max temperature noise in F (default: 3.0) */
+  tempJitterF?: number;
+  /** Max volume noise in ml (default: 15.0) */
+  volumeJitterMl?: number;
+  /** Probability of missing temperature reading (0.0 to 1.0, default: 0.1) */
+  missingDataProbability?: number;
+  /** Toggle temp units between F and C randomly */
+  toggleUnits?: boolean;
+}
+
+/**
+ * Generate a fuzzed/noisy copy of a clean validation bake fixture.
+ * Injects observational noise, unit toggles, and missing readings
+ * WITHOUT modifying ground truth actual duration or recipe phases.
+ */
+export function generateFuzzedBakeSession(
+  fixture: ValidationBakeFixture,
+  options: FuzzingOptions = {}
+): ValidationBakeFixture {
+  const {
+    seed = 42,
+    tempJitterF = 3.0,
+    volumeJitterMl = 15.0,
+    missingDataProbability = 0.1,
+    toggleUnits = true,
+  } = options;
+
+  let currentSeed = seed;
+  const pseudoRandom = () => {
+    currentSeed = (currentSeed * 9301 + 49297) % 233280;
+    return currentSeed / 233280;
+  };
+
+  const fuzzedReadings: BulkFermentReading[] = fixture.readings.map((r, idx) => {
+    const fuzzed: BulkFermentReading = { ...r };
+
+    // Inject temperature jitter
+    if (typeof fuzzed.doughTemp === "number") {
+      const tempNoise = (pseudoRandom() * 2 - 1) * tempJitterF;
+      let rawTemp = fuzzed.doughTemp + tempNoise;
+
+      // Randomly toggle units between F and C
+      if (toggleUnits && pseudoRandom() > 0.5) {
+        fuzzed.tempUnit = "C";
+        fuzzed.doughTemp = Math.round(((rawTemp - 32) * 5 / 9) * 10) / 10;
+      } else {
+        fuzzed.tempUnit = "F";
+        fuzzed.doughTemp = Math.round(rawTemp * 10) / 10;
+      }
+    }
+
+    // Inject volume noise
+    if (typeof fuzzed.volume_ml === "number") {
+      const volNoise = (pseudoRandom() * 2 - 1) * volumeJitterMl;
+      fuzzed.volume_ml = Math.max(100, Math.round(fuzzed.volume_ml + volNoise));
+    }
+
+    // Randomly omit non-essential reading fields
+    if (idx > 0 && pseudoRandom() < missingDataProbability) {
+      delete fuzzed.doughTemp;
+    }
+
+    return fuzzed;
+  });
+
+  return {
+    ...fixture,
+    id: `${fixture.id}_fuzzed`,
+    name: `${fixture.name} (Fuzzed Chaos)`,
+    readings: fuzzedReadings,
+    regimeTags: [...(fixture.regimeTags || []), "FUZZED_CHAOS"],
+  };
+}
+

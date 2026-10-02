@@ -1,6 +1,6 @@
 {
   "_warning": "This is the ONLY place where version and versionCode should be edited for the Play Store.",
   "_warning": "-.-.X for small bugfixes, -.X.- for new features, X.-.- for significant upgrades.",
-  "version": "2.5.2",
-  "versionCode": 26
+  "version": "2.5.3",
+  "versionCode": 27
 }

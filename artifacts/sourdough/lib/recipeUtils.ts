@@ -62,15 +62,190 @@ export function scaleCheckableLines(lines: CheckableLine[], multiplier: number):
   }));
 }
 
+const UNICODE_FRACTIONS: Record<string, number> = {
+  "\u00BD": 0.5,    // 1/2
+  "\u2153": 1 / 3,  // 1/3
+  "\u2154": 2 / 3,  // 2/3
+  "\u00BC": 0.25,   // 1/4
+  "\u00BE": 0.75,   // 3/4
+  "\u2155": 0.2,    // 1/5
+  "\u2156": 0.4,    // 2/5
+  "\u2157": 0.6,    // 3/5
+  "\u2158": 0.8,    // 4/5
+  "\u2159": 1 / 6,  // 1/6
+  "\u215A": 5 / 6,  // 5/6
+  "\u215B": 0.125,  // 1/8
+  "\u215C": 0.375,  // 3/8
+  "\u215D": 0.625,  // 5/8
+  "\u215E": 0.875,  // 7/8
+};
+
+const KITCHEN_FRACTIONS: { val: number; slash: string; unicode: string }[] = [
+  { val: 1 / 8, slash: "1/8", unicode: "\u215B" },
+  { val: 1 / 6, slash: "1/6", unicode: "\u2159" },
+  { val: 1 / 4, slash: "1/4", unicode: "\u00BC" },
+  { val: 1 / 3, slash: "1/3", unicode: "\u2153" },
+  { val: 3 / 8, slash: "3/8", unicode: "\u215C" },
+  { val: 1 / 2, slash: "1/2", unicode: "\u00BD" },
+  { val: 5 / 8, slash: "5/8", unicode: "\u215D" },
+  { val: 2 / 3, slash: "2/3", unicode: "\u2154" },
+  { val: 3 / 4, slash: "3/4", unicode: "\u00BE" },
+  { val: 5 / 6, slash: "5/6", unicode: "\u215A" },
+  { val: 7 / 8, slash: "7/8", unicode: "\u215E" },
+];
+
+// Explicit dictionary of supported ingredient units with singular/plural mappings.
+const PLURALIZABLE_UNITS: Record<string, { singular: string; plural: string }> = {
+  // Imperial mass
+  lb: { singular: "lb", plural: "lbs" },
+  lbs: { singular: "lb", plural: "lbs" },
+  pound: { singular: "pound", plural: "pounds" },
+  pounds: { singular: "pound", plural: "pounds" },
+  ounce: { singular: "ounce", plural: "ounces" },
+  ounces: { singular: "ounce", plural: "ounces" },
+
+  // Eggs & Item counts
+  egg: { singular: "egg", plural: "eggs" },
+  eggs: { singular: "egg", plural: "eggs" },
+  "large egg": { singular: "large egg", plural: "large eggs" },
+  "large eggs": { singular: "large egg", plural: "large eggs" },
+  yolk: { singular: "yolk", plural: "yolks" },
+  yolks: { singular: "yolk", plural: "yolks" },
+  "egg yolk": { singular: "egg yolk", plural: "egg yolks" },
+  "egg yolks": { singular: "egg yolk", plural: "egg yolks" },
+  white: { singular: "white", plural: "whites" },
+  whites: { singular: "white", plural: "whites" },
+  "egg white": { singular: "egg white", plural: "egg whites" },
+  "egg whites": { singular: "egg white", plural: "egg whites" },
+
+  // Fat & Dairy units
+  stick: { singular: "stick", plural: "sticks" },
+  sticks: { singular: "stick", plural: "sticks" },
+  slice: { singular: "slice", plural: "slices" },
+  slices: { singular: "slice", plural: "slices" },
+
+  // Kitchen Volume units
+  cup: { singular: "cup", plural: "cups" },
+  cups: { singular: "cup", plural: "cups" },
+  tablespoon: { singular: "tablespoon", plural: "tablespoons" },
+  tablespoons: { singular: "tablespoon", plural: "tablespoons" },
+  teaspoon: { singular: "teaspoon", plural: "teaspoons" },
+  teaspoons: { singular: "teaspoon", plural: "teaspoons" },
+  pinch: { singular: "pinch", plural: "pinches" },
+  pinches: { singular: "pinch", plural: "pinches" },
+  dash: { singular: "dash", plural: "dashes" },
+  dashes: { singular: "dash", plural: "dashes" },
+  clove: { singular: "clove", plural: "cloves" },
+  cloves: { singular: "clove", plural: "cloves" },
+
+  // Standard mass/volume full words
+  gram: { singular: "gram", plural: "grams" },
+  grams: { singular: "gram", plural: "grams" },
+  kilogram: { singular: "kilogram", plural: "kilograms" },
+  kilograms: { singular: "kilogram", plural: "kilograms" },
+  milliliter: { singular: "milliliter", plural: "milliliters" },
+  milliliters: { singular: "milliliter", plural: "milliliters" },
+  liter: { singular: "liter", plural: "liters" },
+  liters: { singular: "liter", plural: "liters" },
+};
+
+function parseQuantityInfo(numStr: string): { qty: number; isSlash: boolean; isUnicode: boolean } {
+  const trimmed = numStr.trim();
+
+  // Check unicode fraction (e.g. "½", "1½", "1 ½")
+  for (const [char, val] of Object.entries(UNICODE_FRACTIONS)) {
+    if (trimmed.includes(char)) {
+      const wholePart = trimmed.replace(char, "").trim();
+      const whole = wholePart ? parseFloat(wholePart) : 0;
+      return { qty: whole + val, isSlash: false, isUnicode: true };
+    }
+  }
+
+  // Check slash fraction / mixed fraction (e.g. "1 1/2", "1/2")
+  if (trimmed.includes("/")) {
+    const parts = trimmed.split(/\s+/);
+    if (parts.length === 2) {
+      const whole = parseFloat(parts[0]);
+      const [num, den] = parts[1].split("/").map(Number);
+      return { qty: whole + num / den, isSlash: true, isUnicode: false };
+    } else if (parts.length === 1) {
+      const [num, den] = parts[0].split("/").map(Number);
+      return { qty: num / den, isSlash: true, isUnicode: false };
+    }
+  }
+
+  return { qty: parseFloat(trimmed), isSlash: false, isUnicode: false };
+}
+
+function formatQuantity(scaled: number, isSlash: boolean, isUnicode: boolean): { formattedQty: string; isFractionOutput: boolean } {
+  // If exact integer, format as whole number
+  if (Math.abs(scaled - Math.round(scaled)) < 0.0001) {
+    return { formattedQty: Math.round(scaled).toString(), isFractionOutput: false };
+  }
+
+  // If input was a fraction (slash or unicode), attempt fraction-preserving output
+  if (isSlash || isUnicode) {
+    const whole = Math.floor(scaled);
+    const fractionalPart = scaled - whole;
+
+    // Match against kitchen fractions within tolerance
+    const match = KITCHEN_FRACTIONS.find(f => Math.abs(fractionalPart - f.val) < 0.015);
+    if (match) {
+      if (isUnicode) {
+        return { formattedQty: whole > 0 ? `${whole}${match.unicode}` : match.unicode, isFractionOutput: true };
+      } else {
+        return { formattedQty: whole > 0 ? `${whole} ${match.slash}` : match.slash, isFractionOutput: true };
+      }
+    }
+  }
+
+  // Fallback for non-fractions or unrepresentable fractions: decimal rounded to <= 2 decimal places
+  return { formattedQty: parseFloat(scaled.toFixed(2)).toString(), isFractionOutput: false };
+}
+
+// Regex matching quantity followed by optional space and a whitelisted unit word.
+const INGREDIENT_UNIT_REGEX = /(?<=^|[\s,;(])((?:\d+\s+)?\d+\/\d+|\d+\s*[\u00BD\u2153\u2154\u00BC\u00BE\u2155\u2156\u2157\u2158\u2159\u215A\u215B\u215C\u215D\u215E]|[\u00BD\u2153\u2154\u00BC\u00BE\u2155\u2156\u2157\u2158\u2159\u215A\u215B\u215C\u215D\u215E]|\d+(?:\.\d+)?)(?:(\s+)?)(large eggs|large egg|egg yolks|egg yolk|egg whites|egg white|tablespoons|tablespoon|teaspoons|teaspoon|kilograms|kilogram|milliliters|milliliter|ounces|ounce|pounds|pound|sticks|stick|slices|slice|cups|cup|pinches|pinch|dashes|dash|cloves|clove|grams|gram|liters|liter|eggs|egg|yolks|yolk|whites|white|tbsp|tbs|tb|tsp|ts|lbs|lb|oz|kg|ml|l|g)\b/gi;
+
 export function scalePhaseText(text: string, multiplier: number): string {
-  if (multiplier === 1 || !text) return text;  // Case-insensitive so "G", "KG", "ML" etc. are matched.
-  const MASS_VOLUME_RE = /\b(\d+(?:\.\d+)?)(?:(\s+)?)(g|kg|ml|l|oz|lbs)\b/gi;  return text.replace(
-    MASS_VOLUME_RE,
-    (_match, numStr: string, space: string | undefined, unit: string) => {
-      const scaled = parseFloat(numStr) * multiplier;
-      // Drop trailing ".0" — e.g., 500.0 → "500", 250.5 → "250.5"
-      const formatted = parseFloat(scaled.toFixed(1)).toString();
-      return `${formatted}${space ?? ""}${unit}`;
+  if (multiplier === 1 || !text) return text;
+
+  return text.replace(
+    INGREDIENT_UNIT_REGEX,
+    (_match, numStr: string, space: string | undefined, unitMatch: string) => {
+      const { qty, isSlash, isUnicode } = parseQuantityInfo(numStr);
+      const scaled = qty * multiplier;
+      const { formattedQty, isFractionOutput } = formatQuantity(scaled, isSlash, isUnicode);
+
+      const lowerUnit = unitMatch.toLowerCase();
+      let finalUnit = unitMatch;
+
+      if (PLURALIZABLE_UNITS[lowerUnit]) {
+        let isPlural: boolean;
+        if (formattedQty === "1") {
+          isPlural = false;
+        } else if (isFractionOutput) {
+          const isMixedNumber = formattedQty.includes(" ") || /^\d+[\u00BD\u2153\u2154\u00BC\u00BE\u2155\u2156\u2157\u2158\u2159\u215A\u215B\u215C\u215D\u215E]/.test(formattedQty);
+          isPlural = isMixedNumber;
+        } else {
+          isPlural = true;
+        }
+
+        const targetForm = isPlural
+          ? PLURALIZABLE_UNITS[lowerUnit].plural
+          : PLURALIZABLE_UNITS[lowerUnit].singular;
+
+        if (unitMatch === unitMatch.toLowerCase()) {
+          finalUnit = targetForm.toLowerCase();
+        } else if (unitMatch === unitMatch.toUpperCase()) {
+          finalUnit = targetForm.toUpperCase();
+        } else if (unitMatch[0] === unitMatch[0].toUpperCase()) {
+          finalUnit = targetForm.charAt(0).toUpperCase() + targetForm.slice(1).toLowerCase();
+        } else {
+          finalUnit = targetForm;
+        }
+      }
+
+      return `${formattedQty}${space ?? ""}${finalUnit}`;
     }
   );
 }
@@ -187,8 +362,28 @@ export function parseIngredientsForMetrics(phases: { ingredients: string | any[]
           else if (unitLabel === "oz") weight *= 28.35;
           else if (unitLabel === "lbs") weight *= 453.59;
 
-          // Priority context: Starter > Flour > Water
-          if (part.includes("starter") || part.includes("levain") || part.includes("leaven") || part.includes("preferment") || part.includes("poolish") || part.includes("biga")) {
+          // Priority context: Yeast > Starter > Flour > Water
+          if (
+            part.includes("yeast") ||
+            part.includes("instant starter") ||
+            part.includes("saf") ||
+            part.includes("active dry")
+          ) {
+            totals.yeast += weight;
+            if (part.includes("instant") || part.includes("saf")) totals.yeastType = "instant";
+            else if (part.includes("dry") || part.includes("active")) totals.yeastType = "dry";
+            else if (totals.yeastType === "unknown") totals.yeastType = "instant";
+          } else if (
+            part.includes("starter") ||
+            part.includes("levain") ||
+            part.includes("leaven") ||
+            part.includes("preferment") ||
+            part.includes("poolish") ||
+            part.includes("biga") ||
+            part.includes("discard") ||
+            part.includes("sponge") ||
+            part.includes("mother")
+          ) {
             totals.starter += weight;
           } else if (part.includes("flour") || part.includes("meal") || part.includes("wheat") || part.includes("rye") || part.includes("spelt")) {
             totals.flour += weight;
@@ -196,10 +391,6 @@ export function parseIngredientsForMetrics(phases: { ingredients: string | any[]
             totals.water += weight;
           } else if (part.includes("salt")) {
             totals.salt += weight;
-          } else if (part.includes("yeast")) {
-            totals.yeast += weight;
-            if (part.includes("instant") || part.includes("saf")) totals.yeastType = "instant";
-            else if (part.includes("dry") || part.includes("active")) totals.yeastType = "dry";
           }
           // Liquid Hydrators
           else if (part.includes("milk")) {

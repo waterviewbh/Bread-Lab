@@ -1,4 +1,4 @@
-// artifacts/sourdough/app/(tabs)/_layout.tsx
+// artifacts/sourdough/app/(tabs)/_layout.tsx - Fast Refresh verification test
 import { Tabs } from "expo-router";
 import { Platform, StyleSheet, View } from "react-native";
 import { Svg, Path, G } from "react-native-svg";
@@ -119,6 +119,7 @@ function ClassicTabLayout() {
         name="lab"
         options={{
           title: "Lab",
+          tabBarTestID: "lab-tab",
           tabBarIcon: ({ color, focused }) => (
             <HubIcon name="lab" color={color} focused={focused} />
           ),

@@ -4,6 +4,7 @@ import {
   evaluateBakeSession,
   evaluateCorpus,
   compareEstimators,
+  generateFuzzedBakeSession,
 } from "../validationHarness";
 import { computeBulkFermentState } from "../bulkFermentEngine";
 
@@ -163,5 +164,49 @@ describe("Estimator Validation Harness & Benchmark Suite", () => {
 
     expect(coolRegime.observationCount).toBe(4);
     expect(warmRegime.maeMin).toBeLessThan(coolRegime.maeMin);
+  });
+
+  it("5. Numerical Robustness & Input-Hardening Suite (Estimator Fuzzing)", () => {
+    const fuzzedCorpus = REGRESSION_CORPUS.map((bake) =>
+      generateFuzzedBakeSession(bake, {
+        seed: 12345,
+        tempJitterF: 3.0,
+        volumeJitterMl: 15.0,
+        missingDataProbability: 0.15,
+        toggleUnits: true,
+      })
+    );
+
+    const fuzzedSummary = evaluateCorpus(
+      fuzzedCorpus,
+      computeBulkFermentState,
+      "Fuzzed Chaos Evaluation"
+    );
+
+    expect(fuzzedSummary.bakeResults.length).toBe(6);
+
+    for (const bResult of fuzzedSummary.bakeResults) {
+      for (const trace of bResult.traces) {
+        // Assert no NaN or Infinity values
+        if (trace.doughTempF !== null) {
+          expect(Number.isNaN(trace.doughTempF)).toBe(false);
+          expect(Number.isFinite(trace.doughTempF)).toBe(true);
+        }
+        if (trace.currentVolMl !== null) {
+          expect(Number.isNaN(trace.currentVolMl)).toBe(false);
+          expect(Number.isFinite(trace.currentVolMl)).toBe(true);
+        }
+        expect(Number.isNaN(trace.S_PD)).toBe(false);
+        expect(Number.isFinite(trace.S_PD)).toBe(true);
+
+        // Assert confidence score is bounded in [0, 1]
+        expect(trace.confidenceScore).toBeGreaterThanOrEqual(0.0);
+        expect(trace.confidenceScore).toBeLessThanOrEqual(1.0);
+
+        // Assert valid diagnostic codes
+        expect(typeof trace.diagnosticCode).toBe("string");
+        expect(trace.diagnosticCode.length).toBeGreaterThan(0);
+      }
+    }
   });
 });

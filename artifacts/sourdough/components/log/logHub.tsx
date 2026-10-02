@@ -93,7 +93,7 @@ export function LogHub() {
 }
 
 const s = StyleSheet.create({
-  toggleWrap: { paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  toggleWrap: { paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, maxWidth: 600, width: "100%", alignSelf: "center" },
   toggle: { flexDirection: "row", borderRadius: radius.lg, borderWidth: 1, padding: 3, gap: 3 },
   toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: radius.md, alignItems: "center" },
   toggleText: { fontSize: 13 },

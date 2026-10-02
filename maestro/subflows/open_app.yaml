@@ -1,13 +1,22 @@
 appId: com.waterviewbakehouse.breadlab
 ---
 # Hub-Aware Passive Launch
-# Handles Welcome Screen (The Lab/Bench/Log cards) or direct Tab state.
+# Handles Welcome Screen (The Lab/Bench/Log cards), Bench/Log tab state, or direct Lab Tab state.
 
 - runFlow:
     when:
       visible: "The Lab"
     commands:
       - tapOn: "The Lab"
+      - waitForAnimationToEnd
+
+- runFlow:
+    when:
+      notVisible: "RECIPE BUILDER"
+    commands:
+      - tapOn:
+          id: "lab-tab"
+      - waitForAnimationToEnd
 
 - extendedWaitUntil:
     visible: "RECIPE BUILDER"

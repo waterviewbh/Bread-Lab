@@ -414,11 +414,28 @@ export function ActiveBakeSection() {
 
   const handleToggleFold = async (key: string, idx: number) => {
     if (!bake) return;
+    const now = Date.now();
     const phases = bake.phases.map((p) => {
       if (p.key !== key) return p;
       const current = p.foldCount ?? 0;
       const next = current === idx + 1 ? idx : idx + 1;
-      return { ...p, foldCount: next };
+
+      // Handle timing chits (elapsed minutes since phase start)
+      let timestamps = [...(p.foldTimestamps || [])];
+      if (next > current) {
+        const elapsed = p.startedAt ? Math.max(0, Math.floor((now - p.startedAt) / 60000)) : 0;
+        for (let i = 0; i < next; i++) {
+          if (timestamps[i] === null || timestamps[i] === undefined) {
+            timestamps[i] = elapsed;
+          }
+        }
+      } else {
+        for (let i = next; i < (p.foldTimestamps?.length || 0); i++) {
+          timestamps[i] = null;
+        }
+      }
+
+      return { ...p, foldCount: next, foldTimestamps: timestamps };
     });
     const updatedBake = { ...bake, phases };
     setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));

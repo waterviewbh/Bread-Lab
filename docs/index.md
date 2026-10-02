@@ -10,7 +10,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 >
 > **Session Wrap-up Protocol**:
 > Before ending a session, the AI agent must:
-> 1. Update the [📔 Journal](file:///E:/Bread-Lab/docs/journal/) with a new session entry.
+> 1. Update the [📔 Journal](file:///E:/Bread-Lab/docs/journal/) with a new session entry. The four elements that should be in every journal entry are: a) Problem, b) Root Cause, c) Change, d) Verification.
 > 2. Create or update a [🎨 Walkthrough](file:///E:/Bread-Lab/docs/walkthroughs/) for any new features or UI changes.
 > 3. Mark any completed [📜 Briefs](file:///E:/Bread-Lab/docs/briefs/) with a 'Completion Status' section and link to the walkthrough.
 > 4. Update this [index.md](file:///E:/Bread-Lab/docs/index.md) to link to the new artifacts.
@@ -19,13 +19,27 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [📜 Briefs](file:///E:/Bread-Lab/docs/briefs/)
 **Purpose**: This is the "Inbox" for the agent. Place guides, custom instructions, task parameters, or feature specifications here that you want me to follow or use as a reference for future work.
+- [Stretch & Fold Timing Chits (2026-09-19)](file:///E:/Bread-Lab/docs/briefs/20260919%20fold%20timechit.txt)
 - [Multi-Bake Support (2026-09-07)](file:///E:/Bread-Lab/docs/briefs/20260907%20concurrent%20runners.md)
 - [Recipe Deck Specification: Index Tabs vs Stacked (2026-09-07)](file:///E:/Bread-Lab/docs/briefs/20260907%20recipe_deck_specification_index_tabs_vs_stacked.txt)
 - [APK File Storage (2026-09-07)](file:///E:/Bread-Lab/docs/briefs/20260907%20apk%20file%20storage.txt)
 
 ### [📓 Journal](file:///E:/Bread-Lab/docs/journal/)
 **Purpose**: A chronological record of work sessions, obstacles encountered, and high-level progress. Use this to get a sense of the project's recent trajectory.
+#### 🛠️ IDE & Build Tooling Admin
+- [Session: Metro File-Watcher Exclusions & Maestro E2E Infrastructure (2026-10-02)](file:///E:/Bread-Lab/docs/journal/2026-10-02_metro_and_maestro_e2e_admin.artifact.md)
+- [Session: React 19 & RNTL v14 Testing Infrastructure Baseline (2026-09-27)](file:///E:/Bread-Lab/docs/journal/2026-09-27_react19_rntl14_testing_stack.artifact.md)
+- [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
+
+#### 📦 Version 2.5.3
+- [Session: Stretch & Fold Timing Chits (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_stretch_and_fold_timing_chits.artifact.md)
+- [Session: Iteration Hypothesis & Overview Persistence (2026-09-28)](file:///E:/Bread-Lab/docs/journal/2026-09-28_iteration_hypothesis_and_overview_persistence.artifact.md)
+- [Session: Ingredient Scaling Architecture & Vocabulary Refinement (2026-09-30)](file:///E:/Bread-Lab/docs/journal/2026-09-30_ingredient_scaling_and_vocabulary_refinement.artifact.md)
+- [Session: Recipe Picker Presentation Enhancement (2026-10-01)](file:///E:/Bread-Lab/docs/journal/2026-10-01_recipe_picker_presentation_enhancement.artifact.md)
+- [Session: Sourdough Discard & Instant Starter Inoculation Classification Fix (2026-10-01)](file:///E:/Bread-Lab/docs/journal/2026-10-01_inoculation_classification_fix.artifact.md)
+
 #### 📦 Version 2.5.2
+- [Session: Multi-Device Responsive UI & Font Scaling Consistency (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_multi_device_responsive_ui.artifact.md)
 - [Session: Recipe Runner Navigation Fix (2026-09-25)](file:///E:/Bread-Lab/docs/journal/2026-09-25_recipe_runner_navigation_fix.artifact.md)
 - [Session: Diagnostic Bake Finishing & Version Numbering Fixes (2026-09-25)](file:///E:/Bread-Lab/docs/journal/2026-09-25_diagnostic_bake_finishing_and_version_numbering.artifact.md)
 
@@ -55,6 +69,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🏗️ Architectural](file:///E:/Bread-Lab/docs/architectural/)
 **Purpose**: High-level design documents and approved implementation plans for major system changes.
+- [Visual Verification & Screenshot Protocol (2026-09-27)](file:///E:/Bread-Lab/docs/architectural/visual_verification_protocol.md)
 - [Android Migration Plan](file:///E:/Bread-Lab/docs/architectural/android_migration_plan.artifact.md)
 - [Build and Environment Refinement](file:///E:/Bread-Lab/docs/architectural/android_build_and_env_refinement.artifact.md)
 - [Expo Bundling and Dev Client Fix](file:///E:/Bread-Lab/docs/architectural/expo_bundling_and_dev_client_fix.artifact.md)
@@ -72,6 +87,9 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🎨 Walkthroughs](file:///E:/Bread-Lab/docs/walkthroughs/)
 **Purpose**: Demonstrations and summaries of completed features, including UI screenshots and technical breakdowns.
+- [Recipe Picker Presentation Enhancement (2026-10-01)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-01_recipe_picker_presentation_enhancement.artifact.md)
+- [Ingredient Scaling Architecture & Vocabulary Refinement (2026-09-30)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-30_ingredient_scaling_architecture.artifact.md)
+- [Multi-Device Responsive UI & Font Scaling (2026-09-26)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-26_multi_device_responsive_ui.artifact.md)
 - [Recipe Runner Navigation Fix (2026-09-25)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-25_recipe_runner_navigation_fix.artifact.md)
 - [Diagnostic Bake Finishing & Version Numbering (2026-09-25)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-25_diagnostic_bake_finishing_and_version_numbering.artifact.md)
 - [PD-Informed State Estimator & Validation Harness (2026-09-25)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-25_pd_informed_state_estimator_refactoring.artifact.md)

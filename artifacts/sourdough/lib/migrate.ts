@@ -157,6 +157,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
           readings: p.readings,
           startVolume: p.startVolume,
           foldCount: p.foldCount,
+          foldTimestamps: p.foldTimestamps,
         })),
       })
     }),

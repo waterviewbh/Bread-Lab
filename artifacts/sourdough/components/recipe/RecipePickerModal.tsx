@@ -7,12 +7,12 @@ import {
   Text,
   View,
 } from "react-native";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { formatDate } from "@/lib/recipeUtils";
+import { RecipeCard } from "@/components/recipe/RecipeCard";
 import type { SavedRecipe } from "@/lib/recipeTypes";
-import { fonts, spacing, radius } from "@/constants/theme";
+import { fonts, spacing } from "@/constants/theme";
 
 interface Props {
   visible: boolean;
@@ -32,47 +32,34 @@ export function RecipePickerModal({ visible, recipes, onSelect, onClose }: Props
       onRequestClose={onClose}
     >
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Header */}
+        {/* Header */}
         <View style={[s.sheetHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
           <Text style={[s.sheetTitle, { color: colors.foreground }]}>Select Recipe</Text>
           <Pressable
             onPress={onClose}
             style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+            accessibilityLabel="Close"
+            testID="close-picker-button"
           >
             <Ionicons name="close" size={22} color={colors.foreground} />
           </Pressable>
         </View>
+
         {/* Recipe list */}
-        <ScrollView contentContainerStyle={{ paddingVertical: 8, paddingBottom: insets.bottom + 24 }}>
-          {recipes
-            .sort((a, b) => (Math.max(b.updatedAt || 0, b.createdAt)) - (Math.max(a.updatedAt || 0, a.createdAt)))
-            .map((r) => (
-            <Pressable
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingVertical: 16,
+            paddingBottom: insets.bottom + 24,
+            gap: 12,
+          }}
+        >
+          {recipes.map((r) => (
+            <RecipeCard
               key={r.id}
+              recipe={r}
               onPress={() => onSelect(r)}
-              style={({ pressed }) => [
-                s.sheetRow,
-                {
-                  borderBottomColor: colors.border,
-                  backgroundColor: pressed ? colors.muted : "transparent",
-                },
-              ]}
-            >
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                  <Text style={[s.sheetRowName, { color: colors.foreground, marginBottom: 0 }]}>{r.name}</Text>
-                  {r.versionLabel && (
-                    <View style={[s.versionBadge, { backgroundColor: colors.muted }]}>
-                      <Text style={[s.versionText, { color: colors.mutedForeground }]}>{r.versionLabel}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={[s.sheetRowHint, { color: colors.mutedForeground }]}>
-                  {r.phases.length} phase{r.phases.length !== 1 ? "s" : ""} · {r.updatedAt && r.updatedAt > r.createdAt ? `Updated ${formatDate(r.updatedAt)}` : `Created ${formatDate(r.createdAt)}`}
-                </Text>
-              </View>
-              <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-            </Pressable>
+            />
           ))}
         </ScrollView>
       </View>
@@ -92,32 +79,5 @@ const s = StyleSheet.create({
   sheetTitle: {
     fontFamily: fonts.serifBold, // LibreCaslonText_700Bold — modal title in serif
     fontSize: 18,
-  },
-  sheetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.lg - 4, // 20
-    paddingVertical: 15,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 12,
-  },
-  sheetRowName: {
-    fontFamily: fonts.sansMedium, // HankenGrotesk_500Medium — recipe name
-    fontSize: 16,
-    marginBottom: 2,
-  },
-  sheetRowHint: {
-    fontFamily: fonts.sans, // HankenGrotesk_400Regular — phase count + date
-    fontSize: 12,
-  },
-  versionBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  versionText: {
-    fontFamily: fonts.mono,
-    fontSize: 10,
-    fontWeight: "600",
   },
 });

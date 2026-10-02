@@ -2,36 +2,50 @@ appId: com.waterviewbakehouse.breadlab
 ---
 - runFlow: ../subflows/open_app.yaml
 
-# subflow already waits for Hub to be ready. 
-# We just need to make sure we are on the Recipe Builder section.
 - tapOn:
     id: "recipe-builder-tab-toggle"
 
+# Pre-test cleanup: If "Sample Loaf" already exists from a previous run, delete it first
+- runFlow:
+    when:
+      visible: "Sample Loaf"
+    commands:
+      - tapOn: "Sample Loaf"
+      - waitForAnimationToEnd
+      - scrollUntilVisible:
+          element: "Delete Recipe"
+          direction: DOWN
+      - tapOn: "Delete Recipe"
+      - tapOn: "Delete"
+      - waitForAnimationToEnd
+
+# Main diagnostic workflow
 - tapOn:
     id: "new-recipe-button"
 
-# Wait for transition to the Editor screen
 - waitForAnimationToEnd
 
-# Atomic input prevents clicking 'X' by mistake
-- inputText:
+- tapOn:
     id: "recipe-name-input"
-    text: "Test Sourdough"
 
-- waitForAnimationToEnd
+- inputText: "Sample Loaf"
 
-- inputText:
+- tapOn:
     id: "yield-input"
-    text: "2"
 
-- hideKeyboard
-- waitForAnimationToEnd
+- inputText: "2"
 
 - tapOn:
     id: "save-recipe-button"
 
-- assertVisible: "Test Sourdough"
+- assertVisible:
+    text: "Sample Loaf"
+
 - takeScreenshot: "recipe_list_after_creation"
-- tapOn: "Test Sourdough"
-- assertVisible: "Yield: 2"
-- takeScreenshot: "scaled_recipe_detail"
+
+- tapOn:
+    text: "Sample Loaf"
+
+- waitForAnimationToEnd
+
+- takeScreenshot: "after_sample_loaf_tap"

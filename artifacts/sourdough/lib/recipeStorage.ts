@@ -126,22 +126,29 @@ export async function loadAll(): Promise<{
 
     const mapped: SavedRecipe[] = (apiRecipes || [])
       .filter((r) => !deletedRecipeIds.includes(r.id))
-      .map((r) => ({
-        id: r.id,
-        name: r.name,
-        overview: r.overview ?? undefined,
-        createdAt: new Date(r.createdAt).getTime(),
-        updatedAt: (r as any).updatedAt ? new Date((r as any).updatedAt).getTime() : new Date(r.createdAt).getTime(),
-        yieldValue: (r.yield_value && r.yield_value > 0) ? r.yield_value.toString() : "",
-        phases: r.phases.map((p) => ({
-          key: p.key,
-          name: p.name,
-          ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing'),
-          instructions: Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins'),
-        })),
-        parentRecipeId: r.parent_recipe_id,
-        versionLabel: r.version_label,
-      }));
+      .map((r) => {
+        const existingLocal = recipes.find(loc => loc.id === r.id);
+        return {
+          id: r.id,
+          name: r.name,
+          overview: r.overview ?? existingLocal?.overview ?? undefined,
+          createdAt: new Date(r.createdAt).getTime(),
+          updatedAt: (r as any).updatedAt ? new Date((r as any).updatedAt).getTime() : new Date(r.createdAt).getTime(),
+          yieldValue: (r.yield_value && r.yield_value > 0) ? r.yield_value.toString() : (existingLocal?.yieldValue || ""),
+          phases: r.phases.map((p) => ({
+            key: p.key,
+            name: p.name,
+            ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing'),
+            instructions: Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins'),
+          })),
+          parentRecipeId: r.parent_recipe_id ?? existingLocal?.parentRecipeId,
+          versionLabel: r.version_label ?? existingLocal?.versionLabel,
+          isArchived: r.isArchived ?? existingLocal?.isArchived,
+          diagnosticHypothesis: r.diagnosticHypothesis ?? existingLocal?.diagnosticHypothesis,
+          isUneditedIteration: r.isUneditedIteration ?? existingLocal?.isUneditedIteration,
+          clonedFromBakeName: r.clonedFromBakeName ?? existingLocal?.clonedFromBakeName,
+        };
+      });
 
     if (token || (apiRecipes && apiRecipes.length > 0)) {
       recipes = mapped;
@@ -264,6 +271,7 @@ export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
           readings: p.readings,
           startVolume: p.startVolume,
           foldCount: p.foldCount,
+          foldTimestamps: p.foldTimestamps,
         })),
         inProgress: true,
       })
@@ -289,6 +297,10 @@ export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
         })),
         parentRecipeId: recipe.parentRecipeId,
         versionLabel: recipe.versionLabel,
+        isArchived: recipe.isArchived,
+        diagnosticHypothesis: recipe.diagnosticHypothesis,
+        isUneditedIteration: recipe.isUneditedIteration,
+        clonedFromBakeName: recipe.clonedFromBakeName,
       })
     )
     .then(() => undefined);

@@ -254,7 +254,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               const newSaved: SavedRecipe = {
                 id: duplicated.id,
                 name: duplicated.name,
-                overview: `Iteration Notes: ${hypothesis}${selectedBake.notes ? `\n\nBench Journal: ${selectedBake.notes}` : ''}\n\nObserved Traits: ${selectedDefects.map(d => DEFECT_LIBRARY[d].label).join(', ')}`,
+                overview: `Iteration Notes: ${hypothesis}${selectedDefects.length > 0 ? `\n\nObserved Traits: ${selectedDefects.map(d => DEFECT_LIBRARY[d].label).join(', ')}` : ''}`,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 phases: duplicated.phases.map((p: any) => ({
@@ -497,7 +497,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
                 paddingRight: 40
               }
             ]}
-            placeholder={isGraded ? "No notes recorded." : (isSuccessful ? "Any final thoughts on this successful bake?" : "What will you change next time?") }
+            placeholder={isGraded ? "No notes recorded." : (isSuccessful ? "Any final thoughts on this successful bake?" : "What will you change next time? These comments will be shown in the iterated recipe for you to reference as you update the ingredients and workflow.") }
             placeholderTextColor={colors.mutedForeground}
             multiline
             value={hypothesis}
@@ -526,20 +526,26 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
           <View style={s.hypothesisFooter}>
              {(!isDirty && !!summary?.suggestedHypothesis) ? (
                <Text style={[s.subLabel, { color: colors.mutedForeground }]}>
-                 Edit, clear, or accept this hypothesis for your next bake.
+                 Edit, clear, or accept this hypothesis. It will be attached to your iterated recipe to guide your updates.
                </Text>
              ) : (
-               (isDirty && !!summary?.suggestedHypothesis) && (
-                 <Pressable
-                   onPress={() => {
-                     setHypothesis(summary.suggestedHypothesis);
-                     setIsDirty(false);
-                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                   }}
-                 >
-                   <Text style={[s.resetLink, { color: colors.accent }]}>Reset to Suggestion</Text>
-                 </Pressable>
-               )
+               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flex: 1 }}>
+                 <Text style={[s.subLabel, { color: colors.mutedForeground, flex: 1 }]}>
+                   Shown in the iterated recipe for you to reference as you update ingredients and workflow.
+                 </Text>
+                 {(isDirty && !!summary?.suggestedHypothesis) && (
+                   <Pressable
+                     style={{ marginLeft: 8 }}
+                     onPress={() => {
+                       setHypothesis(summary.suggestedHypothesis);
+                       setIsDirty(false);
+                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                     }}
+                   >
+                     <Text style={[s.resetLink, { color: colors.accent }]}>Reset to Suggestion</Text>
+                   </Pressable>
+                 )}
+               </View>
              )}
           </View>
         )}
@@ -597,7 +603,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 }
 
 const s = StyleSheet.create({
-  container: { padding: 20, paddingBottom: 100 },
+  container: { padding: 20, paddingBottom: 100, maxWidth: 600, width: '100%', alignSelf: 'center' },
   title: { ...typography.headlineLgMobile, marginBottom: 20 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   card: { padding: 16, borderRadius: radius.lg, marginBottom: 20 },
@@ -621,11 +627,11 @@ const s = StyleSheet.create({
   hypothesisFooter: { marginTop: 8, minHeight: 20 },
   subLabel: { fontSize: 12, fontFamily: fonts.sans, fontStyle: 'italic' },
   resetLink: { fontSize: 12, fontFamily: fonts.sansSemiBold, textDecorationLine: 'underline' },
-  actionRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  logBtn: { flex: 1, paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
-  logBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },
-  iterateBtn: { flex: 1, paddingVertical: 18, borderRadius: radius.lg, alignItems: 'center' },
-  iterateBtnText: { fontSize: 16, fontFamily: fonts.sansBold, letterSpacing: 1 },
+  actionRow: { flexDirection: 'row', gap: 12, marginTop: 12, alignItems: 'stretch' },
+  logBtn: { flex: 1, paddingVertical: 14, paddingHorizontal: 10, minHeight: 52, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
+  logBtnText: { fontSize: 15, fontFamily: fonts.sansBold, letterSpacing: 0.5, lineHeight: 20, textAlign: 'center', flexShrink: 1 },
+  iterateBtn: { flex: 1, paddingVertical: 14, paddingHorizontal: 10, minHeight: 52, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center' },
+  iterateBtnText: { fontSize: 15, fontFamily: fonts.sansBold, letterSpacing: 0.5, lineHeight: 20, textAlign: 'center', flexShrink: 1 },
   gradedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: radius.lg, marginTop: 12 },
   gradedBadgeText: { fontSize: 14, fontFamily: fonts.sansBold, letterSpacing: 1 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },

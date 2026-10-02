@@ -127,7 +127,7 @@ export function PendingPhaseCard({
               <>
                 <Text style={[s.recipeInfoLabel, { marginTop: 8 }]}>Instructions</Text>
                 {visibleInstructions.map(line => (
-                  <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
+                  <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={1} />
                 ))}
               </>
             )}
@@ -211,7 +211,7 @@ export function DonePhaseCard({
                   <>
                     <Text style={[s.recipeInfoLabel, { marginTop: 8 }]}>Instructions</Text>
                     {visibleInstructions.map(line => (
-                      <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
+                      <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={1} />
                     ))}
                   </>
                 )}
@@ -517,7 +517,7 @@ export function ActivePhaseCard({
             <>
               <Text style={[s.recipeInfoLabel, { marginTop: 12 }]}>Instructions</Text>
               {visibleInstructions.map(line => (
-                <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={scaleMultiplier} />
+                <CheckRow key={line.id} line={line} isChecked={sessionChecks[line.id]} onToggle={() => onToggleLineCheck(line.id)} colors={colors} scaleMultiplier={1} />
               ))}
             </>
           )}
