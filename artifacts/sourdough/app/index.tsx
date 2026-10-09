@@ -6,15 +6,24 @@ import {
   TouchableOpacity,
   View,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Svg, Path, G } from 'react-native-svg';
+import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useColors } from '@/hooks/useColors';
 import { fonts, radius, spacing, typography } from '@/constants/theme';
 import { computeSessionAcidVelocity } from '@/lib/analytics';
+import { CandidateReviewController } from '@/components/recipe/CandidateReviewController';
+import { PasteCandidateModal } from '@/components/recipe/PasteCandidateModal';
+import { DETERMINISTIC_TEST_CANDIDATE } from '@/constants/testCandidateFixture';
+import { ExtractionResult } from '@/lib/recipeExtractor';
+import { loadCandidates, removeCandidate, CandidateRecord, formatCandidateSharedAt, CANDIDATES_KEY, getCandidatesKey } from '@/lib/candidateStorage';
+import { useShareCandidate } from '@/contexts/ShareCandidateContext';
+// import { runActiveSessionDiagnostic, stopActiveSessionDiagnostic } from '@/lib/activeDiagnosticHarness';
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const { width } = Dimensions.get('window');
@@ -75,13 +84,86 @@ export default function WelcomeHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const { subscribeCandidatesChanged } = useShareCandidate();
   const [history, setHistory] = useState<any[]>([]);
-  
+  const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+
+  const reloadCandidates = React.useCallback(async () => {
+    const key = await getCandidatesKey();
+    const raw = await AsyncStorage.getItem(key);
+    if (raw === null) {
+      // Seed default fixture ONCE on genuinely uninitialized storage
+      const initialFixture: CandidateRecord[] = [
+        {
+          id: "deterministic-fixture",
+          sharedAt: "2026-10-04T08:14:00.000Z",
+          extractionResult: DETERMINISTIC_TEST_CANDIDATE,
+        },
+      ];
+      await AsyncStorage.setItem(key, JSON.stringify(initialFixture));
+    }
+    const list = await loadCandidates();
+    setCandidates(list);
+  }, []);
+
+  const handleOpenCandidateReview = (record: CandidateRecord) => {
+    setSelectedCandidate(record);
+    setShowReviewModal(true);
+  };
+
+  const handlePromptDiscardCard = (record: CandidateRecord) => {
+    const candidateName =
+      record.extractionResult.status === 'single_candidate'
+        ? record.extractionResult.candidate.name
+        : record.extractionResult.status === 'multiple_candidates'
+        ? record.extractionResult.candidates[0]?.name
+        : 'this candidate';
+
+    Alert.alert(
+      'Discard Candidate',
+      `Are you sure you want to permanently discard "${candidateName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: async () => {
+            await removeCandidate(record.id);
+            await reloadCandidates();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDiscardCandidate = () => {
+    setShowReviewModal(false);
+    setSelectedCandidate(null);
+    reloadCandidates();
+  };
+
+  const handleSaveCandidateSuccess = () => {
+    setShowReviewModal(false);
+    setSelectedCandidate(null);
+    reloadCandidates();
+  };
+
   useEffect(() => {
     AsyncStorage.getItem(HISTORY_KEY).then(raw => {
       if (raw) setHistory(JSON.parse(raw));
     });
-  }, []);
+    reloadCandidates();
+
+    const unsubscribe = subscribeCandidatesChanged(reloadCandidates);
+    return () => {
+      unsubscribe();
+    };
+  }, [reloadCandidates, subscribeCandidatesChanged]);
+
+  const candidatesList = candidates;
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -145,6 +227,44 @@ export default function WelcomeHub() {
         />
       </View>
 
+      {/* Temporary Dev-Only Diagnostic Harness Triggers (Turned off for now)
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            paddingVertical: 14,
+            paddingHorizontal: 12,
+            backgroundColor: '#D97706',
+            borderRadius: radius.lg,
+            alignItems: 'center',
+          }}
+          onPress={() => {}}
+          testID="run-active-diag-btn"
+        >
+          <Text style={{ color: '#FFFFFF', fontFamily: fonts.sansSemiBold, fontSize: 13 }}>
+            Run 10-Attempt Harness
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            paddingVertical: 14,
+            paddingHorizontal: 12,
+            backgroundColor: '#DC2626',
+            borderRadius: radius.lg,
+            alignItems: 'center',
+          }}
+          onPress={() => {}}
+          testID="stop-active-diag-btn"
+        >
+          <Text style={{ color: '#FFFFFF', fontFamily: fonts.sansSemiBold, fontSize: 13 }}>
+            Stop Harness
+          </Text>
+        </TouchableOpacity>
+      </View>
+      */}
+
       <View style={styles.quickActionsSection}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
@@ -168,6 +288,96 @@ export default function WelcomeHub() {
           />
         </View>
       </View>
+
+      {/* ── Candidates Workbench Section (Issue #65 — Step 8D / Direct Text Acquisition) ── */}
+      <View style={styles.candidatesSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Candidates</Text>
+          <TouchableOpacity
+            style={styles.pasteCandidateHeaderBtn}
+            onPress={() => setShowPasteModal(true)}
+            testID="paste-recipe-candidate-btn"
+            hitSlop={4}
+          >
+            <Feather name="plus" size={13} color="#D97706" />
+            <Text style={styles.pasteCandidateHeaderBtnText}>Paste Recipe Candidate</Text>
+          </TouchableOpacity>
+        </View>
+
+        {candidatesList.length > 0 &&
+          candidatesList.map((item, idx) => {
+            const candidateObj =
+              item.extractionResult.status === 'single_candidate'
+                ? item.extractionResult.candidate
+                : item.extractionResult.status === 'multiple_candidates'
+                ? item.extractionResult.candidates[0]
+                : null;
+
+            if (!candidateObj) return null;
+
+            const sharedAtText = formatCandidateSharedAt(item.sharedAt);
+
+            return (
+              <TouchableOpacity
+                key={item.id || `candidate-${idx}`}
+                style={[styles.candidateCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => handleOpenCandidateReview(item)}
+                testID={idx === 0 ? "candidate-card" : `candidate-card-${idx}`}
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text selectable={true} style={[styles.candidateName, { color: colors.text }]}>
+                    {candidateObj.name}
+                  </Text>
+                  <View style={styles.candidateMetaRow}>
+                    {sharedAtText ? (
+                      <Text style={[styles.candidateSharedAt, { color: colors.mutedForeground }]} testID="candidate-shared-at">
+                        {sharedAtText}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                <View style={styles.candidateActionsRow}>
+                  <TouchableOpacity
+                    style={styles.discardCardBtn}
+                    onPress={() => handlePromptDiscardCard(item)}
+                    testID={idx === 0 ? "discard-candidate-card-btn" : `discard-candidate-card-btn-${idx}`}
+                    hitSlop={8}
+                  >
+                    <Feather name="trash-2" size={13} color="#8C7A6B" />
+                    <Text style={styles.discardCardBtnText}>Discard</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.reviewBtn, { backgroundColor: "#4A3B32" }]}
+                    onPress={() => handleOpenCandidateReview(item)}
+                    testID={idx === 0 ? "review-candidate-btn" : `review-candidate-btn-${idx}`}
+                  >
+                    <Text style={styles.reviewBtnText}>Review</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+      </View>
+
+      <CandidateReviewController
+        visible={showReviewModal}
+        candidateId={selectedCandidate?.id}
+        extractionResult={selectedCandidate ? selectedCandidate.extractionResult : null}
+        onSaveSuccess={handleSaveCandidateSuccess}
+        onDiscard={handleDiscardCandidate}
+      />
+
+      <PasteCandidateModal
+        visible={showPasteModal}
+        onClose={() => setShowPasteModal(false)}
+        onExtractSuccess={async () => {
+          setShowPasteModal(false);
+          await reloadCandidates();
+        }}
+      />
     </ScrollView>
   );
 }
@@ -253,4 +463,75 @@ const styles = StyleSheet.create({
   },
   actionIcon: { fontSize: 18, marginRight: 8 },
   actionLabel: { ...typography.labelSm, letterSpacing: 0, textTransform: 'none' },
+  candidatesSection: { marginTop: 32 },
+  pasteCandidateHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    backgroundColor: '#FBF2ED',
+    borderWidth: 1,
+    borderColor: '#C26D38',
+  },
+  pasteCandidateHeaderBtnText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 12,
+    color: '#C26D38',
+  },
+  candidateCard: {
+    padding: 16,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  candidateName: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  candidateMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  candidateStatusText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 12,
+  },
+  candidateSharedAt: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+  },
+  candidateActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  discardCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  discardCardBtnText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 12,
+    color: '#8C7A6B',
+  },
+  reviewBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+  },
+  reviewBtnText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
 });

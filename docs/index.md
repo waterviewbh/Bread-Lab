@@ -19,6 +19,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [📜 Briefs](file:///E:/Bread-Lab/docs/briefs/)
 **Purpose**: This is the "Inbox" for the agent. Place guides, custom instructions, task parameters, or feature specifications here that you want me to follow or use as a reference for future work.
+- [Post-Bulk Investigation (2026-10-08)](file:///E:/Bread-Lab/docs/briefs/20261008%-%Planned%Post-Bulk%Proof%and%Target%Rise.txt)
 - [Stretch & Fold Timing Chits (2026-09-19)](file:///E:/Bread-Lab/docs/briefs/20260919%20fold%20timechit.txt)
 - [Multi-Bake Support (2026-09-07)](file:///E:/Bread-Lab/docs/briefs/20260907%20concurrent%20runners.md)
 - [Recipe Deck Specification: Index Tabs vs Stacked (2026-09-07)](file:///E:/Bread-Lab/docs/briefs/20260907%20recipe_deck_specification_index_tabs_vs_stacked.txt)
@@ -31,7 +32,13 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: React 19 & RNTL v14 Testing Infrastructure Baseline (2026-09-27)](file:///E:/Bread-Lab/docs/journal/2026-09-27_react19_rntl14_testing_stack.artifact.md)
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
+#### 📦 Version 2.5.4
+- [Session: Issue #65 Paste Candidate & Review Draft Workbench Completion (2026-10-08)](file:///E:/Bread-Lab/docs/journal/2026-10-08_issue_65_paste_candidate_review_completion.artifact.md)
+- [Session: Web Share Acquisition Hardening & End-to-End Verification (2026-10-07)](file:///E:/Bread-Lab/docs/journal/2026-10-07_web_share_acquisition_hardening.artifact.md)
+- [Session: Discard Candidate Action & Persistent Removal (2026-10-06)](file:///E:/Bread-Lab/docs/journal/2026-10-06_discard_candidate_action.artifact.md)
+
 #### 📦 Version 2.5.3
+- [Session: Candidate Review — Maestro Proof of Life & Phase Removal Preservation (2026-10-04)](file:///E:/Bread-Lab/docs/journal/2026-10-04_candidate_review_maestro_proof_of_life.artifact.md)
 - [Session: Stretch & Fold Timing Chits (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_stretch_and_fold_timing_chits.artifact.md)
 - [Session: Iteration Hypothesis & Overview Persistence (2026-09-28)](file:///E:/Bread-Lab/docs/journal/2026-09-28_iteration_hypothesis_and_overview_persistence.artifact.md)
 - [Session: Ingredient Scaling Architecture & Vocabulary Refinement (2026-09-30)](file:///E:/Bread-Lab/docs/journal/2026-09-30_ingredient_scaling_and_vocabulary_refinement.artifact.md)
@@ -76,6 +83,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🔍 Research & Status](file:///E:/Bread-Lab/docs/research/)
 **Purpose**: Findings from investigations, current status of ongoing initiatives, and lessons learned.
+- [Issue #41: Supabase RLS Policy Audit & Account Access Remediation (2026-10-09)](file:///E:/Bread-Lab/docs/research/2026-10-09_issue_41_supabase_rls_status.artifact.md) [OPEN ITEM]
 - [Maestro Testing: Status and Lessons Learned](file:///E:/Bread-Lab/docs/research/maestro_testing_status.artifact.md) [OPEN ITEM]
 
 ### [🐞 Bug Tracker](file:///E:/Bread-Lab/docs/bug_tracker.md)
@@ -87,6 +95,12 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🎨 Walkthroughs](file:///E:/Bread-Lab/docs/walkthroughs/)
 **Purpose**: Demonstrations and summaries of completed features, including UI screenshots and technical breakdowns.
+- [Warm Web Share Acquisition Hardening & End-to-End Verification (2026-10-07)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-07_warm_web_share_acquisition_hardening.artifact.md)
+- [Candidate Commit Unassigned Blocked Maestro Verification (2026-10-05)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-05_candidate_commit_unassigned_blocked_maestro_verification.artifact.md)
+- [Candidate Commit Boundary & Recipe Persistence Protection (2026-10-05)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-05_candidate_commit_boundary_and_persistence_protection.artifact.md)
+- [Candidate Inbox on Landing Page Workbench (2026-10-05)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-05_candidate_inbox_landing_page.artifact.md)
+- [Candidate Review: Maestro Proof of Life & Phase Content Preservation (2026-10-04)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-04_candidate_review_maestro_proof_of_life.artifact.md)
+- [Portable Recipe Import, Web Extraction & Baker Review Flow (2026-10-04)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-04_portable_recipe_import_acquisition.artifact.md)
 - [Recipe Picker Presentation Enhancement (2026-10-01)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-01_recipe_picker_presentation_enhancement.artifact.md)
 - [Ingredient Scaling Architecture & Vocabulary Refinement (2026-09-30)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-30_ingredient_scaling_architecture.artifact.md)
 - [Multi-Device Responsive UI & Font Scaling (2026-09-26)](file:///E:/Bread-Lab/docs/walkthroughs/2026-09-26_multi_device_responsive_ui.artifact.md)

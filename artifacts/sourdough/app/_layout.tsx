@@ -34,6 +34,7 @@ import { FontSizeProvider } from "@/contexts/FontSizeContext";
 import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { MigrationToastProvider } from "@/contexts/MigrationToastContext";
+import { ShareCandidateProvider } from "@/contexts/ShareCandidateContext";
 import { runSchemaMigrations } from "@/lib/migrationPipeline";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -83,14 +84,16 @@ export default function RootLayout() {
                   <KeyboardProviderCompat>
                     <SyncProvider>
                       <MigrationToastProvider>
-                        <Stack screenOptions={{ headerShown: false }}>
-                          <Stack.Screen name="index" options={{ headerShown: false }} />
-                          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                          <Stack.Screen name="tools/bfmodule" options={{
-                            title: 'Bulk Ferment Estimator',
-                            headerShown: true
-                          }} />
-                        </Stack>
+                        <ShareCandidateProvider>
+                          <Stack screenOptions={{ headerShown: false }}>
+                            <Stack.Screen name="index" options={{ headerShown: false }} />
+                            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                            <Stack.Screen name="tools/bfmodule" options={{
+                              title: 'Bulk Ferment Estimator',
+                              headerShown: true
+                            }} />
+                          </Stack>
+                        </ShareCandidateProvider>
                       </MigrationToastProvider>
                     </SyncProvider>
                   </KeyboardProviderCompat>

@@ -418,6 +418,44 @@ export function ActivePhaseCard({
             </View>
           </View>
 
+          {/* Post-Bulk Proof Status / Reminder Banner */}
+          {(() => {
+            const lastReading = phase.readings.filter(r => (r as any).volume_ml).at(-1) as any;
+            const risePct = getBulkRisePercent(phase.bulkFermentState, lastReading?.volume_ml) ?? 0;
+            const proofMode = phase.bulkFermentState?.plannedProofMode ?? "undecided";
+            const proofTempF = phase.bulkFermentState?.plannedProofTempF;
+
+            return (
+              <Pressable
+                onPress={onOpenEstimatorSettings}
+                style={({ pressed }) => [
+                  s.postBulkBanner,
+                  {
+                    backgroundColor: proofMode === "undecided" ? colors.accent + "10" : colors.muted + "30",
+                    borderColor: proofMode === "undecided" ? colors.accent + "30" : colors.border,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Feather
+                  name={proofMode === "undecided" ? "alert-circle" : "thermometer"}
+                  size={14}
+                  color={proofMode === "undecided" ? colors.accent : colors.foreground}
+                />
+                <Text style={[s.postBulkBannerText, { color: colors.foreground }]}>
+                  {proofMode === "bench"
+                    ? `Post-Bulk: Bench proof @ ${proofTempF ?? 72}°F`
+                    : proofMode === "cold_retard"
+                    ? `Post-Bulk: Cold retard @ ${proofTempF ?? 39}°F`
+                    : risePct >= 30
+                    ? "Future proof temperature not set. Setting it will help refine the recommended bulk endpoint."
+                    : "Future proof temperature not set. You can decide later."}
+                </Text>
+                <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+              </Pressable>
+            );
+          })()}
+
           <Pressable onPress={onLogReading} style={({ pressed }) => [s.bulkActionBtn, { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 }]}>
             <MaterialCommunityIcons name="timer-cog-outline" size={20} color={colors.accentForeground || "#fff"} />
             <Text style={[s.bulkActionBtnText, { color: colors.accentForeground || "#fff" }]}>Bulk Check-In</Text>
@@ -603,6 +641,22 @@ const s = StyleSheet.create({
     paddingVertical: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
     gap: 12,
+  },
+  postBulkBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  postBulkBannerText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 12,
+    flex: 1,
+    lineHeight: 16,
   },
   heroTimerSection: {
     alignItems: "center",

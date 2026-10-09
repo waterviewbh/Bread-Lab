@@ -8,6 +8,7 @@ const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
 const RECIPES_KEY = "bread_lab_recipes_v1";
 
 export const MIGRATION_PENDING_KEY = "bread_lab_migration_pending_v1";
+const LEDGER_KEY = (userId: string) => `bread_lab_import_ledger_${userId}`;
 
 export interface MigrationResult {
   feed: { ok: number; failed: number };
@@ -29,17 +30,8 @@ interface LocalBakeSession {
   startedAt: number;
   yieldValue?: string;
   notes?: string;
-  phases: {
-    key: string;
-    name: string;
-    ingredients?: any;
-    instructions?: any;
-    startedAt?: number | null;
-    completedAt?: number | null;
-    readings?: any[];
-    startVolume?: string;
-    foldCount?: number;
-  }[];
+  phases: any[];
+  [key: string]: unknown;
 }
 
 interface LocalRecipe {
@@ -47,12 +39,10 @@ interface LocalRecipe {
   name: string;
   overview?: string;
   yieldValue?: string;
-  phases: {
-    key: string;
-    name: string;
-    ingredients?: any;
-    instructions?: any;
-  }[];
+  parentRecipeId?: string | null;
+  parent_recipe_id?: string | null;
+  phases: any[];
+  [key: string]: unknown;
 }
 
 async function readLocalArray<T>(key: string): Promise<T[]> {
@@ -66,21 +56,12 @@ async function readLocalArray<T>(key: string): Promise<T[]> {
   }
 }
 
-async function upsertBatch<T>(
-  items: T[],
-  upsertFn: (item: T) => Promise<unknown>
-): Promise<{ ok: number; failed: number }> {
-  let ok = 0;
-  let failed = 0;
-  for (const item of items) {
-    try {
-      await upsertFn(item);
-      ok++;
-    } catch {
-      failed++;
-    }
+function generateSecureUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
   }
-  return { ok, failed };
+  // Fallback for runtimes without crypto.randomUUID
+  throw new Error("Secure crypto.randomUUID() is required for robust ID generation.");
 }
 
 export async function setMigrationPending(): Promise<void> {
@@ -102,7 +83,7 @@ export async function hasPendingMigration(): Promise<boolean> {
 
 /**
  * migrateLocalDataToAccount
- * Promotion utility: takes local data and syncs it to the Supabase account identified by 'token'.
+ * Bulletproof Two-Pass Typed Import Engine with Durable Ledger & Relationship Remapping.
  */
 export async function migrateLocalDataToAccount(token: string): Promise<MigrationResult> {
   const empty = { ok: 0, failed: 0 };
@@ -119,26 +100,100 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     readLocalArray<LocalRecipe>(RECIPES_KEY),
   ]);
 
-  const [feed, bakes, recipesResult] = await Promise.all([
-    upsertBatch(feedSessions, (s) =>
-      api.history.feed.upsert({
-        id: s.id,
+  const ledgerKey = LEDGER_KEY(token);
+  const ledgerRaw = await AsyncStorage.getItem(ledgerKey);
+  const ledger: Record<string, string> = ledgerRaw ? JSON.parse(ledgerRaw) : {};
+
+  // -------------------------------------------------------------
+  // PASS 1: Allocate & Persist Target UUIDs for ALL Records (Typed Keys)
+  // -------------------------------------------------------------
+  const typeMapping = new Map<string, string>(); // "type:localId" -> targetUuid
+
+  for (const recipe of recipes) {
+    const key = `recipe:${recipe.id}`;
+    if (!ledger[key]) {
+      ledger[key] = generateSecureUUID();
+    }
+    typeMapping.set(key, ledger[key]);
+  }
+
+  for (const bake of bakeSessions) {
+    const key = `bake:${bake.id}`;
+    if (!ledger[key]) {
+      ledger[key] = generateSecureUUID();
+    }
+    typeMapping.set(key, ledger[key]);
+  }
+
+  for (const feed of feedSessions) {
+    const key = `feed:${feed.id}`;
+    if (!ledger[key]) {
+      ledger[key] = generateSecureUUID();
+    }
+    typeMapping.set(key, ledger[key]);
+  }
+
+  // Durably persist Pass 1 ledger state before uploading
+  await AsyncStorage.setItem(ledgerKey, JSON.stringify(ledger));
+
+  // -------------------------------------------------------------
+  // PASS 2: Remap Relationships & Upload in Dependency Order
+  // -------------------------------------------------------------
+
+  // 1. Upload Recipes (Dependency Root)
+  let recipesOk = 0;
+  let recipesFailed = 0;
+  for (const r of recipes) {
+    const key = `recipe:${r.id}`;
+    const targetId = ledger[key];
+
+    try {
+      const parsedYield = parseInt(r.yieldValue || "0", 10);
+      const safeYield = isNaN(parsedYield) ? 0 : parsedYield;
+
+      const rawParent = r.parentRecipeId ?? r.parent_recipe_id ?? null;
+      const remappedParent = rawParent ? typeMapping.get(`recipe:${rawParent}`) ?? rawParent : null;
+
+      await api.recipes.upsert({
+        id: targetId,
         deviceId,
-        userId: token, // Used 'token' here (was undefined userId)
-        savedAt: s.savedAt,
-        startedAt: null,
-        data: s as Record<string, unknown>,
-      })
-    ),
-    upsertBatch(bakeSessions, (b) => {
+        userId: token,
+        name: r.name,
+        overview: r.overview,
+        yield_value: safeYield,
+        parentRecipeId: remappedParent,
+        phases: (r.phases || []).map((p: any) => ({
+          key: p.key,
+          name: p.name,
+          ingredients: p.ingredients,
+          instructions: p.instructions,
+        })),
+      });
+      recipesOk++;
+    } catch {
+      recipesFailed++;
+    }
+  }
+
+  // 2. Upload Bake Sessions
+  let bakesOk = 0;
+  let bakesFailed = 0;
+  for (const b of bakeSessions) {
+    const key = `bake:${b.id}`;
+    const targetId = ledger[key];
+
+    try {
       const parsedYield = parseInt(b.yieldValue || "0", 10);
       const safeYield = isNaN(parsedYield) ? 0 : parsedYield;
 
-      return api.history.bakes.upsert({
-        id: b.id,
+      const rawRecipeId = b.recipeId ?? (b as any).recipe_id ?? null;
+      const remappedRecipeId = rawRecipeId ? typeMapping.get(`recipe:${rawRecipeId}`) ?? rawRecipeId : null;
+
+      await api.history.bakes.upsert({
+        id: targetId,
         deviceId,
-        userId: token, // Used 'token' here
-        recipeId: b.recipeId ?? null,
+        userId: token,
+        recipeId: remappedRecipeId,
         recipeName: b.recipeName,
         yield_value: safeYield,
         savedAt: b.savedAt,
@@ -146,8 +201,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         completedAt: (b as any).completedAt || null,
         status: (b as any).status || null,
         outcome: b.outcome || null,
-        notes: (b as any).notes || null,
-        phases: b.phases.map((p) => ({
+        notes: b.notes || null,
+        phases: (b.phases || []).map((p: any) => ({
           key: p.key,
           name: p.name,
           ingredients: p.ingredients,
@@ -159,32 +214,42 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
           foldCount: p.foldCount,
           foldTimestamps: p.foldTimestamps,
         })),
-      })
-    }),
-    upsertBatch(recipes, (r) => {
-      const parsedYield = parseInt(r.yieldValue || "0", 10);
-      const safeYield = isNaN(parsedYield) ? 0 : parsedYield;
+      });
+      bakesOk++;
+    } catch {
+      bakesFailed++;
+    }
+  }
 
-      return api.recipes.upsert({
-        id: r.id,
+  // 3. Upload Feed Sessions
+  let feedOk = 0;
+  let feedFailed = 0;
+  for (const s of feedSessions) {
+    const key = `feed:${s.id}`;
+    const targetId = ledger[key];
+
+    try {
+      await api.history.feed.upsert({
+        id: targetId,
         deviceId,
-        userId: token, // Used 'token' here
-        name: r.name,
-        overview: r.overview,
-        yield_value: safeYield,
-        phases: r.phases.map((p) => ({
-          key: p.key,
-          name: p.name,
-          ingredients: p.ingredients,
-          instructions: p.instructions,
-        })),
-      })
-    }),
-  ]);
+        userId: token,
+        savedAt: s.savedAt,
+        startedAt: null,
+        data: s as Record<string, unknown>,
+      });
+      feedOk++;
+    } catch {
+      feedFailed++;
+    }
+  }
 
-  const result: MigrationResult = { feed, bakes, recipes: recipesResult };
+  const result: MigrationResult = {
+    feed: { ok: feedOk, failed: feedFailed },
+    bakes: { ok: bakesOk, failed: bakesFailed },
+    recipes: { ok: recipesOk, failed: recipesFailed },
+  };
 
-  const totalFailed = feed.failed + bakes.failed + recipesResult.failed;
+  const totalFailed = feedFailed + bakesFailed + recipesFailed;
   if (totalFailed === 0) {
     await clearMigrationPending();
   }

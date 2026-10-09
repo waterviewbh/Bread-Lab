@@ -119,9 +119,14 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
+      version: "v2.5.4", /* -- published 20261009 -- */
+      changes: [
+        { type: "Added", content: "Sharing recipes into Bread Lab is now functional, though a bit limited. Web pages are generally fine - it's definitely faster to use the Share button than to paste raw text (though that works too)." },
+      ],
+    },
+    {
       version: "v2.5.3", /* -- published 20261002 -- */
       changes: [
-        { type: "Fixed", content: "Fold Timing Chits: The feature was built but never turned on. That's done now." },
         { type: "Added", content: "Recipe Picker Cards: Replaced horizontal list rows with standalone recipe cards." },
         { type: "Changed", content: "Fraction Preservation: Fractions entered into Recipe Builder are no longer scaled as decimals, but will retain their fraction-ness." },
         { type: "Changed", content: "Inoculation Parser: Commercial yeasts are now counted before wild yeast preferments, and those are detected better. Terms like discard, sponge, mother all count as sourdough starter." },

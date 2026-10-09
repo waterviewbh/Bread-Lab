@@ -101,7 +101,7 @@ export function safeParse<T>(
  * Simple Async Mutex to prevent race conditions during read-modify-write
  * operations on AsyncStorage.
  */
-class AsyncMutex {
+export class AsyncMutex {
   private queue: Promise<void> = Promise.resolve();
 
   async run<T>(task: () => Promise<T>): Promise<T> {

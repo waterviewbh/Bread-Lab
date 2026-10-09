@@ -21,6 +21,7 @@ import { FontSizeProvider } from "@/contexts/FontSizeContext";
 import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { SyncProvider } from "@/contexts/SyncContext";
 import { MigrationToastProvider } from "@/contexts/MigrationToastContext";
+import { ShareCandidateProvider } from "@/contexts/ShareCandidateContext";
 import { Stack } from "expo-router";
 
 // IMPORT THE FEED DIRECTLY (Bypassing the Router)
@@ -55,10 +56,12 @@ export default function WebRootLayout() {
               <GestureHandlerRootView style={{ flex: 1 }}>
                 <SyncProvider>
                   <MigrationToastProvider>
-                    {/* Bypassing the direct FeedScreen and returning to the Stack */}
-                    <Stack screenOptions={{ headerShown: false }}>
-                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    </Stack>
+                    <ShareCandidateProvider>
+                      {/* Bypassing the direct FeedScreen and returning to the Stack */}
+                      <Stack screenOptions={{ headerShown: false }}>
+                        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                      </Stack>
+                    </ShareCandidateProvider>
                   </MigrationToastProvider>
                 </SyncProvider>
               </GestureHandlerRootView>

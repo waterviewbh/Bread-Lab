@@ -364,14 +364,10 @@ export const api = {
       return { user: { id: data.id, firstName: data.first_name, starterName: data.starter_name } };
     },
 
-    linkDevice: async (deviceId: string, userId: string): Promise<{ linked: boolean }> => {
-      if (!supabase || !deviceId || !userId) return { linked: false };
-      await Promise.all([
-        supabase.from("feed_sessions").update({ user_id: userId }).eq("device_id", deviceId).or("user_id.is.null,user_id.eq."),
-        supabase.from("bake_sessions").update({ user_id: userId }).eq("device_id", deviceId).or("user_id.is.null,user_id.eq."),
-        supabase.from("recipes").update({ user_id: userId }).eq("device_id", deviceId).or("user_id.is.null,user_id.eq."),
-      ]);
-      return { linked: true };
+    linkDevice: async (_deviceId: string, _userId: string): Promise<{ linked: boolean }> => {
+      // Secure remediation: Unsafe anonymous device claiming removed.
+      // Local records are migrated explicitly via migrateLocalDataToAccount.
+      return { linked: false };
     },
     claimOrphans: async () => ({ claimed: { feed: 0, bakes: 0, recipes: 0 } }),
     signout: async () => ({ signedOut: true }),
@@ -389,8 +385,10 @@ export const api = {
 
     upsert: async (body: any): Promise<ApiRecipe> => {
       if (!supabase) throw new Error("Supabase not configured");
+      const { data: { session } } = await supabase.auth.getSession();
+      const resolvedUserId = session?.user?.id ?? body.userId ?? null;
       const { data, error } = await supabase.from("recipes").upsert({
-        id: body.id, device_id: body.deviceId, user_id: body.userId ?? null, name: body.name,
+        id: body.id, device_id: body.deviceId, user_id: resolvedUserId, name: body.name,
         overview: body.overview ?? null, yield_value: body.yield_value,
         phases: flattenPhasesForLegacy(body.phases), recipe_data: body,
         updated_at: new Date().toISOString(), total_flour_g: body.total_flour_g,

@@ -93,6 +93,13 @@ import { fonts, spacing, radius } from "@/constants/theme";
 import { estimateInoculationPercent } from "@/lib/bulkFermentEngine";
 import { migrateToUniversalCard } from "@/lib/recipeMigration";
 import { CheckableLine } from "@/types/recipe";
+import { useTransientShareIntent } from "@/lib/useTransientShareIntent";
+import { TransientShareBanner } from "@/components/recipe/TransientShareBanner";
+import { BakerReviewModal } from "@/components/recipe/BakerReviewModal";
+import { extractRecipeFromText, ExtractionResult } from "@/lib/recipeExtractor";
+import { fetchAndExtractRecipeFromUrl } from "@/lib/webAcquisition";
+import { validatePortableRecipe, normalizePortableRecipe, PortableRecipe } from "@/lib/recipeImport";
+import { DETERMINISTIC_TEST_CANDIDATE } from "@/constants/testCandidateFixture";
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -104,6 +111,12 @@ export default function RecipeScreen() {
   const { reportSyncStart, reportSyncSuccess, reportSyncFailure } = useSyncStatus();
 
   const [section, setSection] = useState<"builder" | "runner">("builder");
+
+  // ── Transient Share Intent & Step 8C Review State ──────────────────────────
+  const { payload: transientSharePayload, dismiss: dismissTransientShare } = useTransientShareIntent();
+  const [extractionResult, setExtractionResult] = useState<ExtractionResult | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   // ── Shared data ────────────────────────────────────────────────────────────
   const [recipes, setRecipes] = useState<SavedRecipe[]>([]);
@@ -233,6 +246,64 @@ const elapsed = activeBakeId === bakes[0]?.id ? elapsed1 : elapsed2;
       setBakeNotes(bake.notes ?? "");
     }
   }, [bake]);
+
+  const handleReviewTransientPayload = async () => {
+    if (!transientSharePayload) return;
+    try {
+      setIsExtracting(true);
+      let result: ExtractionResult;
+      if (transientSharePayload.type === 'url') {
+        result = await fetchAndExtractRecipeFromUrl(transientSharePayload.sanitizedUrl || transientSharePayload.rawContent);
+      } else {
+        result = extractRecipeFromText(transientSharePayload.rawContent);
+      }
+      setExtractionResult(result);
+      setShowReviewModal(true);
+    } catch (err: any) {
+      Alert.alert('Extraction Error', err.message || 'Could not extract recipe content.');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleLoadTestCandidateFixture = () => {
+    // Authoritative reset: replace any current extractionResult with fresh deep clone of DETERMINISTIC_TEST_CANDIDATE
+    setExtractionResult(JSON.parse(JSON.stringify(DETERMINISTIC_TEST_CANDIDATE)));
+    setShowReviewModal(true);
+  };
+
+  const handleDiscardReview = () => {
+    setExtractionResult(null);
+    setShowReviewModal(false);
+    dismissTransientShare();
+  };
+
+  const handleSaveConfirmedRecipe = async (portableRecipe: PortableRecipe) => {
+    // 1. Strict Persistence Boundary Validation
+    const validation = validatePortableRecipe(portableRecipe);
+    if (!validation.valid) {
+      throw new Error(`Portable recipe validation failed:\n- ${validation.errors.join('\n- ')}`);
+    }
+
+    const deviceId = await getDeviceId().catch(() => '');
+
+    // 2. Strict Normalization
+    const normalizedPayload = normalizePortableRecipe(portableRecipe, {
+      id: Date.now().toString(),
+      deviceId,
+      userId: currentUser?.id ?? null,
+    });
+
+    // 3. Strict Persistence
+    await api.recipes.upsert(normalizedPayload);
+
+    // 4. Reload recipes & explicit lifecycle state purge
+    await refresh();
+    setExtractionResult(null);
+    setShowReviewModal(false);
+    dismissTransientShare();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
 
   const refresh = async () => {
     setRefreshing(true);
@@ -849,6 +920,14 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
 
+      {/* ── Transient Share Intent Banner Proof (Issue #65 — Step 8A) ─────── */}
+      <TransientShareBanner
+        payload={transientSharePayload}
+        onDismiss={dismissTransientShare}
+        onReview={handleReviewTransientPayload}
+        isExtracting={isExtracting}
+      />
+
       {/* ── Top section toggle ─────────────────────────────────────────────── */}
       <View
         style={[
@@ -918,6 +997,7 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
           letterFilter={letterFilter}
           refreshing={refreshing}
           onNewRecipe={openNewRecipe}
+          onLoadTestCandidate={handleLoadTestCandidateFixture}
           onEditRecipe={openEditRecipe}
           onPrintRecipe={printRecipe}
           onShareRecipe={shareAsPdf}
@@ -1068,6 +1148,17 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
     onSave={handleSaveReading}
     onClose={() => setShowReadingModal(false)}
   />
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* BAKER REVIEW MODAL (Step 8C Unverified Import Boundary)           */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+
+      <BakerReviewModal
+        visible={showReviewModal}
+        extractionResult={extractionResult}
+        onSaveConfirmed={handleSaveConfirmedRecipe}
+        onDiscard={handleDiscardReview}
+      />
 
       {showNudge && (
         <NudgeBanner

@@ -1,7 +1,24 @@
 -- Bread Lab — Supabase schema
 -- Run this in the Supabase SQL editor (or via psql) after creating your project.
--- The app uses device_id filtering with the anon key (no RLS required for a
--- single-user personal app). RLS can be enabled later if multi-user support is added.
+-- Row Level Security (RLS) is enabled with granular policies matching the live production configuration.
+
+-- ── affiliate_items ───────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS affiliate_items (
+  id          TEXT        PRIMARY KEY,
+  title       TEXT        NOT NULL,
+  url         TEXT        NOT NULL,
+  description TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE affiliate_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "affiliate_items publicly readable"
+  ON affiliate_items
+  FOR SELECT
+  TO anon, authenticated
+  USING (true);
 
 -- ── users ──────────────────────────────────────────────────────────────────────
 
@@ -11,6 +28,34 @@ CREATE TABLE IF NOT EXISTS users (
   starter_name TEXT        NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon to upsert users"
+  ON users
+  FOR ALL
+  TO anon
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Allow authenticated users to upsert own row"
+  ON users
+  FOR ALL
+  TO authenticated
+  USING (auth.uid()::text = id)
+  WITH CHECK (auth.uid()::text = id);
+
+CREATE POLICY "Public name lookup"
+  ON users
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Self-manage identity"
+  ON users
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid()::text = id);
 
 -- ── feed_sessions ─────────────────────────────────────────────────────────────
 
@@ -28,6 +73,22 @@ CREATE INDEX IF NOT EXISTS feed_sessions_device_saved
   ON feed_sessions (device_id, saved_at DESC);
 CREATE INDEX IF NOT EXISTS feed_sessions_user_saved
   ON feed_sessions (user_id, saved_at DESC);
+
+ALTER TABLE feed_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon write own feed (device/user trusted)"
+  ON feed_sessions
+  FOR ALL
+  TO anon
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Manage own feed"
+  ON feed_sessions
+  FOR ALL
+  TO authenticated
+  USING (auth.uid()::text = user_id OR user_id IS NULL)
+  WITH CHECK (auth.uid()::text = user_id OR user_id IS NULL);
 
 -- ── bake_sessions ─────────────────────────────────────────────────────────────
 
@@ -55,6 +116,22 @@ CREATE INDEX IF NOT EXISTS bake_sessions_device_inprogress
   ON bake_sessions (device_id, in_progress);
 CREATE INDEX IF NOT EXISTS bake_sessions_user_saved
   ON bake_sessions (user_id, saved_at DESC);
+
+ALTER TABLE bake_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon write own bakes (device/user trusted)"
+  ON bake_sessions
+  FOR ALL
+  TO anon
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Manage own bakes"
+  ON bake_sessions
+  FOR ALL
+  TO authenticated
+  USING (auth.uid()::text = user_id OR user_id IS NULL)
+  WITH CHECK (auth.uid()::text = user_id OR user_id IS NULL);
 
 -- ── recipes ───────────────────────────────────────────────────────────────────
 
@@ -126,6 +203,22 @@ CREATE INDEX IF NOT EXISTS recipes_device_created
 CREATE INDEX IF NOT EXISTS recipes_user_created
   ON recipes (user_id, created_at DESC);
 
+ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon write own recipes (device/user trusted)"
+  ON recipes
+  FOR ALL
+  TO anon
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Manage own recipes"
+  ON recipes
+  FOR ALL
+  TO authenticated
+  USING (auth.uid()::text = user_id OR user_id IS NULL)
+  WITH CHECK (auth.uid()::text = user_id OR user_id IS NULL);
+
 -- ── starter_analytics ─────────────────────────────────────────────────────────
 -- Pre-computed pH chart curves. One row per device.
 -- vitality_points / all_time_points are JSONB arrays of [minutes, pH] pairs.
@@ -140,6 +233,29 @@ CREATE TABLE IF NOT EXISTS starter_analytics (
   all_time_x_max    FLOAT   NOT NULL DEFAULT 120,
   all_time_points   JSONB   NOT NULL DEFAULT '[]'
 );
+
+ALTER TABLE starter_analytics ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon to write analytics"
+  ON starter_analytics
+  FOR ALL
+  TO anon
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Allow authenticated to write own analytics"
+  ON starter_analytics
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Manage own analytics"
+  ON starter_analytics
+  FOR ALL
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
 
 -- ── science_articles ──────────────────────────────────────────────────────────
 
@@ -175,6 +291,7 @@ ALTER TABLE science_articles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow public read access for all articles"
   ON science_articles
   FOR SELECT
+  TO public
   USING (true);
 
 -- ── v1.0.8 migration: stamp tempUnit on existing feed readings ─────────────────

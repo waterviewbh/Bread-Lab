@@ -8,18 +8,108 @@ import {
   type BulkFermentReading,
   type BulkFermentState,
   type BulkEstimatorState,
+  type PlannedProofMode,
   BULK_TEMP_RISE_TABLE,
   BULK_MIN_DERIVATIVE_GAP_MS,
   BULK_NEGATIVE_DERIVATIVE_CAP,
   DOUGHLAB_PRIOR_TABLE,
 } from "@/lib/recipeTypes";
 import { calculateRecipeMetrics } from "./recipeUtils";
+import { recordPostBulkDiagnosticLog } from "./postBulkDiagnostics";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Provisional Volumetric Yield Multiplier (alpha_vol = 0.50).
+ * Subject to empirical calibration. Accounts for elevated CO2 solubility in cold dough water,
+ * thermal gas contraction (-6.9%), and cold gluten matrix rigidity during cold retard.
+ */
+export const PROVISIONAL_VOLUMETRIC_YIELD_MULTIPLIER = 0.50;
 
 /** Convert Celsius to Fahrenheit. */
 export function toF(temp: number, unit: "F" | "C"): number {
   return unit === "C" ? (temp * 9) / 5 + 32 : temp;
+}
+
+/**
+ * Compute fermentation progress rate r(T) in hr^-1 for any dough temperature T (°F).
+ * For T >= 65°F, uses bilinear interpolation across DOUGHLAB_PRIOR_TABLE.
+ * For T < 65°F, uses Ratkowsky square-root kinetics calibrated to smoothly join at 65°F:
+ *   r(T) = r(65°F) * ((T - 35) / 30)^2   (T_min = 35°F).
+ */
+export function getLowTempFermentationRate(
+  tempF: number,
+  inoculationPct: number
+): number {
+  const durationAt65Ms = interpolateExpectedDuration(65, inoculationPct);
+  const r65 = 1.0 / (durationAt65Ms / 3600000);
+
+  if (tempF >= 65) {
+    const durationMs = interpolateExpectedDuration(tempF, inoculationPct);
+    return 1.0 / (durationMs / 3600000);
+  }
+
+  if (tempF <= 35.0) {
+    return 0.0;
+  }
+
+  const fraction = (tempF - 35.0) / 30.0;
+  return r65 * fraction * fraction;
+}
+
+/**
+ * Integrate post-bulk fermentation carryover progress P_carryover for a declared planned proof condition,
+ * and calculate the resulting recommended bulk-rise target fraction.
+ *
+ * Parameters:
+ * - initialDoughTempF (T0): Used to select the unadjusted baseline target rise (lookupTargetFraction(T0)).
+ * - shapingDoughTempF (currentTempF): Latest observed dough temp used as initial condition for cooling trajectory.
+ */
+export function integratePostBulkCarryover(
+  initialDoughTempF: number,
+  shapingDoughTempF: number,
+  proofMode?: PlannedProofMode,
+  proofTempF?: number | null,
+  inoculationPct = 20,
+  coolingConstant = 0.45
+): { carryoverProgress: number; recommendedTargetRiseFraction: number } {
+  const baseTargetRise = lookupTargetFraction(initialDoughTempF);
+
+  if (proofMode !== "cold_retard" || typeof proofTempF !== "number" || !isFinite(proofTempF)) {
+    return {
+      carryoverProgress: 0.0,
+      recommendedTargetRiseFraction: baseTargetRise,
+    };
+  }
+
+  // Integrate r(T(t)) across cooling curve T(t) = T_fridge + (shapingDoughTempF - T_fridge) * exp(-kc * t) over 12 hours
+  const dtHr = 10 / 60; // 10-minute integration steps
+  const totalHours = 12.0;
+  let totalCarryover = 0.0;
+
+  const getTempAt = (t: number) =>
+    proofTempF + (shapingDoughTempF - proofTempF) * Math.exp(-coolingConstant * t);
+
+  let stepStart = 0.0;
+  while (stepStart < totalHours) {
+    const stepEnd = stepStart + dtHr;
+    const tempA = getTempAt(stepStart);
+    const tempB = getTempAt(stepEnd);
+    const rA = getLowTempFermentationRate(tempA, inoculationPct);
+    const rB = getLowTempFermentationRate(tempB, inoculationPct);
+
+    totalCarryover += 0.5 * (rA + rB) * dtHr;
+    stepStart = stepEnd;
+  }
+
+  // Convert carryover progress into volumetric target reduction
+  const effectiveReduction = totalCarryover * PROVISIONAL_VOLUMETRIC_YIELD_MULTIPLIER * baseTargetRise;
+  const recommendedTargetRise = Math.max(0.15, baseTargetRise - effectiveReduction);
+
+  return {
+    carryoverProgress: totalCarryover,
+    recommendedTargetRiseFraction: recommendedTargetRise,
+  };
 }
 
 /**
@@ -657,22 +747,20 @@ export function computeBulkFermentState(
 
   state.startVolume_ml = startVol;
 
-  // Layer 2
-  const {
-    latchedTargetRise,
-    targetVolume_ml,
-    currentVol,
-    maxVolume_ml,
-    p_observed,
-    e_remaining,
-  } = computeNormalizedState(volReadings, startVol, T0, existing);
+  // Extract planned proof mode & temp from overrides or existing state
+  const plannedProofMode: PlannedProofMode =
+    overrides?.plannedProofMode ?? existing.plannedProofMode ?? "undecided";
+  const plannedProofTempF: number | null =
+    overrides?.plannedProofTempF !== undefined
+      ? overrides.plannedProofTempF
+      : existing.plannedProofTempF !== undefined
+      ? existing.plannedProofTempF
+      : null;
 
-  state.latchedTargetRiseFraction = latchedTargetRise;
-  state.targetRiseFraction = latchedTargetRise;
-  state.targetVolume_ml = targetVolume_ml;
-  state.maxVolume_ml = maxVolume_ml;
+  state.plannedProofMode = plannedProofMode;
+  state.plannedProofTempF = plannedProofTempF;
 
-  // Layer 3
+  // Compute thermal exposure (Layer 3) early to get latest observed dough temp currentTempF as T_shaping
   const { p_expected, r_base, currentTempF } = computeThermalExposure(
     sorted,
     inoculationPct,
@@ -680,7 +768,7 @@ export function computeBulkFermentState(
     saltPct,
     enriched,
     t0,
-    latchedTargetRise
+    existing.latchedTargetRiseFraction ?? lookupTargetFraction(T0)
   );
   state.thermalExposureDegreeHours = p_expected;
 
@@ -691,10 +779,103 @@ export function computeBulkFermentState(
     ? toF(lastWithTemp.ambientTemp, lastWithTemp.tempUnit)
     : null;
 
+  // Compute carryover progress and recommended target using T0 (initial base target) and currentTempF (shaping temp estimate)
+  const { carryoverProgress, recommendedTargetRiseFraction } =
+    integratePostBulkCarryover(T0, currentTempF, plannedProofMode, plannedProofTempF, inoculationBucket);
+
+  state.carryoverProgress = carryoverProgress;
+  state.recommendedTargetRiseFraction = recommendedTargetRiseFraction;
+
+  // Target Latching Rule:
+  // If latchedTargetRiseFraction exists AND planned proof mode/temp have NOT changed, preserve latched rise.
+  // If unlatched OR if planned proof mode/temp explicitly changed, latch new recommended target.
+  const proofPlanChanged =
+    existing.plannedProofMode !== undefined &&
+    (existing.plannedProofMode !== plannedProofMode ||
+      existing.plannedProofTempF !== plannedProofTempF);
+
+  const latchedTargetRise =
+    existing.latchedTargetRiseFraction !== undefined && !proofPlanChanged
+      ? existing.latchedTargetRiseFraction
+      : recommendedTargetRiseFraction;
+
+  state.latchedTargetRiseFraction = latchedTargetRise;
+  state.targetRiseFraction = latchedTargetRise;
+
+  // Layer 2
+  const {
+    targetVolume_ml,
+    currentVol,
+    maxVolume_ml,
+    p_observed,
+    e_remaining,
+  } = computeNormalizedState(volReadings, startVol, T0, {
+    ...existing,
+    latchedTargetRiseFraction: latchedTargetRise,
+  });
+
+  state.targetVolume_ml = targetVolume_ml;
+  state.maxVolume_ml = maxVolume_ml;
+
   // Layer 4
   const { r_obs, rawSlopeMlHr, postInterventionDamped, isNegativeTrend } =
     estimateObservedRate(volReadings, targetVolume_ml, startVol);
   state.observedVolumeRateMlHr = rawSlopeMlHr;
+
+  // Diagnostic Event Construction & Dispatch (Task 3)
+  try {
+    const isInit = existing.latchedTargetRiseFraction === undefined;
+    const isBelowObserved =
+      p_observed >= 1.0 ||
+      (recommendedTargetRiseFraction < (currentVol - startVol) / startVol && (currentVol - startVol) > 0);
+
+    let eventType: import("./postBulkDiagnostics").PostBulkDiagnosticEventType | null = null;
+    let reasonCode = "ROUTINE_CHECKIN_PRESERVED_TARGET";
+    let trigger: "initialization" | "explicit_plan_change" | "reading_entry" | "settings_update" = "reading_entry";
+
+    if (isInit) {
+      eventType = "TARGET_INITIALIZED";
+      reasonCode = "INITIAL_TARGET_LATCHED";
+      trigger = "initialization";
+    } else if (proofPlanChanged) {
+      eventType = "PROOF_PLAN_CHANGED";
+      reasonCode = `PLAN_CHANGED_TO_${plannedProofMode.toUpperCase()}`;
+      trigger = "explicit_plan_change";
+    } else if (isBelowObserved) {
+      eventType = "TARGET_BELOW_OBSERVED";
+      reasonCode = "RECOMMENDED_TARGET_BELOW_OBSERVED_RISE";
+      trigger = "reading_entry";
+    } else if (existing.recommendedTargetRiseFraction !== undefined && existing.recommendedTargetRiseFraction !== recommendedTargetRiseFraction) {
+      eventType = "TARGET_RECALCULATED";
+      reasonCode = "RECOMMENDED_TARGET_RECALCULATED";
+      trigger = "settings_update";
+    }
+
+    if (eventType) {
+      recordPostBulkDiagnosticLog({
+        eventType,
+        trigger,
+        initialDoughTempF: T0,
+        latestObservedDoughTempF: currentTempF,
+        estimatedShapingTempF: currentTempF,
+        declaredProofMode: plannedProofMode,
+        declaredProofTempF: plannedProofTempF,
+        baselineTargetRiseFraction: lookupTargetFraction(T0),
+        carryoverProgress,
+        volumetricYieldMultiplier: PROVISIONAL_VOLUMETRIC_YIELD_MULTIPLIER,
+        recommendedTargetRiseFraction,
+        previousLatchedTargetRiseFraction: existing.latchedTargetRiseFraction ?? null,
+        newLatchedTargetRiseFraction: latchedTargetRise,
+        previousTargetVolumeMl: existing.targetVolume_ml ?? null,
+        newTargetVolumeMl: targetVolume_ml,
+        currentObservedRiseFraction: p_observed,
+        projectedTargetAt: state.projectedTargetAt ?? null,
+        reasonCode,
+      });
+    }
+  } catch (e) {
+    // Diagnostic logging failure must never break active bake calculations
+  }
 
   // Layer 7 (Confidence computed before Layer 5)
   const { confidenceScore, diagnosticCode } = computeConfidence(

@@ -32,6 +32,17 @@ module.exports = {
     package: "com.waterviewbakehouse.breadlab",
     unstable_interopComponents: ["RNMathView"],
     versionCode: versionData.versionCode,
+    intentFilters: [
+      {
+        action: "SEND",
+        category: ["DEFAULT"],
+        data: [
+          {
+            mimeType: "text/plain"
+          }
+        ]
+      }
+    ],
     permissions: [
       "android.permission.CAMERA",
       "android.permission.READ_EXTERNAL_STORAGE",

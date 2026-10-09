@@ -96,6 +96,14 @@ export interface BulkFermentState {
   correctedRateMultiplier?: number;
   /* Optional P-memory horizon window in ms (null = full-history P) */
   pMemoryHorizonMs?: number | null;
+  /* Declared planned post-bulk proof mode */
+  plannedProofMode?: PlannedProofMode;
+  /* Declared planned post-bulk proof temperature in degrees F */
+  plannedProofTempF?: number | null;
+  /* Recommended target rise fraction considering post-bulk carryover */
+  recommendedTargetRiseFraction?: number;
+  /* Integrated post-bulk carryover progress (in progress units) */
+  carryoverProgress?: number;
 }
 
 // ─── Recipe phase (builder config, persisted shape) ───────────────────────────
@@ -141,6 +149,8 @@ export interface BakePhase extends RecipePhaseConfig {
 }
 
 // ─── Bulk Estimator State (Per-Bake Input Dashboard) ──────────────────────────
+export type PlannedProofMode = "bench" | "cold_retard" | "undecided";
+
 export interface BulkEstimatorState {
   /* Manual weight overrides (defaults pulled from recipe parse) */
   flourG?: string;
@@ -154,6 +164,10 @@ export interface BulkEstimatorState {
   targetTemp?: string;
   /* Baseline container volume in ml */
   startVolume_ml?: string;
+  /* Declared planned post-bulk proof mode */
+  plannedProofMode?: PlannedProofMode;
+  /* Declared planned post-bulk proof temperature in degrees F */
+  plannedProofTempF?: number | null;
 }
 
 // ─── Bake Lifecycle & Diagnostics ──────────────────────────────────────────

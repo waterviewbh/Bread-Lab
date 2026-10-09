@@ -57,3 +57,16 @@ The mobile codebase follows a feature-hub architecture built on top of Expo Rout
 *   **Universal Card Architecture**: Content text lines are parsed into rich `CheckableLine` structs instead of plain text strings to enable interactive checklist workflows.
 *   **Reanimated Worklets**: Ensure plugins list in `babel.config.js` places `react-native-reanimated/plugin` at the exact end of the block to prevent worklet transpile exceptions on Web targets.
 *   **Global Text Selectability**: To support further study and data extraction, all educational, descriptive, and user-generated text blocks must set `selectable={true}`. This includes article paragraphs, equations, and active journal notes.
+
+---
+
+## 🧪 Testing & Maestro Protocols
+*   **Precondition Synchronization Handshake**: The human operator establishes the required starting screen on the emulator. Before executing any Maestro E2E test, the AI agent MUST invoke `ask_user()` to confirm screen readiness with the operator:
+    ```ts
+    ask_user(
+      question: "I am ready to run [Flow Name]. Is the emulator currently on the [Screen Name] screen?",
+      answer_type: "single_choice",
+      options: ["Yes, run the test", "Not yet, hold on"]
+    )
+    ```
+
