@@ -30,7 +30,7 @@ describe("Bulletproof Two-Pass Typed Import Engine", () => {
 
   it("handles out-of-order recipe dependencies and cross-table ID collisions with typed composite keys", async () => {
     const mockRecipes = [
-      { id: "same-id", name: "Child Recipe", parentRecipeId: "same-id" }, // child before parent in input order or identical ID
+      { id: "same-id", name: "Child Recipe", parentRecipeId: "same-id" },
       { id: "parent-id", name: "Parent Recipe" },
     ];
     const mockBakes = [
@@ -40,7 +40,8 @@ describe("Bulletproof Two-Pass Typed Import Engine", () => {
       { id: "same-id", savedAt: 1000, data: {} },
     ];
 
-    (AsyncStorage.getItem as jest.Mock).mockImplementation((key: string) => {
+    const getItemMock = AsyncStorage.getItem;
+    getItemMock.mockImplementation(function(key) {
       if (key.includes("recipes")) return Promise.resolve(JSON.stringify(mockRecipes));
       if (key.includes("bake_history")) return Promise.resolve(JSON.stringify(mockBakes));
       if (key.includes("sourdough_feed")) return Promise.resolve(JSON.stringify(mockFeeds));
