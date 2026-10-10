@@ -1,0 +1,43 @@
+appId: com.waterviewbakehouse.breadlab
+---
+# Candidate Commit Boundary — Unassigned Material Blocked Walkthrough
+# Assumes app is open on the Landing Page Workbench ("Good afternoon, Baker").
+
+# 1. Assert Candidate Card on Workbench
+- assertVisible: "Candidates"
+- assertVisible: "San Francisco Sourdough Test Fixture"
+
+# 2. Tap Review button
+- tapOn:
+    id: "review-candidate-btn"
+
+- waitForAnimationToEnd
+
+# 3. Assert Candidate Review modal opens
+- assertVisible:
+    id: "baker-review-modal"
+
+- assertVisible: "Candidate Review"
+
+# 4. Tap Save button while Unassigned Material remains
+- tapOn:
+    id: "review-save-btn"
+
+- waitForAnimationToEnd
+
+# 5. Assert Unassigned Material Warning dialog appears with ONLY "Assign to Phase" option
+- assertVisible: "Unassigned Material Warning"
+- assertVisible: "Some recipe content remains in Unassigned Material. Please assign all ingredients and instructions to phases before committing as a Recipe."
+- assertVisible: "Assign to Phase"
+- assertNotVisible: "Save Unassigned"
+
+# 6. Tap "Assign to Phase"
+- tapOn: "Assign to Phase"
+
+- waitForAnimationToEnd
+
+# 7. Assert Phase Picker modal opens displaying "Add Phase"
+- assertVisible: "Add Phase"
+
+# 8. Capture screenshot
+- takeScreenshot: "candidate_unassigned_commit_blocked"

@@ -1,0 +1,26 @@
+appId: com.waterviewbakehouse.breadlab
+---
+# Candidate Inbox on Landing Page — Maestro Walkthrough
+# Assumes app is open on the Bread Lab Landing Page / Workbench ("Good afternoon, Baker").
+
+# 1. Assert Candidates section & deterministic Candidate Card on Workbench
+- assertVisible: "Candidates"
+- assertVisible: "San Francisco Sourdough Test Fixture"
+- assertVisible:
+    id: "candidate-status-text"
+
+# 2. Tap Candidate card or Review button
+- tapOn:
+    id: "review-candidate-btn"
+
+- waitForAnimationToEnd
+
+# 3. Assert Candidate Review modal opens directly over Landing Page
+- assertVisible:
+    id: "baker-review-modal"
+
+- assertVisible: "Candidate Review"
+- assertVisible: "San Francisco Sourdough Test Fixture"
+
+# 4. Capture screenshot
+- takeScreenshot: "candidate_inbox_review_open"

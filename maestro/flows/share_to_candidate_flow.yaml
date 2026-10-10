@@ -1,0 +1,32 @@
+appId: com.waterviewbakehouse.breadlab
+---
+# Share-to-Candidate Front Door — Maestro Walkthrough
+# Verifies the Bread Lab Share intent reception boundary, Candidate creation,
+# transient success confirmation, Candidate Inbox display, and sharedAt visibility.
+
+# 1. Assert initial Landing Page state
+- assertVisible: "Candidates"
+
+# 2. Trigger Share intent handling via deep link URL
+- openLink: "sourdough://share?text=San%20Francisco%20Sourdough%20Share%20Test%0A500g%20flour%0A350g%20water%0A100g%20starter%0A10g%20salt"
+
+# 3. Wait for actual Candidate creation and transient toast
+- extendedWaitUntil:
+    visible:
+      id: "share-candidate-toast"
+    timeout: 5000
+
+# 4. Assert transient success confirmation toast text appears
+- assertVisible: "Recipe candidate added to Bread Lab. Verify and add it in the app."
+
+# 5. Capture screenshot of confirmation toast
+- takeScreenshot: "share_candidate_toast_confirmation"
+
+# 6. Assert Candidate appears in Candidate Inbox on Landing Page
+- assertVisible: "Candidates"
+- assertVisible: "San Francisco Sourdough Share Test"
+- assertVisible:
+    id: "candidate-shared-at"
+
+# 7. Capture screenshot of Candidate Inbox with sharedAt timestamp
+- takeScreenshot: "share_candidate_inbox_display"

@@ -1,0 +1,30 @@
+appId: com.waterviewbakehouse.breadlab
+---
+# Candidate Discard Flow — Maestro Walkthrough
+# Assumes app is open on the Bread Lab Landing Page / Workbench ("Good afternoon, Baker").
+
+# 1. Assert Candidates section & Candidate card on Workbench
+- assertVisible: "Candidates"
+- assertVisible: "San Francisco Sourdough Test Fixture"
+- assertVisible:
+    id: "discard-candidate-card-btn"
+
+# 2. Tap Discard button on Candidate card
+- tapOn:
+    id: "discard-candidate-card-btn"
+
+- waitForAnimationToEnd
+
+# 3. Handle confirmation alert if presented
+- runFlow:
+    when:
+      visible: "Discard Candidate"
+    commands:
+      - tapOn: "Discard"
+      - waitForAnimationToEnd
+
+# 4. Assert Candidate is permanently removed from workbench list
+- assertNotVisible: "San Francisco Sourdough Test Fixture"
+
+# 5. Capture screenshot confirming clean candidate discard
+- takeScreenshot: "candidate_discard_success"

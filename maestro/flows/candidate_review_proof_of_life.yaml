@@ -1,0 +1,72 @@
+appId: com.waterviewbakehouse.breadlab
+---
+# Candidate Review — Maestro Proof of Life
+# Assumes app is open on the RECIPE BUILDER screen.
+
+# 1. Defensive reset: if Candidate Review is open from a previous run, discard it
+- runFlow:
+    when:
+      visible: "Candidate Review"
+    commands:
+      - tapOn:
+          id: "review-discard-btn"
+      - waitForAnimationToEnd
+
+# 2. Authoritatively load the deterministic test candidate
+- tapOn:
+    id: "load-test-candidate-btn"
+
+- waitForAnimationToEnd
+
+# 3. Assert initial Candidate Review modal state & visible content
+- assertVisible:
+    id: "baker-review-modal"
+
+- assertVisible: "Candidate Review"
+- assertVisible: "San Francisco Sourdough Test Fixture"
+- assertVisible: "Main Dough Mix"
+
+# 4. Capture candidate_initial
+- takeScreenshot: "candidate_initial"
+
+# 5. Scroll downward until Unassigned Material is visible
+- scrollUntilVisible:
+    element: "Unassigned Material"
+    direction: DOWN
+
+# 6. Assert Unassigned Material is visible
+- assertVisible: "Unassigned Material"
+
+# 7. Scroll back up until Main Dough Mix remove control is visible
+- scrollUntilVisible:
+    element:
+      id: "remove-phase-main_dough"
+    direction: UP
+
+# 8. Remove suggested phase "Main Dough Mix"
+- tapOn:
+    id: "remove-phase-main_dough"
+
+- waitForAnimationToEnd
+
+# 9. Assert Main Dough Mix phase is no longer visible
+- assertNotVisible: "Main Dough Mix"
+
+# 10. Scroll down to view Unassigned Material ingredients
+- scrollUntilVisible:
+    element: "800g unbleached bread flour"
+    direction: DOWN
+
+# 11. Assert transferred ingredient appears under Unassigned Material
+- assertVisible: "800g unbleached bread flour"
+
+# 12. Scroll down further to view Unassigned Material instructions
+- scrollUntilVisible:
+    element: "Autolyse flour and water for 45 minutes."
+    direction: DOWN
+
+# 13. Assert transferred instruction appears under Unassigned Material
+- assertVisible: "Autolyse flour and water for 45 minutes."
+
+# 14. Capture candidate_phase_removed
+- takeScreenshot: "candidate_phase_removed"
