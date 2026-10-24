@@ -1,11 +1,10 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
-import { Alert } from 'react-native';
+import { render, screen, waitFor } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import WelcomeHub from '../index';
 
 jest.setTimeout(15000);
 
-// Mocks
 jest.mock('expo-font', () => ({
   useFonts: () => [true],
 }));
@@ -19,196 +18,124 @@ jest.mock('@expo/vector-icons', () => ({
   Feather: 'Feather',
 }));
 
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(),
-  impactAsync: jest.fn(),
-  notificationAsync: jest.fn(),
-  NotificationFeedbackType: { Success: 'success' },
-  ImpactFeedbackStyle: { Light: 'light' },
-}));
-
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), navigate: jest.fn() }),
 }));
 
-let mockAsyncStore: Record<string, string> = {};
 jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn(async (key: string) => mockAsyncStore[key] || null),
-  setItem: jest.fn(async (key: string, value: string) => {
-    mockAsyncStore[key] = value;
-  }),
-  removeItem: jest.fn(async (key: string) => {
-    delete mockAsyncStore[key];
-  }),
-  clear: jest.fn(async () => {
-    mockAsyncStore = {};
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+}));
+
+jest.mock('@/hooks/useScienceArticle', () => ({
+  useScienceArticles: () => ({
+    data: [
+      { slug: 'article-1', title: 'Science Article 1', blocks: [{ type: 'paragraph', text: 'Test paragraph summary.' }], furtherStudyTopics: [] }
+    ],
+    isLoading: false,
+    error: null,
   }),
 }));
 
-const REALISTIC_RECIPE_WALL = `Vermont Country Sourdough Loaf
-
-This recipe is a classic 75% hydration sourdough loaf with a crispy crust and soft open crumb.
-Perfect for weekend baking in a Dutch oven.
-
-=== INGREDIENTS ===
-450g King Arthur Bread Flour
-50g Whole Wheat Flour
-375g Water (75% hydration)
-100g Active Sourdough Starter (100% hydration)
-10g Fine Sea Salt
-
-=== INSTRUCTIONS ===
-1. Mix flour and water in a large bowl for a 45-minute autolyse.
-2. Add active starter and sea salt, dimpling thoroughly into dough.
-3. Perform 4 sets of stretch-and-folds spaced 30 minutes apart.
-4. Allow dough to bulk ferment at room temperature until increased in volume by 50%.
-5. Pre-shape, bench rest for 20 minutes, and shape into a round boule.
-6. Cold retard overnight in a banneton for 12 to 16 hours.
-7. Bake at 450F in a preheated Dutch oven for 20 minutes lid-on, 20 minutes lid-off.
-
-Notes: Keep ambient temperature around 74F for consistent fermentation.`;
-
-describe('Landing Page Candidates Section & Paste Flow (WelcomeHub)', () => {
+describe('Landing Page (WelcomeHub) - Welcome Insight Redesign', () => {
   beforeEach(() => {
-    mockAsyncStore = {};
     jest.clearAllMocks();
   });
 
-  it('1. Renders Candidates section header with "Paste Recipe Candidate" button', async () => {
+  it('Renders onboarding message when feed history is empty', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(null);
+
     await render(<WelcomeHub />);
 
     await waitFor(() => {
-      expect(screen.getByText('Candidates')).toBeTruthy();
-      expect(screen.getByTestId('paste-recipe-candidate-btn')).toBeTruthy();
-      expect(screen.getByText('Paste Recipe Candidate')).toBeTruthy();
-      expect(screen.getByText('San Francisco Sourdough Test Fixture')).toBeTruthy();
+      expect(screen.getByText('Start your first feed to see analytics.')).toBeTruthy();
+      expect(screen.getByText('The Lab')).toBeTruthy();
+      expect(screen.getByText('The Bench')).toBeTruthy();
+      expect(screen.getByText('The Log')).toBeTruthy();
     });
   });
 
-  it('2. Tapping Review button opens Candidate Review modal over landing page', async () => {
+  it('Renders evidence-grounded observation when history is present', async () => {
+    const now = Date.now();
+    const mockSession = {
+      id: 'test-session-1',
+      savedAt: now - 3600000 * 6, // 6 hours ago
+      initialPH: '6.2',
+      readings: [
+        { pH: '4.8', loggedAt: now }
+      ]
+    };
+
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify([mockSession]));
+
     await render(<WelcomeHub />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('review-candidate-btn')).toBeTruthy();
-    });
-
-    expect(screen.queryByText('Candidate Review')).toBeNull();
-
-    fireEvent.press(screen.getByTestId('review-candidate-btn'));
-
-    await waitFor(() => {
-      expect(screen.getByText('Candidate Review')).toBeTruthy();
-      expect(screen.getByTestId('staged-name-input').props.value).toBe(
-        'San Francisco Sourdough Test Fixture'
-      );
+      expect(screen.getByText(/Your last refresh showed a pH drop of 1.4 over 6.0 hours/)).toBeTruthy();
     });
   });
 
-  it('3. Tapping Discard button on candidate card prompts confirmation and removes Candidate', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((title, msg, buttons) => {
-      const discardOption = buttons?.find((b: any) => b.style === 'destructive');
-      if (discardOption?.onPress) discardOption.onPress();
-    });
+  it('Renders observation correctly when final pH is stored in session.peak with minutes (like Screenshot 1)', async () => {
+    const now = Date.now();
+    const peakSession = {
+      id: 'peak-session-1',
+      savedAt: now - 600000, // 10 mins ago
+      initialPH: '5.4',
+      peak: {
+        pH: '5.2',
+        timeToPeakMs: 600000 // 10 minutes
+      }
+    };
+
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify([peakSession]));
 
     await render(<WelcomeHub />);
 
     await waitFor(() => {
-      expect(screen.getByText('San Francisco Sourdough Test Fixture')).toBeTruthy();
+      expect(screen.getByText(/Your last refresh showed a pH drop of 0.2 over 10 minutes/)).toBeTruthy();
     });
-
-    fireEvent.press(screen.getByTestId('discard-candidate-card-btn'));
-
-    await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith(
-        'Discard Candidate',
-        'Are you sure you want to permanently discard "San Francisco Sourdough Test Fixture"?',
-        expect.any(Array)
-      );
-    });
-
-    alertSpy.mockRestore();
   });
 
-  it('4. Refuses candidate creation if pasted text produces no_candidate extraction, staying in modal with error', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  it('Gracefully skips incomplete newest session and falls back to older valid session', async () => {
+    const now = Date.now();
+    const incompleteNewestSession = {
+      id: 'incomplete-session',
+      savedAt: now,
+      readings: [] // no pH data or initial pH
+    };
+    const olderValidSession = {
+      id: 'older-session',
+      savedAt: now - 3600000 * 5, // 5 hours ago
+      initialPH: '6.0',
+      readings: [
+        { pH: '5.0', loggedAt: now - 1000 }
+      ]
+    };
 
-    await render(<WelcomeHub />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('paste-recipe-candidate-btn')).toBeTruthy();
-    });
-
-    // Open Paste modal
-    fireEvent.press(screen.getByTestId('paste-recipe-candidate-btn'));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('paste-candidate-modal')).toBeTruthy();
-    });
-
-    // Enter short useless text
-    fireEvent.changeText(screen.getByTestId('paste-candidate-input'), 'too short line');
-
-    await waitFor(() => {
-      expect(screen.getByTestId('paste-candidate-input').props.value).toBe('too short line');
-    });
-
-    // Tap Extract Candidates
-    fireEvent.press(screen.getByTestId('extract-candidates-btn'));
-
-    await waitFor(() => {
-      // Should show alert and inline error box
-      expect(alertSpy).toHaveBeenCalledWith('Extraction Failed', expect.any(String));
-      expect(screen.getByTestId('paste-candidate-error')).toBeTruthy();
-      // Modal remains open
-      expect(screen.getByTestId('paste-candidate-modal')).toBeTruthy();
-    });
-
-    alertSpy.mockRestore();
-  });
-
-  it('5. Full paste → extract → candidate creation → review flow with realistic recipe text wall', async () => {
-    await render(<WelcomeHub />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('paste-recipe-candidate-btn')).toBeTruthy();
-    });
-
-    // 1. Open Paste Modal
-    fireEvent.press(screen.getByTestId('paste-recipe-candidate-btn'));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('paste-candidate-modal')).toBeTruthy();
-    });
-
-    // 2. Paste realistic recipe text
-    fireEvent.changeText(
-      screen.getByTestId('paste-candidate-input'),
-      REALISTIC_RECIPE_WALL
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(
+      JSON.stringify([incompleteNewestSession, olderValidSession])
     );
 
+    await render(<WelcomeHub />);
+
     await waitFor(() => {
-      expect(screen.getByTestId('paste-candidate-input').props.value).toBe(REALISTIC_RECIPE_WALL);
+      expect(screen.getByText(/Your last refresh showed a pH drop of 1.0 over 5.0 hours/)).toBeTruthy();
     });
+  });
 
-    // 3. Tap Extract Candidates
-    fireEvent.press(screen.getByTestId('extract-candidates-btn'));
+  it('Renders neutral fallback copy when history lacks valid pH measurements', async () => {
+    const invalidSession = {
+      id: 'invalid-session',
+      savedAt: Date.now(),
+      readings: []
+    };
 
-    // 4. Modal closes, new candidate appears on Landing Page
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify([invalidSession]));
+
+    await render(<WelcomeHub />);
+
     await waitFor(() => {
-      expect(screen.getByText('Vermont Country Sourdough Loaf')).toBeTruthy();
-    });
-
-    // 5. Tap Review on the new candidate card (newest sorted first, index 0 is review-candidate-btn)
-    fireEvent.press(screen.getByTestId('review-candidate-btn'));
-
-    // 6. Verify Candidate Review modal opens with extracted candidate data in Unassigned Material
-    await waitFor(() => {
-      expect(screen.getByText('Candidate Review')).toBeTruthy();
-      expect(screen.getByTestId('staged-name-input').props.value).toBe(
-        'Vermont Country Sourdough Loaf'
-      );
-      // Verify Unassigned Material staging header
-      expect(screen.getByText('Unassigned Material')).toBeTruthy();
+      expect(screen.getByText('Your next bake starts here.')).toBeTruthy();
     });
   });
 });

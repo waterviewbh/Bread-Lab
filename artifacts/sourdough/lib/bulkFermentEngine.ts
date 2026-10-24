@@ -19,6 +19,9 @@ import { recordPostBulkDiagnosticLog } from "./postBulkDiagnostics";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Development-only diagnostic logging switch (defaults to disabled). */
+export const ENABLE_BULK_DIAGNOSTIC_LOGS = __DEV__ && false;
+
 /**
  * Provisional Volumetric Yield Multiplier (alpha_vol = 0.50).
  * Subject to empirical calibration. Accounts for elevated CO2 solubility in cold dough water,
@@ -941,6 +944,71 @@ export function computeBulkFermentState(
     state.targetReachedAt = volReadings[volReadings.length - 1].loggedAt;
     state.inOvertime = true;
     state.projectedTargetAt = null;
+  }
+
+  if (ENABLE_BULK_DIAGNOSTIC_LOGS) {
+    try {
+      const prevVolReading = volReadings.length >= 2 ? volReadings[volReadings.length - 2] : null;
+      const currVolReading = volReadings.length >= 1 ? volReadings[volReadings.length - 1] : null;
+      const dtMs = prevVolReading && currVolReading ? currVolReading.loggedAt - prevVolReading.loggedAt : null;
+      const Kp = 0.8;
+      const Kd = 0.4;
+      const confidenceLabel =
+        confidenceScore >= 0.7 ? "HIGH CONFIDENCE" :
+        confidenceScore >= 0.45 ? "MED CONFIDENCE" :
+        confidenceScore >= 0.25 ? "LOW CONFIDENCE" : "LIMITED DATA";
+
+      const diagnosticPayload = {
+        event: "BULK_FERMENT_DIAGNOSTIC_TRACE",
+        timestamp: Date.now(),
+        inputs: {
+          startVolume_ml: startVol,
+          currentVolume_ml: currentVol,
+          doughTempF: currentTempF,
+          ambientTempF: currentAmbientF,
+          inoculationPct,
+          hydrationPct,
+          saltPct,
+          enriched,
+        },
+        rateCalculationChain: {
+          selectedReadingPrev: prevVolReading ? { loggedAt: prevVolReading.loggedAt, volume_ml: prevVolReading.volume_ml } : null,
+          selectedReadingCurr: currVolReading ? { loggedAt: currVolReading.loggedAt, volume_ml: currVolReading.volume_ml } : null,
+          intervalMs: dtMs,
+          rawVolumeSlopeMlHr: rawSlopeMlHr,
+          normalizedObservedRate: r_obs,
+          thermalBaselineRate: r_base,
+          proportionalError: epsilon_P,
+          derivativeError: epsilon_D,
+          weightedProportionalContribution: Kp * epsilon_P,
+          weightedDerivativeContribution: Kd * epsilon_D,
+          rawUnclampedMultiplier: 1 + confidenceScore * (Kp * epsilon_P + Kd * epsilon_D),
+          finalClampedMultiplier: S_PD,
+        },
+        thermalExposure: {
+          expectedProgressFraction: p_expected, // dimensionless progress 0.0 to 1.0 (legacy property name: thermalExposureDegreeHours)
+        },
+        etaIntegration: {
+          initialRemainingGap: e_remaining,
+          remainingDurationMs: state.projectedTargetAt && volReadings.length > 0 ? state.projectedTargetAt - volReadings[volReadings.length - 1].loggedAt : null,
+          projectedTargetAt: state.projectedTargetAt,
+        },
+        confidenceComponents: {
+          C_count: Math.min(1.0, Math.max(0, volReadings.length - 1) / 3),
+          C_span: Math.min(1.0, Math.max(0, (sorted.length > 0 ? sorted[sorted.length - 1].loggedAt : t0) - t0) / (4 * 3600 * 1000)),
+          C_temp: readings.some((r) => typeof r.doughTemp === "number") ? 1.0 : 0.5,
+          C_stability: 0.85,
+          C_interv: postInterventionDamped ? 0.4 : 1.0,
+          C_snr: Math.min(1.0, (volReadings.length >= 2 ? Math.abs(volReadings[volReadings.length - 1].volume_ml - volReadings[0].volume_ml) : 0) / 30),
+          confidenceScore,
+          confidenceLabel,
+          diagnosticCode,
+        }
+      };
+      console.log(JSON.stringify(diagnosticPayload, null, 2));
+    } catch (err) {
+      // Diagnostic logging failure must never affect runtime calculation
+    }
   }
 
   return state;

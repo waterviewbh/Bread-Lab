@@ -19,6 +19,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [📜 Briefs](file:///E:/Bread-Lab/docs/briefs/)
 **Purpose**: This is the "Inbox" for the agent. Place guides, custom instructions, task parameters, or feature specifications here that you want me to follow or use as a reference for future work.
+- [Logo Card Refinement (2026-10-12)](file:///E:/Bread-Lab/docs/briefs/20261012%resources_logo_card_refinement_brief.md)
 - [Post-Bulk Investigation (2026-10-08)](file:///E:/Bread-Lab/docs/briefs/20261008%-%Planned%Post-Bulk%Proof%and%Target%Rise.txt)
 - [Stretch & Fold Timing Chits (2026-09-19)](file:///E:/Bread-Lab/docs/briefs/20260919%20fold%20timechit.txt)
 - [Multi-Bake Support (2026-09-07)](file:///E:/Bread-Lab/docs/briefs/20260907%20concurrent%20runners.md)
@@ -32,7 +33,14 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: React 19 & RNTL v14 Testing Infrastructure Baseline (2026-09-27)](file:///E:/Bread-Lab/docs/journal/2026-09-27_react19_rntl14_testing_stack.artifact.md)
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
+#### 📦 Version 2.5.5
+- [Session: Candidate Promotion & Empty Recipe Duplication Regression Fix (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_candidate_promotion_and_empty_recipe_regression.artifact.md)
+- [Session: Recipe Runner vs. Recipe Builder Phase Order Regression Fix (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_recipe_runner_vs_builder_phase_order.artifact.md)
+- [Session: Stretching & Folding Completion Chits & Version 2.5.5 Updates (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_stretch_and_fold_completion_chits.artifact.md)
+- [Session: Restoring Recipe Card Print and Share Icons (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_restoring_recipe_card_print_and_share_icons.artifact.md)
+
 #### 📦 Version 2.5.4
+- [Session: Waterview Bakehouse Logo Card Refinement (2026-10-12)](file:///E:/Bread-Lab/docs/journal/2026-10-12_waterview_bakehouse_logo_card_refinement.artifact.md)
 - [Session: Issue #65 Paste Candidate & Review Draft Workbench Completion (2026-10-08)](file:///E:/Bread-Lab/docs/journal/2026-10-08_issue_65_paste_candidate_review_completion.artifact.md)
 - [Session: Web Share Acquisition Hardening & End-to-End Verification (2026-10-07)](file:///E:/Bread-Lab/docs/journal/2026-10-07_web_share_acquisition_hardening.artifact.md)
 - [Session: Discard Candidate Action & Persistent Removal (2026-10-06)](file:///E:/Bread-Lab/docs/journal/2026-10-06_discard_candidate_action.artifact.md)
@@ -76,6 +84,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🏗️ Architectural](file:///E:/Bread-Lab/docs/architectural/)
 **Purpose**: High-level design documents and approved implementation plans for major system changes.
+- [Supabase RLS Policy Hardening & Account Access Remediation (Issue #41)](file:///E:/Bread-Lab/docs/architectural/supabase_rls_and_auth_architecture.artifact.md)
 - [Visual Verification & Screenshot Protocol (2026-09-27)](file:///E:/Bread-Lab/docs/architectural/visual_verification_protocol.md)
 - [Android Migration Plan](file:///E:/Bread-Lab/docs/architectural/android_migration_plan.artifact.md)
 - [Build and Environment Refinement](file:///E:/Bread-Lab/docs/architectural/android_build_and_env_refinement.artifact.md)
@@ -83,7 +92,8 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🔍 Research & Status](file:///E:/Bread-Lab/docs/research/)
 **Purpose**: Findings from investigations, current status of ongoing initiatives, and lessons learned.
-- [Issue #41: Supabase RLS Policy Audit & Account Access Remediation (2026-10-09)](file:///E:/Bread-Lab/docs/research/2026-10-09_issue_41_supabase_rls_status.artifact.md) [OPEN ITEM]
+- [Issue #79: Trace Starter Vitality Percentage and Document Its Meaning (2026-10-15)](file:///E:/Bread-Lab/docs/research/2026-10-15_issue_79_starter_vitality_percentage.md)
+- [Issue #73: Pre-Implementation Architecture Inspection — Moving Candidates to Recipe Builder (2026-10-12)](file:///E:/Bread-Lab/docs/research/2026-10-12_issue_73_recipe_builder_candidates_inspection.md)
 - [Maestro Testing: Status and Lessons Learned](file:///E:/Bread-Lab/docs/research/maestro_testing_status.artifact.md) [OPEN ITEM]
 
 ### [🐞 Bug Tracker](file:///E:/Bread-Lab/docs/bug_tracker.md)
@@ -95,6 +105,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🎨 Walkthroughs](file:///E:/Bread-Lab/docs/walkthroughs/)
 **Purpose**: Demonstrations and summaries of completed features, including UI screenshots and technical breakdowns.
+- [Waterview Bakehouse Logo Card Refinement (2026-10-12)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-12_waterview_bakehouse_logo_card_refinement.artifact.md)
 - [Warm Web Share Acquisition Hardening & End-to-End Verification (2026-10-07)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-07_warm_web_share_acquisition_hardening.artifact.md)
 - [Candidate Commit Unassigned Blocked Maestro Verification (2026-10-05)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-05_candidate_commit_unassigned_blocked_maestro_verification.artifact.md)
 - [Candidate Commit Boundary & Recipe Persistence Protection (2026-10-05)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-05_candidate_commit_boundary_and_persistence_protection.artifact.md)

@@ -12,7 +12,7 @@ import {
   BAKE_HISTORY_KEY,
   DELETED_RECIPE_IDS_KEY,
 } from "@/lib/recipeTypes";
-import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, detectYeastType } from "@/lib/recipeUtils";
+import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, detectYeastType, sortRecipePhases } from "@/lib/recipeUtils";
 import { safeParse, storageMutex } from "@/lib/storageUtils";
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────
@@ -60,7 +60,9 @@ export async function loadAll(): Promise<{
       AsyncStorage.getItem(BAKE_KEY),
     ]);
 
-    recipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray);
+    recipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray).filter(
+      r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
+    );
 
     const parsedBakes = safeParse<any>(bakeStr, [], (v) => Array.isArray(v) || (v !== null && typeof v === 'object'));
     const rawBakes: ActiveBake[] = Array.isArray(parsedBakes) ? parsedBakes : (parsedBakes ? [parsedBakes] : []);
@@ -71,7 +73,7 @@ export async function loadAll(): Promise<{
       if (!b || typeof b !== 'object') return b;
 
       // 1. Ensure phases are objects and have checkable lines and readings
-      b.phases = (b.phases || []).map(p => {
+      b.phases = sortRecipePhases((b.phases || []).map(p => {
         const ingredients = Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing');
         const instructions = Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins');
         return {
@@ -82,7 +84,7 @@ export async function loadAll(): Promise<{
           startedAt: p.startedAt ?? null,
           completedAt: p.completedAt ?? null,
         };
-      });
+      }));
 
       // 2. Initialize estimator if missing
       if (!b.estimatorState) {
@@ -119,8 +121,8 @@ export async function loadAll(): Promise<{
     const deviceId = await getDeviceId();
     const token = await getStoredToken().catch(() => null);
     const [apiRecipes, activeBake, deletedRecipeIds] = await Promise.all([
-      api.recipes.list(deviceId, token ?? undefined),
-      localBakesFound ? Promise.resolve(null) : api.history.bakes.active(deviceId),
+      token ? api.recipes.list(deviceId, token) : Promise.resolve([]),
+      (localBakesFound || !token) ? Promise.resolve(null) : api.history.bakes.active(deviceId, token),
       getRecipeTombstone(),
     ]);
 
@@ -135,12 +137,12 @@ export async function loadAll(): Promise<{
           createdAt: new Date(r.createdAt).getTime(),
           updatedAt: (r as any).updatedAt ? new Date((r as any).updatedAt).getTime() : new Date(r.createdAt).getTime(),
           yieldValue: (r.yield_value && r.yield_value > 0) ? r.yield_value.toString() : (existingLocal?.yieldValue || ""),
-          phases: r.phases.map((p) => ({
+          phases: sortRecipePhases(r.phases.map((p) => ({
             key: p.key,
             name: p.name,
             ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing'),
             instructions: Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins'),
-          })),
+          }))),
           parentRecipeId: r.parent_recipe_id ?? existingLocal?.parentRecipeId,
           versionLabel: r.version_label ?? existingLocal?.versionLabel,
           isArchived: r.isArchived ?? existingLocal?.isArchived,
@@ -165,7 +167,7 @@ export async function loadAll(): Promise<{
         yieldValue: (activeBake.yield_value && activeBake.yield_value > 0)
           ? activeBake.yield_value.toString()
           : "",
-        phases: activeBake.phases.map((p) => ({
+        phases: sortRecipePhases(activeBake.phases.map((p) => ({
           key: p.key,
           name: p.name,
           ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing'),
@@ -174,7 +176,7 @@ export async function loadAll(): Promise<{
           completedAt: p.completedAt ?? null,
           readings: p.readings ?? [],
           startVolume: p.startVolume,
-        })),
+        }))),
         estimatorState: activeBake.estimatorState,
       };
 
@@ -221,7 +223,22 @@ export async function loadAll(): Promise<{
 }
 
 export async function writeRecipesLocal(recipes: SavedRecipe[]): Promise<void> {
-  return storageMutex.run(() => AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(recipes)));
+  const validRecipes = recipes.filter(
+    r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
+  );
+  return storageMutex.run(() => AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(validRecipes)));
+}
+
+export async function appendRecipeLocal(newRecipe: SavedRecipe): Promise<SavedRecipe[]> {
+  return storageMutex.run(async () => {
+    const raw = await AsyncStorage.getItem(RECIPES_KEY);
+    const existing = safeParse<SavedRecipe[]>(raw, [], Array.isArray).filter(
+      r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
+    );
+    const updated = [newRecipe, ...existing];
+    await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(updated));
+    return updated;
+  });
 }
 
 export async function writeBakeLocal(bake: ActiveBake): Promise<void> {

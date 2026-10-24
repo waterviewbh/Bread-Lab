@@ -5,11 +5,18 @@
 -- ── affiliate_items ───────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS affiliate_items (
-  id          TEXT        PRIMARY KEY,
-  title       TEXT        NOT NULL,
-  url         TEXT        NOT NULL,
-  description TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                 TEXT        PRIMARY KEY,
+  name               TEXT        NOT NULL,
+  image_url          TEXT,
+  affiliate_url      TEXT        NOT NULL,
+  display_weight     INT         DEFAULT 0,
+  tab_shown          TEXT,
+  tutorial_milestone TEXT,
+  is_active          BOOLEAN     DEFAULT TRUE,
+  title              TEXT,
+  url                TEXT,
+  description        TEXT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE affiliate_items ENABLE ROW LEVEL SECURITY;
@@ -65,6 +72,8 @@ CREATE TABLE IF NOT EXISTS feed_sessions (
   user_id     TEXT,
   saved_at    BIGINT      NOT NULL,
   started_at  BIGINT,
+  updated_at  BIGINT,
+  in_progress BOOLEAN     NOT NULL DEFAULT FALSE,
   data        JSONB       NOT NULL DEFAULT '{}',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -140,6 +149,7 @@ CREATE TABLE IF NOT EXISTS recipes (
   device_id        TEXT        NOT NULL,
   user_id          TEXT,
   name             TEXT        NOT NULL,
+  overview         TEXT,
   phases           JSONB       NOT NULL DEFAULT '[]',
   recipe_data      JSONB,
   yield_value      INT         DEFAULT 0,
@@ -154,11 +164,15 @@ CREATE TABLE IF NOT EXISTS recipes (
 
 -- ── recipe duplication function ──────────────────────────────────────────────
 
+DROP FUNCTION IF EXISTS duplicate_recipe(TEXT, TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS duplicate_recipe(TEXT, TEXT, TEXT, TEXT, BOOLEAN);
+
 CREATE OR REPLACE FUNCTION duplicate_recipe(
   target_id TEXT,
   new_name TEXT,
   new_device_id TEXT,
-  new_user_id TEXT DEFAULT NULL
+  new_user_id TEXT DEFAULT NULL,
+  make_independent BOOLEAN DEFAULT FALSE
 )
 RETURNS SETOF recipes AS $$
 BEGIN
@@ -168,6 +182,7 @@ BEGIN
     device_id,
     user_id,
     name,
+    overview,
     phases,
     recipe_data,
     yield_value,
@@ -183,13 +198,14 @@ BEGIN
     new_device_id,
     new_user_id,
     new_name,
+    overview,
     phases,
     recipe_data,
     yield_value,
     total_flour_g,
     hydration_pct,
-    target_id,
-    'Copy',
+    CASE WHEN make_independent THEN NULL ELSE target_id END,
+    CASE WHEN make_independent THEN 'Master' ELSE 'Copy' END,
     NOW(),
     NOW()
   FROM recipes

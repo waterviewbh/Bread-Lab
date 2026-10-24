@@ -92,17 +92,32 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         })
         .catch(() => {});
     } catch (error) {
-      console.error("Auth Identification Error:", error);
-      const msg = error instanceof Error ? error.message : "Something went wrong";
+      console.error("Auth Identification Technical Diagnostics:", error);
+      const errMessage = error instanceof Error ? error.message : String(error);
+
+      let userFriendlyTitle = "Something went wrong";
+      let userFriendlyMessage = "Check your connection and try again.";
+
+      if (errMessage.includes("recovery failed") || errMessage.includes("User already registered") || errMessage.includes("already registered")) {
+        userFriendlyTitle = "Account Conflict";
+        userFriendlyMessage = "This starter name is registered, but the recovery key didn't match. Double-check your spelling or capitalization.";
+      } else if (errMessage.includes("Email address") && errMessage.includes("invalid")) {
+        userFriendlyTitle = "Invalid Input";
+        userFriendlyMessage = "Please enter valid first and starter names.";
+      } else if (errMessage.includes("invalid login") || errMessage.includes("invalid credentials")) {
+        userFriendlyTitle = "Incorrect Key";
+        userFriendlyMessage = "This starter name is registered, but the recovery key didn't match. Double-check your spelling or capitalization.";
+      } else if (errMessage.includes("network") || errMessage.includes("fetch") || errMessage.includes("connection")) {
+        userFriendlyTitle = "Connection Error";
+        userFriendlyMessage = "Unable to reach the cloud. Please check your internet connection and try again.";
+      } else if (__DEV__) {
+        userFriendlyMessage = `Error: ${errMessage}`;
+      }
 
       if (Platform.OS === 'web') {
-        window.alert(msg);
+        window.alert(`${userFriendlyTitle}: ${userFriendlyMessage}`);
       } else {
-        if (msg.includes("recovery failed")) {
-          Alert.alert("Account Conflict", "This starter name is registered, but the recovery key didn't match. Double-check your spelling or capitalization.");
-        } else {
-          Alert.alert("Something went wrong", "Check your connection and try again.");
-        }
+        Alert.alert(userFriendlyTitle, userFriendlyMessage);
       }
     } finally {
       setLoading(false);

@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useState } from "react";
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 import { useFontSize } from "@/contexts/FontSizeContext";
 import { usePreferences } from "@/contexts/PreferencesContext";
@@ -277,6 +278,7 @@ function ChangelogAccordion({ entries, colors }: { entries: ChangelogVersion[]; 
 }
 
 export default function AboutScreen() {
+  const router = useRouter();
   const colors = useColors();
   const { fullFontSize, setFullFontSize } = useFontSize();
   const { showTour } = useTourSlideshow();
@@ -295,14 +297,24 @@ export default function AboutScreen() {
       ]}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Logo ── */}
-      <View style={styles.logoWrap}>
-        <Image
-          source={logo}
-          style={styles.logo}
-          resizeMode="contain"
-          accessibilityLabel="Waterview Bakehouse logo"
-        />
+      {/* ── Logo Card ── */}
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Pressable
+          onPress={() => router.replace('/')}
+          style={({ pressed }) => [
+            styles.logoPressable,
+            pressed && { opacity: 0.7 }
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Waterview Bakehouse logo - go to Home"
+        >
+          <Image
+            source={logo}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="Waterview Bakehouse logo"
+          />
+        </Pressable>
       </View>
 
       {/* ── Settings ── */}
@@ -448,14 +460,15 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacing.containerPadding,
   },
-  logoWrap: {
+  logoPressable: {
     alignItems: "center",
-    marginBottom: 36,
+    justifyContent: "center",
+    paddingVertical: spacing.md + 4,
+    paddingHorizontal: spacing.md,
   },
   logo: {
-    width: 260,
-    height: 160,
-    borderRadius: radius.sm,
+    width: 240,
+    height: 140,
   },
   sectionLabel: {
     ...typography.sectionLabel,

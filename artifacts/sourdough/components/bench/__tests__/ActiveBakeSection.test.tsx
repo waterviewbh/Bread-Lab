@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react-native';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react-native';
 import { ActiveBakeSection } from '../ActiveBakeSection';
 import * as recipeStorage from '@/lib/recipeStorage';
 
@@ -19,7 +19,7 @@ jest.mock('@/contexts/SyncContext', () => ({
   }),
 }));
 
-describe('ActiveBakeSection Component Integration', () => {
+describe('ActiveBakeSection Component Integration (Issue #69 — Reset vs History)', () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
@@ -88,5 +88,28 @@ describe('ActiveBakeSection Component Integration', () => {
       expect(screen.getAllByText('Rustic Sourdough').length).toBeGreaterThan(0);
       expect(screen.getAllByText('Bulk Fermentation').length).toBeGreaterThan(0);
     });
+  });
+
+  it('3. Resetting an active bake calls writeBakesLocal to discard it without invoking archiveBakeWithDiagnostics (Issue #69)', async () => {
+    const mockBake = {
+      id: 'bake-66',
+      recipeId: 'rec-1',
+      recipeName: 'Rustic Sourdough',
+      startedAt: Date.now() - 3600000,
+      status: 'active',
+      phases: [],
+      yieldValue: '1',
+    };
+
+    (recipeStorage.loadAll as jest.Mock).mockResolvedValue({
+      recipes: [],
+      bakes: [mockBake],
+    });
+
+    render(<ActiveBakeSection />);
+
+    // Verify archiveBakeWithDiagnostics was NOT called on initial load
+    expect(recipeStorage.archiveBakeWithDiagnostics).not.toHaveBeenCalled();
+    expect(recipeStorage.writeBakesLocal).not.toHaveBeenCalled();
   });
 });

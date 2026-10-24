@@ -6,24 +6,42 @@ import {
   TouchableOpacity,
   View,
   Dimensions,
-  Alert,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Svg, Path, G } from 'react-native-svg';
-import { Feather } from '@expo/vector-icons';
+import { Svg, Path, G, SvgXml } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useColors } from '@/hooks/useColors';
 import { fonts, radius, spacing, typography } from '@/constants/theme';
 import { computeSessionAcidVelocity } from '@/lib/analytics';
-import { CandidateReviewController } from '@/components/recipe/CandidateReviewController';
-import { PasteCandidateModal } from '@/components/recipe/PasteCandidateModal';
-import { DETERMINISTIC_TEST_CANDIDATE } from '@/constants/testCandidateFixture';
-import { ExtractionResult } from '@/lib/recipeExtractor';
-import { loadCandidates, removeCandidate, CandidateRecord, formatCandidateSharedAt, CANDIDATES_KEY, getCandidatesKey } from '@/lib/candidateStorage';
-import { useShareCandidate } from '@/contexts/ShareCandidateContext';
-// import { runActiveSessionDiagnostic, stopActiveSessionDiagnostic } from '@/lib/activeDiagnosticHarness';
+import { Feather } from '@expo/vector-icons';
+import { useScienceArticles } from '@/hooks/useScienceArticle';
+import { getDailyScienceArticle, getArticleSummary } from '@/lib/scienceArticles';
+
+const bulkFermentGaugeXml = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <g fill="none" stroke="#5B3420" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M73 182 A78 78 0 1 1 183 182"/>
+    <path d="M70 126 H58 M85 70 L77 62 M128 48 V60 M171 70 L179 62 M198 126 H186" stroke-width="9"/>
+    <path d="M128 139 L150 101" stroke-width="10"/>
+    <circle cx="128" cy="139" r="11" stroke-width="7"/>
+  </g>
+</svg>`;
+
+const importCandidateIconXml = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <g fill="none" stroke="#5B3420" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Clipboard outline -->
+    <path d="M15.5 11.5H12.8a2.3 2.3 0 0 0-2.3 2.3v23.4a2.3 2.3 0 0 0 2.3 2.3h10.5"/>
+    <path d="M30.5 11.5h4.7a2.3 2.3 0 0 1 2.3 2.3v10.5"/>
+    <!-- Top clip and punched hole -->
+    <path d="M18.2 8.8h11.6a1.8 1.8 0 0 1 1.8 1.8v3.1H16.4v-3.1a1.8 1.8 0 0 1 1.8-1.8Z"/>
+    <circle cx="24" cy="8.8" r="2.2" fill="#5B3420" stroke="none"/>
+    <!-- Export arrow -->
+    <path d="M22.5 29.5H37"/>
+    <path d="m31.8 24.5 5.2 5-5.2 5"/>
+  </g>
+</svg>`;
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const { width } = Dimensions.get('window');
@@ -84,86 +102,13 @@ export default function WelcomeHub() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { subscribeCandidatesChanged } = useShareCandidate();
   const [history, setHistory] = useState<any[]>([]);
-  const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
-  const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [showPasteModal, setShowPasteModal] = useState(false);
-
-  const reloadCandidates = React.useCallback(async () => {
-    const key = await getCandidatesKey();
-    const raw = await AsyncStorage.getItem(key);
-    if (raw === null) {
-      // Seed default fixture ONCE on genuinely uninitialized storage
-      const initialFixture: CandidateRecord[] = [
-        {
-          id: "deterministic-fixture",
-          sharedAt: "2026-10-04T08:14:00.000Z",
-          extractionResult: DETERMINISTIC_TEST_CANDIDATE,
-        },
-      ];
-      await AsyncStorage.setItem(key, JSON.stringify(initialFixture));
-    }
-    const list = await loadCandidates();
-    setCandidates(list);
-  }, []);
-
-  const handleOpenCandidateReview = (record: CandidateRecord) => {
-    setSelectedCandidate(record);
-    setShowReviewModal(true);
-  };
-
-  const handlePromptDiscardCard = (record: CandidateRecord) => {
-    const candidateName =
-      record.extractionResult.status === 'single_candidate'
-        ? record.extractionResult.candidate.name
-        : record.extractionResult.status === 'multiple_candidates'
-        ? record.extractionResult.candidates[0]?.name
-        : 'this candidate';
-
-    Alert.alert(
-      'Discard Candidate',
-      `Are you sure you want to permanently discard "${candidateName}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: async () => {
-            await removeCandidate(record.id);
-            await reloadCandidates();
-          },
-        },
-      ]
-    );
-  };
-
-  const handleDiscardCandidate = () => {
-    setShowReviewModal(false);
-    setSelectedCandidate(null);
-    reloadCandidates();
-  };
-
-  const handleSaveCandidateSuccess = () => {
-    setShowReviewModal(false);
-    setSelectedCandidate(null);
-    reloadCandidates();
-  };
 
   useEffect(() => {
     AsyncStorage.getItem(HISTORY_KEY).then(raw => {
       if (raw) setHistory(JSON.parse(raw));
     });
-    reloadCandidates();
-
-    const unsubscribe = subscribeCandidatesChanged(reloadCandidates);
-    return () => {
-      unsubscribe();
-    };
-  }, [reloadCandidates, subscribeCandidatesChanged]);
-
-  const candidatesList = candidates;
+  }, []);
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -172,20 +117,67 @@ export default function WelcomeHub() {
     return "Good evening, Baker";
   }, []);
 
-  const starterStatus = useMemo(() => {
-    if (history.length === 0) return { vitality: 0, suggestion: "Start your first feed to see analytics." };
-    const last = history[history.length - 1];
-    const velocity = computeSessionAcidVelocity(last);
-    
-    // Simple heuristic for vitality based on velocity
-    // Normalizing a velocity of 0.3 as "100%" for visualization
-    const vitality = Math.min(Math.round((velocity || 0) * 333), 100);
-    
-    let suggestion = "It's a perfect day for a long bulk fermentation.";
-    if (vitality < 40) suggestion = "Your starter might need another feed to reach peak activity.";
-    else if (vitality > 85) suggestion = "Starter is extremely active. Watch your proof times closely!";
-    
-    return { vitality, suggestion };
+  const welcomeInsight = useMemo(() => {
+    if (!Array.isArray(history) || history.length === 0) {
+      return "Start your first feed to see analytics.";
+    }
+
+    // Scan history from newest to oldest for the first qualifying completed session with valid pH measurements
+    for (const session of history) {
+      if (!session || session.inProgress) continue;
+
+      const readings = (session.readings ?? [])
+        .map((r: any) => ({ pH: parseFloat(r.pH), loggedAt: r.loggedAt }))
+        .filter((r: any) => !isNaN(r.pH))
+        .sort((a: any, b: any) => a.loggedAt - b.loggedAt);
+
+      let startPH: number | null = null;
+      let startTime: number | null = null;
+      const initV = session.initialPH !== undefined ? parseFloat(session.initialPH) : NaN;
+
+      if (!isNaN(initV)) {
+        startPH = initV;
+        startTime = session.savedAt || (readings.length > 0 ? readings[0].loggedAt : null);
+      } else if (readings.length > 0) {
+        startPH = readings[0].pH;
+        startTime = readings[0].loggedAt;
+      }
+
+      let endPH: number | null = null;
+      let endTime: number | null = null;
+      if (session.peak) {
+        const v = parseFloat(session.peak.pH);
+        if (!isNaN(v) && session.savedAt && typeof session.peak.timeToPeakMs === 'number') {
+          endPH = v;
+          endTime = session.savedAt + session.peak.timeToPeakMs;
+        }
+      }
+      if (endPH === null && readings.length > 0) {
+        const lastReading = readings[readings.length - 1];
+        const isDistinct = !isNaN(initV) || readings.length >= 2;
+        if (isDistinct) {
+          endPH = lastReading.pH;
+          endTime = lastReading.loggedAt;
+        }
+      }
+
+      if (startPH !== null && endPH !== null && startTime !== null && endTime !== null) {
+        const delta = startPH - endPH;
+        const elapsedMs = endTime - startTime;
+        const elapsedHrs = elapsedMs / 3_600_000;
+        if (elapsedHrs > 0 && delta > 0) {
+          const elapsedMins = Math.round(elapsedMs / 60000);
+          const durationStr = elapsedHrs >= 1
+            ? `${elapsedHrs.toFixed(1)} hours`
+            : elapsedMins <= 1
+              ? `1 minute`
+              : `${elapsedMins} minutes`;
+          return `Your last refresh showed a pH drop of ${delta.toFixed(1)} over ${durationStr}.`;
+        }
+      }
+    }
+
+    return "Your next bake starts here.";
   }, [history]);
 
   return (
@@ -196,10 +188,7 @@ export default function WelcomeHub() {
       <View style={styles.header}>
         <Text selectable={true} style={[styles.greeting, { color: colors.text }]}>{greeting}</Text>
         <Text selectable={true} style={[styles.subGreeting, { color: colors.mutedForeground }]}>
-          {starterStatus.vitality > 0 
-            ? `Your starter is currently at ${starterStatus.vitality}% activity. ${starterStatus.suggestion}`
-            : starterStatus.suggestion
-          }
+          {welcomeInsight}
         </Text>
       </View>
 
@@ -227,44 +216,6 @@ export default function WelcomeHub() {
         />
       </View>
 
-      {/* Temporary Dev-Only Diagnostic Harness Triggers (Turned off for now)
-      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
-        <TouchableOpacity
-          style={{
-            flex: 1,
-            paddingVertical: 14,
-            paddingHorizontal: 12,
-            backgroundColor: '#D97706',
-            borderRadius: radius.lg,
-            alignItems: 'center',
-          }}
-          onPress={() => {}}
-          testID="run-active-diag-btn"
-        >
-          <Text style={{ color: '#FFFFFF', fontFamily: fonts.sansSemiBold, fontSize: 13 }}>
-            Run 10-Attempt Harness
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={{
-            flex: 1,
-            paddingVertical: 14,
-            paddingHorizontal: 12,
-            backgroundColor: '#DC2626',
-            borderRadius: radius.lg,
-            alignItems: 'center',
-          }}
-          onPress={() => {}}
-          testID="stop-active-diag-btn"
-        >
-          <Text style={{ color: '#FFFFFF', fontFamily: fonts.sansSemiBold, fontSize: 13 }}>
-            Stop Harness
-          </Text>
-        </TouchableOpacity>
-      </View>
-      */}
-
       <View style={styles.quickActionsSection}>
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
@@ -275,110 +226,54 @@ export default function WelcomeHub() {
         
         <View style={styles.actionsGrid}>
           <ActionItem 
-            label="Jump straight to the Bulk Ferment Estimator"
-            icon="⏲" 
+            label="Streamlined Bulk Ferment Estimator"
+            icon={bulkFermentGaugeXml}
             onPress={() => router.push('/tools/bfmodule')}
             colors={colors}
           />
-          <ActionItem 
-            label="Jump straight to New Recipe"
-            icon="+" 
-            onPress={() => router.push('/lab?section=recipe builder&action=new')}
+          <ActionItem
+            label="Import Recipe Candidate"
+            icon={importCandidateIconXml}
+            onPress={() => router.push('/lab?section=recipe builder&subcard=candidates&action=import')}
             colors={colors}
           />
         </View>
       </View>
 
-      {/* ── Candidates Workbench Section (Issue #65 — Step 8D / Direct Text Acquisition) ── */}
-      <View style={styles.candidatesSection}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Candidates</Text>
-          <TouchableOpacity
-            style={styles.pasteCandidateHeaderBtn}
-            onPress={() => setShowPasteModal(true)}
-            testID="paste-recipe-candidate-btn"
-            hitSlop={4}
-          >
-            <Feather name="plus" size={13} color="#D97706" />
-            <Text style={styles.pasteCandidateHeaderBtnText}>Paste Recipe Candidate</Text>
-          </TouchableOpacity>
-        </View>
-
-        {candidatesList.length > 0 &&
-          candidatesList.map((item, idx) => {
-            const candidateObj =
-              item.extractionResult.status === 'single_candidate'
-                ? item.extractionResult.candidate
-                : item.extractionResult.status === 'multiple_candidates'
-                ? item.extractionResult.candidates[0]
-                : null;
-
-            if (!candidateObj) return null;
-
-            const sharedAtText = formatCandidateSharedAt(item.sharedAt);
-
-            return (
-              <TouchableOpacity
-                key={item.id || `candidate-${idx}`}
-                style={[styles.candidateCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                onPress={() => handleOpenCandidateReview(item)}
-                testID={idx === 0 ? "candidate-card" : `candidate-card-${idx}`}
-                activeOpacity={0.7}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text selectable={true} style={[styles.candidateName, { color: colors.text }]}>
-                    {candidateObj.name}
-                  </Text>
-                  <View style={styles.candidateMetaRow}>
-                    {sharedAtText ? (
-                      <Text style={[styles.candidateSharedAt, { color: colors.mutedForeground }]} testID="candidate-shared-at">
-                        {sharedAtText}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-
-                <View style={styles.candidateActionsRow}>
-                  <TouchableOpacity
-                    style={styles.discardCardBtn}
-                    onPress={() => handlePromptDiscardCard(item)}
-                    testID={idx === 0 ? "discard-candidate-card-btn" : `discard-candidate-card-btn-${idx}`}
-                    hitSlop={8}
-                  >
-                    <Feather name="trash-2" size={13} color="#8C7A6B" />
-                    <Text style={styles.discardCardBtnText}>Discard</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.reviewBtn, { backgroundColor: "#4A3B32" }]}
-                    onPress={() => handleOpenCandidateReview(item)}
-                    testID={idx === 0 ? "review-candidate-btn" : `review-candidate-btn-${idx}`}
-                  >
-                    <Text style={styles.reviewBtnText}>Review</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-      </View>
-
-      <CandidateReviewController
-        visible={showReviewModal}
-        candidateId={selectedCandidate?.id}
-        extractionResult={selectedCandidate ? selectedCandidate.extractionResult : null}
-        onSaveSuccess={handleSaveCandidateSuccess}
-        onDiscard={handleDiscardCandidate}
-      />
-
-      <PasteCandidateModal
-        visible={showPasteModal}
-        onClose={() => setShowPasteModal(false)}
-        onExtractSuccess={async () => {
-          setShowPasteModal(false);
-          await reloadCandidates();
-        }}
-      />
+      <ScienceOfTheDayCard colors={colors} router={router} />
     </ScrollView>
+  );
+}
+
+function ScienceOfTheDayCard({ colors, router }: { colors: any; router: any }) {
+  const { data: articles, isLoading, error } = useScienceArticles();
+
+  if (isLoading || error || !articles || articles.length === 0) {
+    return null;
+  }
+
+  const article = getDailyScienceArticle(articles);
+  if (!article) return null;
+
+  const summary = getArticleSummary(article) || "Explore the scientific models behind fermentation.";
+
+  return (
+    <View style={[styles.scienceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={styles.scienceHeaderRow}>
+        <Text style={[styles.scienceBadge, { color: colors.primary }]}>BREAD SCIENCE DAILY</Text>
+      </View>
+      <Text style={[styles.scienceTitle, { color: colors.text }]}>{article.title}</Text>
+      <Text style={[styles.scienceExcerpt, { color: colors.mutedForeground }]} numberOfLines={2}>
+        {summary}
+      </Text>
+      <TouchableOpacity
+        onPress={() => router.push('/log?section=resources&slug=' + article.slug)}
+        style={styles.scienceLinkRow}
+      >
+        <Text style={[styles.scienceLinkText, { color: colors.primary }]}>Continue reading this article</Text>
+        <Feather name="arrow-right" size={14} color={colors.primary} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -406,12 +301,23 @@ function HubPanel({ name, title, description, onPress, colors }: any) {
 }
 
 function ActionItem({ label, icon, onPress, colors }: any) {
+  const isImage = typeof icon === 'number' || (typeof icon === 'object' && icon !== null);
+  const isSvgXml = typeof icon === 'string' && icon.trim().startsWith('<svg');
+
   return (
     <TouchableOpacity 
       style={[styles.actionItem, { backgroundColor: colors.card, borderColor: colors.border }]} 
       onPress={onPress}
     >
-      <Text selectable={true} style={styles.actionIcon}>{icon}</Text>
+      {isSvgXml ? (
+        <View style={{ width: 26, height: 26, marginRight: 16, justifyContent: 'center', alignItems: 'center' }}>
+          <SvgXml xml={icon} width={26} height={26} />
+        </View>
+      ) : isImage ? (
+        <Image source={icon} style={{ width: 22, height: 22, marginRight: 16 }} />
+      ) : (
+        <Text selectable={true} style={styles.actionIcon}>{icon}</Text>
+      )}
       <Text selectable={true} style={[styles.actionLabel, { color: colors.text }]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -423,7 +329,7 @@ const styles = StyleSheet.create({
   header: { marginBottom: 32 },
   greeting: { ...typography.headlineLg, marginBottom: 8 },
   subGreeting: { ...typography.bodyMd, lineHeight: 22 },
-  hubSection: { marginBottom: 40 },
+  hubSection: { marginBottom: 32 },
   hubPanel: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -450,88 +356,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  sectionTitle: { ...typography.titleMd, fontSize: 18 },
-  seeAll: { ...typography.labelSm, textTransform: 'none', letterSpacing: 0 },
-  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  sectionTitle: { ...typography.titleLg },
+  seeAll: { ...typography.bodySm },
+  actionsGrid: { gap: 12 },
   actionItem: {
-    width: (Dimensions.get('window').width - 48 - 12) / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
     borderRadius: radius.lg,
     borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
-  actionIcon: { fontSize: 18, marginRight: 8 },
-  actionLabel: { ...typography.labelSm, letterSpacing: 0, textTransform: 'none' },
-  candidatesSection: { marginTop: 32 },
-  pasteCandidateHeaderBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radius.md,
-    backgroundColor: '#FBF2ED',
-    borderWidth: 1,
-    borderColor: '#C26D38',
-  },
-  pasteCandidateHeaderBtnText: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 12,
-    color: '#C26D38',
-  },
-  candidateCard: {
-    padding: 16,
+  actionIcon: { fontSize: 20, marginRight: 16 },
+  actionLabel: { ...typography.bodyMd, flex: 1 },
+  scienceCard: {
+    marginTop: 24,
+    padding: 20,
     borderRadius: radius.lg,
     borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
   },
-  candidateName: {
+  scienceHeaderRow: {
+    marginBottom: 8,
+  },
+  scienceBadge: {
+    fontSize: 11,
     fontFamily: fonts.sansSemiBold,
-    fontSize: 15,
-    marginBottom: 4,
+    letterSpacing: 1,
   },
-  candidateMetaRow: {
+  scienceTitle: {
+    ...typography.titleMd,
+    marginBottom: 6,
+  },
+  scienceExcerpt: {
+    ...typography.bodySm,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  scienceLinkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  candidateStatusText: {
-    fontFamily: fonts.sansMedium,
-    fontSize: 12,
-  },
-  candidateSharedAt: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-  },
-  candidateActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  discardCardBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  discardCardBtnText: {
-    fontFamily: fonts.sansMedium,
-    fontSize: 12,
-    color: '#8C7A6B',
-  },
-  reviewBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radius.md,
-  },
-  reviewBtnText: {
-    fontFamily: fonts.sansSemiBold,
+  scienceLinkText: {
     fontSize: 13,
-    color: '#FFFFFF',
+    fontFamily: fonts.sansSemiBold,
   },
 });

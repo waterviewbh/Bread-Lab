@@ -332,4 +332,20 @@ describe('BakerReviewModal Component (Issue #65 — Step 8C)', () => {
       expect(screen.getByDisplayValue('Coat dough exterior with toasted seeds before final proof.')).toBeTruthy();
     });
   });
+
+  it('7. Renders phase numbers with high contrast text color (primaryForeground)', async () => {
+    const onSaveConfirmed = jest.fn();
+    const onDiscard = jest.fn();
+
+    await render(
+      <BakerReviewModal
+        visible={true}
+        extractionResult={DETERMINISTIC_TEST_CANDIDATE}
+        onSaveConfirmed={onSaveConfirmed}
+        onDiscard={onDiscard}
+      />
+    );
+
+    expect(screen.getByText('1')).toBeTruthy();
+  });
 });

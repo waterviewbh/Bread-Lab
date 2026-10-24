@@ -89,6 +89,17 @@ export function getArticleSummary(article: ScienceArticle): string {
   const firstParagraph = article.blocks.find(b => b.type === "paragraph");
   if (!firstParagraph) return "";
 
-  const text = firstParagraph.text;
+  const text = firstParagraph.text.replace(/\*\*|\*/g, '');
   return text.length > 120 ? text.substring(0, 117) + "..." : text;
+}
+
+/**
+ * Selects an article deterministically based on the current date,
+ * ensuring it remains stable throughout a given day and rotates the next day.
+ */
+export function getDailyScienceArticle(articles: ScienceArticle[], timestamp: number = Date.now()): ScienceArticle | null {
+  if (!articles || articles.length === 0) return null;
+  const dayNumber = Math.floor(timestamp / (1000 * 60 * 60 * 24));
+  const index = Math.abs(dayNumber) % articles.length;
+  return articles[index];
 }

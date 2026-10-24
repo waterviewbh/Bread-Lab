@@ -12,8 +12,8 @@
       },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "bread-lab.clanmcmains.com",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://kzueaxbloujtudxzqoju.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UWxEXEJvzJ_7xOkbNj3HHg_3Z9g4PK_"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qdcqaiojtzmwiwlsjppr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_KiLkmV-jKOWaywpoD55uBg_7R2AtjDy"
       }
     },
     "preview": {
@@ -23,8 +23,19 @@
       },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "bread-lab.clanmcmains.com",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://kzueaxbloujtudxzqoju.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UWxEXEJvzJ_7xOkbNj3HHg_3Z9g4PK_"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qdcqaiojtzmwiwlsjppr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_KiLkmV-jKOWaywpoD55uBg_7R2AtjDy"
+      }
+    },
+    "staging": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "bread-lab.clanmcmains.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qdcqaiojtzmwiwlsjppr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_KiLkmV-jKOWaywpoD55uBg_7R2AtjDy"
       }
     },
     "production": {

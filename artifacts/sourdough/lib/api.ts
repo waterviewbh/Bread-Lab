@@ -314,6 +314,10 @@ export const api = {
 
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
+        if (error && error.message.includes("Email not confirmed")) {
+          throw new Error("Email confirmation is required for this account. Please verify your email.");
+        }
+
         if (!error && data?.user) {
           console.log(`[Auth Debug] Success with strategy: ${desc}`);
           authData = data;
@@ -326,9 +330,14 @@ export const api = {
 
       // If all sign-ins failed, check if we should sign up
       if (!authData?.user) {
-        if (lastError && (lastError.message.includes("Invalid login credentials") || (lastError as any).status === 400)) {
-          console.log("[Auth Debug] All sign-in strategies failed. Attempting Sign-up as new user...");
-          // Use Modern strategy for new sign-ups
+        const isInvalidCredentials = lastError && (
+          lastError.message.includes("Invalid login credentials") ||
+          lastError.message.includes("Invalid grant") ||
+          lastError.message.includes("User not found")
+        );
+
+        if (isInvalidCredentials) {
+          console.log("[Auth Debug] All sign-in strategies failed with invalid credentials. Attempting Sign-up as new user...");
           const password = derivePassword(sanitizedSn);
           const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email, password, options: { data: { first_name: fn, starter_name: sn } },
@@ -348,11 +357,26 @@ export const api = {
       }
 
       if (!authData?.user) throw new Error("Authentication failed");
-      const { data: userRow } = await supabase.from("users").upsert({ id: authData.user.id, first_name: fn, starter_name: sn }).select().returns<UserRow[]>().single();
+
+      if (!authData?.session) {
+        throw new Error("Account created successfully, but authentication session could not be established.");
+      }
+
+      const { data: userRow, error: profileError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", authData.user.id)
+        .returns<UserRow[]>()
+        .single();
+
+      if (profileError || !userRow) {
+        console.error("[Auth Debug] Profile loading failed:", profileError?.message);
+        throw new Error("Profile loading failed: Account authenticated, but profile record could not be loaded.");
+      }
 
       return {
         token: authData.user.id,
-        user: { id: authData.user.id, firstName: userRow?.first_name ?? fn, starterName: userRow?.starter_name ?? sn },
+        user: { id: authData.user.id, firstName: userRow.first_name, starterName: userRow.starter_name },
       };
     },
 
@@ -375,7 +399,7 @@ export const api = {
 
   recipes: {
     list: async (deviceId?: string, userId?: string): Promise<ApiRecipe[]> => {
-      if (!supabase) return [];
+      if (!supabase || !userId) return [];
       const filter = ownerFilter(deviceId, userId);
       if (!filter) return [];
       const { data, error } = await supabase.from("recipes").select("*").or(filter).order("created_at", { ascending: false }).returns<RecipeRow[]>();
@@ -399,16 +423,62 @@ export const api = {
       return rowToApiRecipe(data);
     },
 
-    duplicate: async (id: string, newName: string, deviceId: string, userId?: string): Promise<ApiRecipe> => {
+    duplicate: async (id: string, newName: string, deviceId: string, userId?: string, makeIndependent?: boolean): Promise<ApiRecipe> => {
       if (!supabase) throw new Error("Supabase not configured");
-      const { data, error } = await supabase.rpc('duplicate_recipe', {
-        target_id: id,
-        new_name: newName,
-        new_device_id: deviceId,
-        new_user_id: userId ?? null
-      }).returns<RecipeRow[]>().single();
-      if (error) throw error;
-      return rowToApiRecipe(data);
+
+      const { data: source, error: fetchError } = await supabase
+        .from("recipes")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (fetchError || !source) {
+        throw fetchError || new Error("Source recipe not found");
+      }
+
+      const newId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+      const now = new Date().toISOString();
+
+      const parentRecipeId = makeIndependent ? null : id;
+      const versionLabel = makeIndependent ? "Master" : "Copy";
+
+      let recipeData = source.recipe_data;
+      if (recipeData && typeof recipeData === 'object') {
+        recipeData = {
+          ...recipeData,
+          id: newId,
+          name: newName,
+          parentRecipeId: parentRecipeId ?? undefined,
+          versionLabel: versionLabel,
+        };
+      }
+
+      const newRow = {
+        id: newId,
+        device_id: deviceId,
+        user_id: source.user_id ?? userId ?? null,
+        name: newName,
+        overview: source.overview,
+        phases: source.phases,
+        recipe_data: recipeData,
+        yield_value: source.yield_value,
+        total_flour_g: source.total_flour_g,
+        hydration_pct: source.hydration_pct,
+        parent_recipe_id: parentRecipeId,
+        version_label: versionLabel,
+        created_at: now,
+        updated_at: now,
+      };
+
+      const { data: inserted, error: insertError } = await supabase
+        .from("recipes")
+        .insert(newRow)
+        .select()
+        .returns<RecipeRow[]>()
+        .single();
+
+      if (insertError) throw insertError;
+      return rowToApiRecipe(inserted);
     },
 
     delete: async (id: string, deviceId?: string, userId?: string): Promise<boolean> => {
@@ -424,7 +494,7 @@ export const api = {
   history: {
     feed: {
       list: async (deviceId?: string, userId?: string): Promise<ApiFeedSession[]> => {
-        if (!supabase) return [];
+        if (!supabase || !userId) return [];
         const filter = ownerFilter(deviceId, userId);
         if (!filter) return [];
         const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).order("saved_at", { ascending: false }).eq("in_progress", false).limit(500).returns<FeedSessionRow[]>();
@@ -444,7 +514,7 @@ export const api = {
       },
 
       active: async (deviceId?: string, userId?: string) => {
-        if (!supabase) return null;
+        if (!supabase || !userId) return null;
         const filter = ownerFilter(deviceId, userId);
         if (!filter) return null;
         const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).eq("in_progress", true).order("updated_at", { ascending: false }).limit(1).returns<FeedSessionRow[]>().maybeSingle();
@@ -470,7 +540,7 @@ export const api = {
 
     bakes: {
       list: async (deviceId?: string, userId?: string): Promise<ApiBakeSession[]> => {
-        if (!supabase) return [];
+        if (!supabase || !userId) return [];
         const filter = ownerFilter(deviceId, userId);
         if (!filter) return [];
         const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).order("saved_at", { ascending: false }).limit(200).returns<BakeSessionRow[]>();
@@ -478,9 +548,9 @@ export const api = {
         return (data ?? []).map(rowToApiBakeSession);
       },
 
-      active: async (deviceId?: string) => {
-        if (!supabase || !deviceId) return null;
-        const { data, error } = await supabase.from("bake_sessions").select("*").eq("device_id", deviceId).eq("in_progress", true).order("started_at", { ascending: false }).limit(1).returns<BakeSessionRow[]>().maybeSingle();
+      active: async (deviceId?: string, userId?: string) => {
+        if (!supabase || !deviceId || !userId) return null;
+        const { data, error } = await supabase.from("bake_sessions").select("*").eq("device_id", deviceId).eq("user_id", userId).eq("in_progress", true).order("started_at", { ascending: false }).limit(1).returns<BakeSessionRow[]>().maybeSingle();
         if (error) throw error;
         return data ? rowToApiBakeSession(data) : null;
       },

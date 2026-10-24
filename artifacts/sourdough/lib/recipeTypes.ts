@@ -216,6 +216,21 @@ export interface BakeOutcome {
   appliedDelta?: { variable: string, value: number }; // Persists the magnitude of the last step
 }
 
+// ─── Bulk Ferment Prediction History Snapshot ────────────────────────────────
+export interface BulkCheckInPredictionSnapshot {
+  id: string;
+  bakeSessionId: string;
+  checkInId: string;
+  readingId: string | null;
+  snapshotType: "before" | "after";
+  snapshotTimestamp: number;
+  projectedTargetAt: number | null;
+  remainingSeconds: number | null;
+  confidenceScore: number | null;
+  diagnosticCode: string | null;
+  diagnosticTraceId: null;
+}
+
 // ─── Active bake (in-progress state) ─────────────────────────────────────────
 export interface ActiveBake {
   id: string;
@@ -230,6 +245,8 @@ export interface ActiveBake {
   outcome?: BakeOutcome;
   /* Integrated estimator inputs, unique to this session */
   estimatorState?: BulkEstimatorState;
+  /* Timestamped prediction history snapshots for bulk check-ins */
+  bulkCheckInHistory?: BulkCheckInPredictionSnapshot[];
 }
 
 export interface BakeHistoryItem extends Omit<ActiveBake, 'status'> {

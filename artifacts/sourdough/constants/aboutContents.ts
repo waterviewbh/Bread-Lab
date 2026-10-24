@@ -29,6 +29,16 @@ export const HELP: HelpTab[] = [
         ],
       },
       {
+        heading: "Starter Vitality Percentage (Activity Score)",
+        bullets: [
+          "What it represents: The percentage shown on the home screen greeting banner (e.g., '37% activity') measures the metabolic acidification speed of your most recent starter feed session.",
+          "Calculation & Formula: Calculated as acidification velocity (ΔpH per elapsed hour) normalized against a reference maximum rate of 0.3 pH units/hour = 100% activity. Formula: vitality % = min(round(velocity × 333), 100). For example, 37% activity corresponds to a drop of ~0.111 pH units/hour.",
+          "How to Interpret: Below 40% suggests your culture may need another refresh to reach peak activity; 40%–85% indicates normal active fermentation; above 85% signifies extreme activity requiring watchful proof times.",
+          "What it does not mean: It is not a static population count of bacteria/yeast, nor a lifetime average across all past feeds—it is a live snapshot of your most recent logged refresh.",
+          "Temporal Dynamics: The value updates automatically whenever you save a new feed session in the Feed Tracker based on its start/initial pH and end/peak pH over elapsed time.",
+        ],
+      },
+      {
         heading: "Feed Planner",
         bullets: [
           "Purpose: Helps you build a levain that peaks on your schedule. It uses smart default estimates or your own history once you have logged 3 feeds.",
@@ -118,6 +128,17 @@ export const HELP: HelpTab[] = [
 ];
 
 export const CHANGELOG: ChangelogVersion[] = [
+    {
+      version: "v2.5.5", /* -- published 202610XX -- */
+      changes: [
+        { type: "Added", content: "Cleaned up the app landing page, and added some new functionality." },
+        { type: "Added", content: "Moved the Recipe Candidate workflow to Recipe Builder, while preserving pasting a recipe as a Quick Action on the landing page." },
+        { type: "Fixed", content: "Printing is Back: The Share and Print icons in Recipe Builder got shoved off the edge of the cards when we moved from flat to stacked. They've been recovered." },
+        { type: "Fixed", content: "Improved use and functionality of the recipe cards in Recipe Builder. Duplicated recipes are now treated as Masters, etc." },
+        { type: "Fixed", content: "UI tweaks (better contrast for some elements, both in light and dark mode), clearer wording of hints, etc." },
+        { type: "Added", content: "Bake Data Collection and Governance: we are working toward a system of anonymized data collection to help improve the Bulk Fermentation engine, and to improve how bakers interact with the app. This is a notification only, implementation (and the tool to opt-out) will be released in the next update." },
+      ],
+    },
     {
       version: "v2.5.4", /* -- published 20261009 -- */
       changes: [

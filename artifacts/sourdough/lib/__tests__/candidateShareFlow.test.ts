@@ -113,7 +113,8 @@ describe("Issue #65 — Share-to-Candidate Front Door Suite", () => {
     const originalTime = "2026-10-04T09:32:00.000Z";
     const savedRecord = await saveCandidate(
       DETERMINISTIC_TEST_CANDIDATE,
-      originalTime
+      originalTime,
+      'share'
     );
 
     // Simulate reload from AsyncStorage

@@ -238,17 +238,30 @@ export function parseYieldValue(rawYield?: string | null): { yieldValue: string;
  * - Attaches runtime metadata from options.
  */
 export function normalizePortableRecipe(doc: PortableRecipe, options: RuntimeImportOptions): any {
-  const validation = validatePortableRecipe(doc);
+  const validation = validateRecipeForCommit(doc);
   if (!validation.valid) {
-    throw new Error(`Portable recipe validation failed:\n- ${validation.errors.join("\n- ")}`);
+    throw new Error(`Portable recipe commit validation failed:\n- ${validation.errors.join("\n- ")}`);
   }
 
   if (!options || !options.deviceId) {
     throw new Error("RuntimeImportOptions requires 'deviceId'.");
   }
 
-  // 1. Normalize phases preserving explicit document order
-  const normalizedPhases: RecipePhaseConfig[] = doc.phases.map((phase) => {
+  // 1. Normalize phases preserving explicit document order, omitting Unassigned Material (staging) phase
+  const normalizedPhases: RecipePhaseConfig[] = doc.phases
+    .filter((phase) => {
+      const canonicalKey = resolveCanonicalPhaseKey(phase.key);
+      if (canonicalKey === UNCLASSIFIED_STAGING_KEY) {
+        const hasIngs = Array.isArray(phase.ingredients) && phase.ingredients.length > 0;
+        const hasInsts = Array.isArray(phase.instructions) && phase.instructions.length > 0;
+        if (hasIngs || hasInsts) {
+          throw new Error("Cannot normalize recipe: Unassigned Material contains unassigned ingredients or instructions.");
+        }
+        return false; // Omit empty Unassigned Material phase from promoted recipe
+      }
+      return true;
+    })
+    .map((phase) => {
     const canonicalKey = resolveCanonicalPhaseKey(phase.key);
     const canonicalDef = PHASE_DEFINITIONS.find((def) => def.key === canonicalKey);
 

@@ -183,6 +183,8 @@ export function RecipeBuilderListView({
                      master={master}
                      iterations={sortedIterations}
                      onSelect={onEditRecipe}
+                     onPrintRecipe={onPrintRecipe}
+                     onShareRecipe={onShareRecipe}
                    />
                 </Animated.View>
               );

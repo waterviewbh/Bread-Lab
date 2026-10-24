@@ -1,5 +1,5 @@
 // artifacts/sourdough/components/lab/labHub.tsx
-import React, { useCallback, useMemo, useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View, RefreshControl, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -7,6 +7,8 @@ import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
 import { fonts, radius, spacing, typography } from "@/constants/theme";
+import { Feather } from "@expo/vector-icons";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 import AcidificationChart from "@/components/AcidificationChart";
 import LiftingIndexChart from "@/components/LiftingIndexChart";
@@ -26,6 +28,11 @@ import { useSyncStatus } from "@/contexts/SyncContext";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
 import { PhasePickerModal } from "@/components/recipe/PhasePickerModal";
+import { BakerReviewModal } from "@/components/recipe/BakerReviewModal";
+import { CandidateReviewController, CandidateReviewControllerRef } from "@/components/recipe/CandidateReviewController";
+import { PasteCandidateModal } from "@/components/recipe/PasteCandidateModal";
+import { loadCandidates, removeCandidate, CandidateRecord, formatCandidateSharedAt, getCandidatesKey } from "@/lib/candidateStorage";
+import { useShareCandidate } from "@/contexts/ShareCandidateContext";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 
@@ -39,6 +46,103 @@ export function LabHub() {
   const [section, setSection] = useState<"feed planner" | "recipe builder" | "analytics">(
     (params.section as any) || "analytics"
   );
+  const [builderSubcard, setBuilderSubcard] = useState<"theories" | "candidates">("theories");
+
+  // ── Candidates State ───────────────────────────────────────────────────────
+  const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
+  const [showCandidateReviewModal, setShowCandidateReviewModal] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const [openedFromQuickAction, setOpenedFromQuickAction] = useState(false);
+  const [hasSuccessfullyImported, setHasSuccessfullyImported] = useState(false);
+  const reviewControllerRef = useRef<CandidateReviewControllerRef>(null);
+  const { subscribeCandidatesChanged } = useShareCandidate();
+
+  const reloadCandidates = useCallback(async () => {
+    try {
+      const key = await getCandidatesKey();
+      const raw = await AsyncStorage.getItem(key);
+      if (raw === null) {
+        // Initial fixture or empty
+        await AsyncStorage.setItem(key, JSON.stringify([]));
+      }
+      const list = await loadCandidates();
+      setCandidates(list);
+    } catch (e) {
+      console.error("[LabHub] reloadCandidates failed", e);
+    }
+  }, []);
+
+  const handleOpenCandidateReview = (record: CandidateRecord) => {
+    setSelectedCandidate(record);
+    setShowCandidateReviewModal(true);
+  };
+
+  const handlePromptDiscardCard = (record: CandidateRecord) => {
+    const candidateName =
+      record.extractionResult.status === 'single_candidate'
+        ? record.extractionResult.candidate.name
+        : record.extractionResult.status === 'multiple_candidates'
+        ? record.extractionResult.candidates[0]?.name
+        : 'this candidate';
+
+    Alert.alert(
+      'Discard Candidate',
+      `Are you sure you want to permanently discard "${candidateName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: async () => {
+            await removeCandidate(record.id);
+            await reloadCandidates();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDiscardCandidate = () => {
+    setShowCandidateReviewModal(false);
+    setSelectedCandidate(null);
+    reloadCandidates();
+  };
+
+  const handleSaveCandidateSuccess = async () => {
+    setShowCandidateReviewModal(false);
+    setSelectedCandidate(null);
+    await Promise.all([
+      reloadCandidates(),
+      loadData(),
+    ]);
+  };
+
+  useEffect(() => {
+    reloadCandidates();
+    const unsubscribe = subscribeCandidatesChanged(reloadCandidates);
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [reloadCandidates, subscribeCandidatesChanged]);
+
+  const handleSwitchBuilderSubcard = async (target: "theories" | "candidates") => {
+    if (builderSubcard === target) return;
+    if (builderSubcard === "candidates" && showCandidateReviewModal) {
+      const success = await reviewControllerRef.current?.saveChanges();
+      if (!success) {
+        return;
+      }
+      setShowCandidateReviewModal(false);
+      setSelectedCandidate(null);
+      await Promise.all([
+        reloadCandidates(),
+        loadData(),
+      ]);
+    }
+    setBuilderSubcard(target);
+    Haptics.selectionAsync();
+  };
 
   const [history, setHistory] = useState<any[]>([]);
   const [bakeHistory, setBakeHistory] = useState<any[]>([]);
@@ -47,7 +151,7 @@ export function LabHub() {
   const [isNewRecipe, setIsNewRecipe] = useState(false);
   const [letterFilter, setLetterFilter] = useState<string | null>(null);
   const [showPhasePicker, setShowPhasePicker] = useState(false);
-  const [refreshing, setRefreshing] = useState(false); // FIXED: Added missing refreshing state
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
@@ -59,7 +163,6 @@ export function LabHub() {
       ]);
       if (histRaw) {
         const parsed = JSON.parse(histRaw);
-        // Ascending sort (Oldest First) ensures charts scroll to latest data naturally
         const sorted = Array.isArray(parsed)
           ? parsed.sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0))
           : [];
@@ -67,12 +170,13 @@ export function LabHub() {
       }
       if (bakeHistRaw) setBakeHistory(JSON.parse(bakeHistRaw));
       setRecipes(recipeData.recipes);
+      await reloadCandidates();
     } catch (e) {
       console.error("[LabHub] Load failed", e);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [reloadCandidates]);
 
   const handleCloseEdit = useCallback(() => {
     setEditingRecipe(null);
@@ -86,8 +190,17 @@ export function LabHub() {
     if (params.action === 'new' && !editingRecipe) {
       setEditingRecipe({ id: Date.now().toString(), name: "", createdAt: Date.now(), phases: [] });
       setIsNewRecipe(true);
+      router.setParams({ action: undefined });
     }
-  }, [params.section, params.action, editingRecipe]);
+    if (params.action === 'import' && params.subcard === 'candidates') {
+      setSection("recipe builder");
+      setBuilderSubcard("candidates");
+      setShowPasteModal(true);
+      setOpenedFromQuickAction(true);
+      setHasSuccessfullyImported(false);
+      router.setParams({ action: undefined, subcard: undefined });
+    }
+  }, [params.section, params.action, params.subcard, editingRecipe, router]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
@@ -114,11 +227,16 @@ export function LabHub() {
 
   const handleSaveRecipe = async () => {
     if (!editingRecipe) return;
+    if (!editingRecipe.name || !editingRecipe.name.trim()) {
+      Alert.alert("Name required", "Give your recipe a name before saving.");
+      return;
+    }
     const now = Date.now();
     const saved = {
       ...editingRecipe,
+      name: editingRecipe.name.trim(),
       updatedAt: isNewRecipe ? undefined : now,
-      isUneditedIteration: false // Mark as tuned once manually saved
+      isUneditedIteration: false
     };
     const updated = isNewRecipe ? [saved, ...recipes] : recipes.map(r => r.id === saved.id ? saved : r);
     setRecipes(updated);
@@ -153,12 +271,10 @@ export function LabHub() {
           recipe.id,
           newName,
           deviceId,
-          token ?? undefined
+          token ?? undefined,
+          true
         );
 
-        const masterId = resolveRootMasterId(recipe, recipes);
-
-        // Map ApiRecipe back to SavedRecipe shape
         const newSaved = {
           id: duplicatedApi.id,
           name: duplicatedApi.name,
@@ -172,8 +288,8 @@ export function LabHub() {
             ingredients: Array.isArray(p.ingredients) ? p.ingredients : [],
             instructions: Array.isArray(p.instructions) ? p.instructions : [],
           })),
-          parentRecipeId: masterId,
-          versionLabel: duplicatedApi.version_label
+          parentRecipeId: undefined,
+          versionLabel: duplicatedApi.version_label || "Master"
         };
 
         const updated = [newSaved, ...recipes];
@@ -183,7 +299,6 @@ export function LabHub() {
         reportSyncSuccess();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        // Optionally navigate to the new recipe
         setEditingRecipe(newSaved);
         setIsNewRecipe(false);
       } catch (e) {
@@ -193,7 +308,6 @@ export function LabHub() {
       }
     };
 
-    // Android-first duplication flow: Duplicate immediately and navigate to editor.
     doDuplicate(`Copy of ${recipe.name}`);
   };
 
@@ -232,6 +346,59 @@ export function LabHub() {
         </View>
       )}
 
+      {/* ── Candidates / Theories Subcard Toggle when in Recipe Builder ── */}
+      {section === "recipe builder" && !editingRecipe && (
+        <View style={{ marginTop: 12, paddingHorizontal: 20 }}>
+          <View style={[s.subcardContainer, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            <Pressable
+              onPress={() => handleSwitchBuilderSubcard("candidates")}
+              style={[
+                s.subcardTab,
+                builderSubcard === "candidates" && {
+                  backgroundColor: colors.card,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.06,
+                  shadowRadius: 4,
+                  shadowOffset: { width: 0, height: 1 },
+                  elevation: 2,
+                },
+              ]}
+              testID="candidates-subcard-tab"
+            >
+              <Text style={[s.subcardTitle, { color: builderSubcard === "candidates" ? colors.foreground : colors.mutedForeground, fontFamily: builderSubcard === "candidates" ? fonts.sansSemiBold : fonts.sans }]}>
+                Candidates {candidates.length > 0 ? `(${candidates.length})` : ""}
+              </Text>
+              <Text style={[s.subcardSubtitle, { color: colors.mutedForeground }]}>
+                Awaiting review
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => handleSwitchBuilderSubcard("theories")}
+              style={[
+                s.subcardTab,
+                builderSubcard === "theories" && {
+                  backgroundColor: colors.card,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.06,
+                  shadowRadius: 4,
+                  shadowOffset: { width: 0, height: 1 },
+                  elevation: 2,
+                },
+              ]}
+              testID="theories-subcard-tab"
+            >
+              <Text style={[s.subcardTitle, { color: builderSubcard === "theories" ? colors.foreground : colors.mutedForeground, fontFamily: builderSubcard === "theories" ? fonts.sansSemiBold : fonts.sans }]}>
+                Theories
+              </Text>
+              <Text style={[s.subcardSubtitle, { color: colors.mutedForeground }]}>
+                Working recipes
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       {isEditing ? (
         <RecipeBuilderEditView
           editingRecipe={editingRecipe}
@@ -249,24 +416,22 @@ export function LabHub() {
           onDelete={handleDeleteRecipe}
         />
       ) : (
-        <ScrollView
-          contentContainerStyle={s.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.mutedForeground} />}
-        >
+        <View style={{ flex: 1 }}>
           {section === "analytics" && (
-            <View style={{ paddingHorizontal: 20 }}>
-              <Text style={s.hubTitle}>Vitality Analytics</Text>
-              <ReadingHint body={ACIDIFICATION_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
-              <AcidificationChart data={acidSeries} hasLivePoint={false} />
-              <ReadingHint body={LIFTING_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
-              <LiftingIndexChart data={liftSeries} selectedFeedNum={null} onSelectFeedNum={() => {}} />
-              <ReadingHint body={METABOLIC_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
-              <FCSScatterPlot sessions={history} selectedFeedNum={null} onSelectFeedNum={() => {}} />
-            </View>
+            <ScrollView contentContainerStyle={s.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.mutedForeground} />}>
+              <View style={{ paddingHorizontal: 20 }}>
+                <Text style={s.hubTitle}>Vitality Analytics</Text>
+                <ReadingHint body={ACIDIFICATION_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
+                <AcidificationChart data={acidSeries} hasLivePoint={false} />
+                <ReadingHint body={LIFTING_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
+                <LiftingIndexChart data={liftSeries} selectedFeedNum={null} onSelectFeedNum={() => {}} />
+                <ReadingHint body={METABOLIC_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
+                <FCSScatterPlot sessions={history} selectedFeedNum={null} onSelectFeedNum={() => {}} />
+              </View>
+            </ScrollView>
           )}
 
-          {section === "recipe builder" && (
+          {section === "recipe builder" && builderSubcard === "theories" && (
             <RecipeBuilderListView
               recipes={recipes}
               displayedRecipes={displayedRecipes}
@@ -284,26 +449,151 @@ export function LabHub() {
             />
           )}
 
-          {section === "feed planner" && (
-            <View style={{ paddingHorizontal: 20 }}>
-              <PeakWindowAdvisor
-                history={history}
-                onApplyRecipe={(recipe) => {
-                  router.push({
-                    pathname: "/bench",
-                    params: {
-                      section: "feed",
-                      starter: recipe.starter.toString(),
-                      flour: recipe.flour.toString(),
-                      water: recipe.water.toString(),
-                      autoStart: "false"
+          {section === "recipe builder" && builderSubcard === "candidates" && (
+            <ScrollView
+              contentContainerStyle={{
+                paddingTop: 24,
+                paddingBottom: 120,
+                paddingHorizontal: 20,
+              }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.mutedForeground} />}
+            >
+              <Animated.View entering={FadeIn.duration(300)}>
+                <View style={[s.listHeader, { marginBottom: 16 }]}>
+                  <Text style={[s.sectionTitle, { color: colors.foreground }]}>
+                    Candidates
+                  </Text>
+                  <Pressable
+                    onPress={() => setShowPasteModal(true)}
+                    style={({ pressed }) => [
+                      s.addBtn,
+                      { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+                    ]}
+                    testID="paste-recipe-candidate-btn"
+                  >
+                    <Feather name="plus" size={14} color={colors.primaryForeground} />
+                    <Text style={[s.addBtnText, { color: colors.primaryForeground }]}>
+                      Paste Recipe Candidate
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {candidates.length === 0 ? (
+                  <View style={[s.emptyCard, { borderColor: colors.border, backgroundColor: colors.card, padding: 32, alignItems: 'center', borderRadius: radius.lg }]}>
+                    <Feather name="check-circle" size={28} color={colors.mutedForeground} />
+                    <Text style={[s.emptyTitle, { color: colors.foreground, marginTop: 12, ...typography.titleMd }]}>All caught up.</Text>
+                    <Text style={[s.emptyBody, { color: colors.mutedForeground, textAlign: 'center', marginTop: 4, ...typography.bodySm }]}>
+                      No pending candidates awaiting review.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 12 }}>
+                    {candidates.map((item, idx) => {
+                      const candidateObj =
+                        item.extractionResult.status === 'single_candidate'
+                          ? item.extractionResult.candidate
+                          : item.extractionResult.status === 'multiple_candidates'
+                          ? item.extractionResult.candidates[0]
+                          : null;
+
+                      if (!candidateObj) return null;
+                      const sharedAtText = formatCandidateSharedAt(item.sharedAt);
+
+                      return (
+                        <View
+                          key={item.id || `candidate-${idx}`}
+                          style={[s.candidateCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 16, flexDirection: 'row', alignItems: 'center' }]}
+                          testID={idx === 0 ? "candidate-card" : `candidate-card-${idx}`}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={[s.candidateName, { color: colors.foreground, ...typography.cardTitle }]}>
+                              {candidateObj.name}
+                            </Text>
+                            {sharedAtText ? (
+                              <Text style={[s.candidateSharedAt, { color: colors.mutedForeground, marginTop: 2, ...typography.metaLabel }]} testID="candidate-shared-at">
+                                {sharedAtText}
+                              </Text>
+                            ) : null}
+                          </View>
+
+                          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                            <Pressable
+                              style={[s.discardCardBtn, { paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.muted }]}
+                              onPress={() => handlePromptDiscardCard(item)}
+                              testID={idx === 0 ? "discard-candidate-card-btn" : `discard-candidate-card-btn-${idx}`}
+                            >
+                              <Text style={[s.discardCardBtnText, { color: colors.foreground, fontSize: 12 }]}>Discard</Text>
+                            </Pressable>
+
+                            <Pressable
+                              style={[s.reviewBtn, { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.primary }]}
+                              onPress={() => handleOpenCandidateReview(item)}
+                              testID={idx === 0 ? "review-candidate-btn" : `review-candidate-btn-${idx}`}
+                            >
+                              <Text style={[s.reviewBtnText, { color: colors.primaryForeground, fontSize: 12 }]}>Review</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <CandidateReviewController
+                  ref={reviewControllerRef}
+                  visible={showCandidateReviewModal}
+                  candidateId={selectedCandidate?.id}
+                  extractionResult={selectedCandidate ? selectedCandidate.extractionResult : null}
+                  onSaveSuccess={handleSaveCandidateSuccess}
+                  onDiscard={handleDiscardCandidate}
+                />
+
+                <PasteCandidateModal
+                  visible={showPasteModal}
+                  onClose={() => {
+                    setShowPasteModal(false);
+                    if (openedFromQuickAction && !hasSuccessfullyImported) {
+                      setOpenedFromQuickAction(false);
+                      router.replace('/');
+                    } else {
+                      setOpenedFromQuickAction(false);
+                      setHasSuccessfullyImported(false);
                     }
-                  });
-                }}
-              />
-            </View>
+                  }}
+                  onExtractSuccess={async () => {
+                    setHasSuccessfullyImported(true);
+                    setShowPasteModal(false);
+                    await reloadCandidates();
+                  }}
+                />
+              </Animated.View>
+            </ScrollView>
           )}
-        </ScrollView>
+
+          {section === "feed planner" && (
+            <ScrollView contentContainerStyle={s.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.mutedForeground} />}>
+              <View style={{ paddingHorizontal: 20 }}>
+                <PeakWindowAdvisor
+                  history={history}
+                  onApplyRecipe={(recipe) => {
+                    router.push({
+                      pathname: "/bench",
+                      params: {
+                        section: "feed",
+                        starter: recipe.starter.toString(),
+                        flour: recipe.flour.toString(),
+                        water: recipe.water.toString(),
+                        autoStart: "false"
+                      }
+                    });
+                  }}
+                />
+              </View>
+            </ScrollView>
+          )}
+        </View>
       )}
 
       <PhasePickerModal
@@ -323,4 +613,75 @@ const s = StyleSheet.create({
   toggleText: { fontSize: 11, fontFamily: fonts.sansSemiBold, letterSpacing: 0.5 },
   scrollContent: { paddingBottom: 120 },
   hubTitle: { ...typography.headlineLgMobile, marginBottom: 12 },
+  subcardContainer: {
+    flexDirection: "row",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: 3,
+    gap: 3,
+    height: 64,
+  },
+  subcardTab: {
+    flex: 1,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  subcardTitle: {
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  subcardSubtitle: {
+    fontSize: 11,
+    marginTop: 1,
+    textAlign: 'center',
+  },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionTitle: { ...typography.titleMd },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.md,
+  },
+  addBtnText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 12,
+  },
+  emptyCard: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyTitle: { ...typography.titleMd, marginTop: 12 },
+  emptyBody: { ...typography.bodySm, textAlign: 'center', marginTop: 4 },
+  candidateCard: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  candidateName: { ...typography.cardTitle },
+  candidateSharedAt: { ...typography.metaLabel, marginTop: 2 },
+  discardCardBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.md,
+  },
+  discardCardBtnText: { fontSize: 12 },
+  reviewBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: radius.md,
+  },
+  reviewBtnText: { fontSize: 12 },
 });

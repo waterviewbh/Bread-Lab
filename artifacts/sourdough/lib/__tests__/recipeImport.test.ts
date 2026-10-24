@@ -3,6 +3,7 @@ import path from "path";
 import {
   validatePortableRecipe,
   normalizePortableRecipe,
+  validateRecipeForCommit,
   parseYieldValue,
   PortableRecipe,
 } from "../recipeImport";
@@ -169,13 +170,13 @@ describe("recipeImport Module", () => {
         ],
       };
       expect(validatePortableRecipe(unassignedCandidate).valid).toBe(true);
+      expect(validateRecipeForCommit(unassignedCandidate).valid).toBe(false);
 
       // 3. Normalize with UUID
       const normAssigned = normalizePortableRecipe(assignedCandidate, { id: "a3b1c2d3-e4f5-6789-0123-456789abcdef", deviceId: "dev-1" });
       expect(normAssigned.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 
-      const normUnassigned = normalizePortableRecipe(unassignedCandidate, { id: "b4c2d3e4-f5a6-7890-1234-567890abcdef", deviceId: "dev-1" });
-      expect(normUnassigned.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      expect(() => normalizePortableRecipe(unassignedCandidate, { id: "b4c2d3e4-f5a6-7890-1234-567890abcdef", deviceId: "dev-1" })).toThrow();
     });
   });
 

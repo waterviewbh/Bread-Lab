@@ -29,8 +29,13 @@ import {
   generateUuid,
 } from '@/lib/recipeImport';
 import { PHASE_CATEGORIES, PHASE_DEFINITIONS } from '@/lib/recipeTypes';
+import { sortRecipePhases } from '@/lib/recipeUtils';
 import { fonts, radius, spacing, typography } from '@/constants/theme';
 import { CheckableLine } from '@/types/recipe';
+
+export interface BakerReviewModalRef {
+  saveChanges: () => Promise<boolean>;
+}
 
 export interface BakerReviewModalProps {
   visible: boolean;
@@ -41,14 +46,17 @@ export interface BakerReviewModalProps {
   onDiscard: () => void;
 }
 
-export function BakerReviewModal({
-  visible,
-  extractionResult,
-  onSaveAndClose,
-  onSaveConfirmed,
-  onPromote,
-  onDiscard,
-}: BakerReviewModalProps) {
+const BakerReviewModalRender: React.ForwardRefRenderFunction<BakerReviewModalRef, BakerReviewModalProps> = (
+  {
+    visible,
+    extractionResult,
+    onSaveAndClose,
+    onSaveConfirmed,
+    onPromote,
+    onDiscard,
+  },
+  ref
+) => {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
@@ -94,12 +102,6 @@ export function BakerReviewModal({
     }
   }, [candidates, selectedCandidateIdx, visible]);
 
-  if (!visible || !extractionResult) {
-    return null;
-  }
-
-  const sourceUrl = extractionResult.sourceUrl;
-
   const buildUpdatedExtractionResult = (): ExtractionResult => {
     if (!extractionResult) {
       return { status: 'single_candidate', candidate: stagedRecipe!, warnings: [] };
@@ -121,8 +123,8 @@ export function BakerReviewModal({
     return { status: 'single_candidate', candidate: stagedRecipe!, warnings: [] };
   };
 
-  const handleSaveAndClose = async () => {
-    if (!stagedRecipe) return;
+  const handleSaveAndClose = async (): Promise<boolean> => {
+    if (!stagedRecipe || isSaving) return false;
 
     try {
       setIsSaving(true);
@@ -133,13 +135,31 @@ export function BakerReviewModal({
       if (onSaveConfirmed) {
         await onSaveConfirmed(stagedRecipe);
       }
-      setStagedRecipe(null);
-      setSelectedCandidateIdx(0);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return true;
     } catch (err: any) {
       Alert.alert('Save Error', err.message || 'Could not save candidate edits.');
+      return false;
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  React.useImperativeHandle(ref, () => ({
+    saveChanges: handleSaveAndClose,
+  }));
+
+  if (!visible || !extractionResult) {
+    return null;
+  }
+
+  const sourceUrl = extractionResult.sourceUrl;
+
+  const handleUiSavePress = async () => {
+    const success = await handleSaveAndClose();
+    if (success) {
+      setStagedRecipe(null);
+      setSelectedCandidateIdx(0);
     }
   };
 
@@ -382,7 +402,7 @@ export function BakerReviewModal({
 
     setStagedRecipe({
       ...stagedRecipe,
-      phases: [...stagedRecipe.phases, ...newPhases],
+      phases: sortRecipePhases([...stagedRecipe.phases, ...newPhases]),
     });
     setShowPhasePicker(false);
   };
@@ -653,7 +673,7 @@ export function BakerReviewModal({
                               { backgroundColor: colors.primary },
                             ]}
                           >
-                            <Text style={s.phaseBadgeText}>{pIdx + 1}</Text>
+                            <Text style={[s.phaseBadgeText, { color: colors.primaryForeground }]}>{pIdx + 1}</Text>
                           </View>
                           <Text
                             style={[
@@ -937,7 +957,9 @@ export function BakerReviewModal({
       </View>
     </Modal>
   );
-}
+};
+
+export const BakerReviewModal = React.forwardRef(BakerReviewModalRender);
 
 const s = StyleSheet.create({
   header: {

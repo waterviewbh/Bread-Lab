@@ -33,6 +33,7 @@ import {
   archiveBakeWithDiagnostics,
   writeBakesLocal,
 } from "@/lib/recipeStorage";
+import { sortRecipePhases } from "@/lib/recipeUtils";
 import { computeBulkFermentState, estimateInoculationPercent } from "@/lib/bulkFermentEngine";
 import { shareHtmlAsPdf, buildBakeHtml, buildPhaseHtml, printHtml } from "@/lib/recipeHtml";
 import { parseIngredientsForMetrics, detectYeastType } from "@/lib/recipeUtils";
@@ -167,7 +168,8 @@ export function ActiveBakeSection() {
 
   // --- Handlers ---
   const handleStartBakeWithRecipe = async (recipe: SavedRecipe) => {
-    const phases: BakePhase[] = recipe.phases
+    const sortedPhases = sortRecipePhases(recipe.phases || []);
+    const phases: BakePhase[] = sortedPhases
       .map((p) => ({ ...p, startedAt: null, completedAt: null, readings: [] }));
 
     const { flour, water, starter, yeast, salt } = parseIngredientsForMetrics(phases);
@@ -239,11 +241,10 @@ export function ActiveBakeSection() {
   };
 
   const handleAbandonBake = () => {
-    Alert.alert("New Bake?", "Clear the current bake? This will save a snapshot to your history.", [
+    Alert.alert("New Bake?", "Clear the current bake? This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
       { text: "Reset", style: "destructive", onPress: async () => {
           if (bake) {
-              await archiveBakeWithDiagnostics(bake, { reportSyncStart, reportSyncSuccess, reportSyncFailure });
               const nextBakes = bakes.filter(b => b.id !== activeBakeId);
               setBakes(nextBakes);
               if (nextBakes.length > 0) setActiveBakeId(nextBakes[0].id);

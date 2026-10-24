@@ -312,12 +312,25 @@ export function ResourcesSection() {
           <Text style={[styles.pageSubtitle, { color: colors.mutedForeground }]}>Guides, Settings, and Science</Text>
         </View>
 
-        <Pressable
-          onPress={() => router.replace('/')}
-          style={({ pressed }) => [styles.logoWrap, { opacity: pressed ? 0.7 : 1 }]}
-        >
-          <Image source={logo} style={styles.logo} resizeMode="contain" />
-        </Pressable>
+        {/* ── Logo Card ── */}
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Pressable
+            onPress={() => router.replace('/')}
+            style={({ pressed }) => [
+              styles.logoPressable,
+              pressed && { opacity: 0.7 }
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Waterview Bakehouse logo - go to Home"
+          >
+            <Image
+              source={logo}
+              style={styles.logo}
+              resizeMode="contain"
+              accessibilityLabel="Waterview Bakehouse logo"
+            />
+          </Pressable>
+        </View>
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground, borderBottomColor: colors.border }]}>Settings</Text>
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -386,8 +399,13 @@ const styles = StyleSheet.create({
   pageHeader: { marginBottom: 24 },
   pageTitle: { ...typography.headlineLgMobile, letterSpacing: -0.5 },
   pageSubtitle: { fontFamily: fonts.sans, fontSize: 14, marginTop: 2, letterSpacing: 0.2 },
-  logoWrap: { alignItems: "center", marginBottom: 32 },
-  logo: { width: 260, height: 160, borderRadius: radius.sm },
+  logoPressable: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  logo: { width: 240, height: 140 },
   sectionLabel: {
     ...typography.sectionLabel,
     marginBottom: 12,

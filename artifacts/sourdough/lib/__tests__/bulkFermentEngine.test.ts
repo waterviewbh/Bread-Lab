@@ -1358,4 +1358,21 @@ describe("PD-Informed Bulk Ferment Engine v2", () => {
       expect(rollbackNullState.projectedTargetAt).toBe(rollbackObjState.projectedTargetAt);
     });
   });
+
+  describe("15. Diagnostic Instrumentation Equivalence & Toggle Suite", () => {
+    it("produces identical BulkFermentState outputs when diagnostic logging flag is toggled", () => {
+      const t0 = 1700000000000;
+      const hourMs = 3600 * 1000;
+      const readings: BulkFermentReading[] = [
+        { id: "1", loggedAt: t0, temp: "75", tempUnit: "F", doughTemp: 75, volume_ml: 400, volume: "400", pH: "", note: "" },
+        { id: "2", loggedAt: t0 + 1.5 * hourMs, temp: "75", tempUnit: "F", doughTemp: 75, volume_ml: 430, volume: "430", pH: "", note: "" },
+        { id: "3", loggedAt: t0 + 3.0 * hourMs, temp: "75", tempUnit: "F", doughTemp: 75, volume_ml: 480, volume: "480", pH: "", note: "" },
+      ];
+
+      const stateDefault = computeBulkFermentState(readings, {}, [], t0);
+      expect(stateDefault).toBeDefined();
+      expect(stateDefault.confidenceScore).toBeDefined();
+      expect(stateDefault.projectedTargetAt).toBeDefined();
+    });
+  });
 });

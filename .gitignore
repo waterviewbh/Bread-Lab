@@ -36,8 +36,6 @@ npm-debug.log
 yarn-error.log
 testem.log
 /typings
-.artifacts/
-*.artifact.md
 .jpg
 
 # System Files

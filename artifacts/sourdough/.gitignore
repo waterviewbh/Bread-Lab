@@ -38,7 +38,6 @@ yarn-error.*
 .vercel
 
 .env
-*.artifact.md
 *.md
 .jpg
 

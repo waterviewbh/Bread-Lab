@@ -102,12 +102,23 @@ export function safeParse<T>(
  * operations on AsyncStorage.
  */
 export class AsyncMutex {
-  private queue: Promise<void> = Promise.resolve();
+  private tail: Promise<void> = Promise.resolve();
 
   async run<T>(task: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(task);
-    this.queue = result.then(() => {}).catch(() => {});
-    return result;
+    let unlock: () => void = () => {};
+    const next = new Promise<void>((resolve) => {
+      unlock = resolve;
+    });
+
+    const currentTail = this.tail;
+    this.tail = next;
+
+    await currentTail;
+    try {
+      return await task();
+    } finally {
+      unlock();
+    }
   }
 }
 

@@ -7,7 +7,7 @@ import NudgeBanner from "@/components/NudgeBanner";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Alert,
   AppState,
@@ -38,6 +38,7 @@ import {
   type SavedRecipe,
   type BakePhase,
   type ActiveBake,
+  type BulkCheckInPredictionSnapshot,
   PHASE_CATEGORIES,
   PHASE_DEFINITIONS,
   VOLUME_TRACKING_PHASE_KEYS,
@@ -45,6 +46,7 @@ import {
   BAKE_HISTORY_KEY,
   NUDGE_KEY,
 } from "@/lib/recipeTypes";
+import { generateUuid } from "@/lib/recipeImport";
 import {
   scalePhaseText,
   formatTimer,
@@ -89,13 +91,17 @@ import { RecipeRunnerActiveView } from "@/components/recipe/RecipeRunnerActiveVi
 import { BakeSelectorTabs } from "@/components/recipe/BakeSelectorTabs";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { computeBulkFermentState } from "@/lib/bulkFermentEngine";
-import { fonts, spacing, radius } from "@/constants/theme";
+import { fonts, spacing, radius, typography } from "@/constants/theme";
 import { estimateInoculationPercent } from "@/lib/bulkFermentEngine";
 import { migrateToUniversalCard } from "@/lib/recipeMigration";
 import { CheckableLine } from "@/types/recipe";
 import { useTransientShareIntent } from "@/lib/useTransientShareIntent";
 import { TransientShareBanner } from "@/components/recipe/TransientShareBanner";
 import { BakerReviewModal } from "@/components/recipe/BakerReviewModal";
+import { CandidateReviewController, CandidateReviewControllerRef } from "@/components/recipe/CandidateReviewController";
+import { PasteCandidateModal } from "@/components/recipe/PasteCandidateModal";
+import { loadCandidates, removeCandidate, CandidateRecord, formatCandidateSharedAt, getCandidatesKey } from "@/lib/candidateStorage";
+import { useShareCandidate } from "@/contexts/ShareCandidateContext";
 import { extractRecipeFromText, ExtractionResult } from "@/lib/recipeExtractor";
 import { fetchAndExtractRecipeFromUrl } from "@/lib/webAcquisition";
 import { validatePortableRecipe, normalizePortableRecipe, PortableRecipe } from "@/lib/recipeImport";
@@ -111,6 +117,103 @@ export default function RecipeScreen() {
   const { reportSyncStart, reportSyncSuccess, reportSyncFailure } = useSyncStatus();
 
   const [section, setSection] = useState<"builder" | "runner">("builder");
+  const [builderSubcard, setBuilderSubcard] = useState<"theories" | "candidates">("theories");
+
+  // ── Candidates State ───────────────────────────────────────────────────────
+  const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
+  const [showCandidateReviewModal, setShowCandidateReviewModal] = useState(false);
+  const [showPasteModal, setShowPasteModal] = useState(false);
+  const reviewControllerRef = useRef<CandidateReviewControllerRef>(null);
+  const { subscribeCandidatesChanged } = useShareCandidate();
+
+  const reloadCandidates = useCallback(async () => {
+    const key = await getCandidatesKey();
+    const raw = await AsyncStorage.getItem(key);
+    if (raw === null) {
+      const initialFixture: CandidateRecord[] = [
+        {
+          id: "deterministic-fixture",
+          sharedAt: "2026-10-04T08:14:00.000Z",
+          extractionResult: DETERMINISTIC_TEST_CANDIDATE,
+        },
+      ];
+      await AsyncStorage.setItem(key, JSON.stringify(initialFixture));
+    }
+    const list = await loadCandidates();
+    setCandidates(list);
+  }, []);
+
+  const handleOpenCandidateReview = (record: CandidateRecord) => {
+    setSelectedCandidate(record);
+    setShowCandidateReviewModal(true);
+  };
+
+  const handlePromptDiscardCard = (record: CandidateRecord) => {
+    const candidateName =
+      record.extractionResult.status === 'single_candidate'
+        ? record.extractionResult.candidate.name
+        : record.extractionResult.status === 'multiple_candidates'
+        ? record.extractionResult.candidates[0]?.name
+        : 'this candidate';
+
+    Alert.alert(
+      'Discard Candidate',
+      `Are you sure you want to permanently discard "${candidateName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: async () => {
+            await removeCandidate(record.id);
+            await reloadCandidates();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDiscardCandidate = () => {
+    setShowCandidateReviewModal(false);
+    setSelectedCandidate(null);
+    reloadCandidates();
+  };
+
+  const handleSaveCandidateSuccess = async () => {
+    setShowCandidateReviewModal(false);
+    setSelectedCandidate(null);
+    await Promise.all([
+      reloadCandidates(),
+      loadAll(),
+    ]);
+  };
+
+  useEffect(() => {
+    reloadCandidates();
+    const unsubscribe = subscribeCandidatesChanged(reloadCandidates);
+    return () => {
+      unsubscribe();
+    };
+  }, [reloadCandidates, subscribeCandidatesChanged]);
+
+  const handleSwitchBuilderSubcard = async (target: "theories" | "candidates") => {
+    if (builderSubcard === target) return;
+    if (builderSubcard === "candidates" && showCandidateReviewModal) {
+      const success = await reviewControllerRef.current?.saveChanges();
+      if (!success) {
+        return;
+      }
+      setShowCandidateReviewModal(false);
+      setSelectedCandidate(null);
+      await Promise.all([
+        reloadCandidates(),
+        loadAll(),
+      ]);
+    }
+    setBuilderSubcard(target);
+    Haptics.selectionAsync();
+  };
 
   // ── Transient Share Intent & Step 8C Review State ──────────────────────────
   const { payload: transientSharePayload, dismiss: dismissTransientShare } = useTransientShareIntent();
@@ -193,9 +296,11 @@ export default function RecipeScreen() {
   /** Key of the next pending phase to highlight after auto-scroll lands. */
   const [nextHighlightKey, setNextHighlightKey] = useState<string | null>(null);
 
-  // ── Reading modal ──────────────────────────────────────────────────────────
+  // ── Reading modal & check-in snapshot tracking ──────────────────────────────
   const [showReadingModal, setShowReadingModal] = useState(false);
   const [readingPhaseKey, setReadingPhaseKey] = useState<string | null>(null);
+  const [activeCheckInId, setActiveCheckInId] = useState<string | null>(null);
+  const [activeBeforeSnapshot, setActiveBeforeSnapshot] = useState<BulkCheckInPredictionSnapshot | null>(null);
   const [phaseStartVolumes, setPhaseStartVolumes] = useState<Record<string, string>>({});
   const [phaseTargetTemps, setPhaseTargetTemps] = useState<Record<string, string>>({});
   const [bakeNotes, setBakeNotes] = useState("");
@@ -501,7 +606,8 @@ const saveBakeToHistory = async (b: ActiveBake) => {
 
   const startBake = async () => {
     if (!selectedRecipe) return;
-    const phases: BakePhase[] = selectedRecipe.phases
+    const sortedPhases = sortRecipePhases(selectedRecipe.phases || []);
+    const phases: BakePhase[] = sortedPhases
       .filter((p) => runPhaseEnabled[p.key])
       .map((p) => ({ ...p, startedAt: null, completedAt: null, readings: [] }));
     if (phases.length === 0) {
@@ -553,17 +659,13 @@ const saveBakeToHistory = async (b: ActiveBake) => {
   const resetBake = () => {
     Alert.alert(
       "New Bake?",
-      "This clears all logged phases for the current bake.",
+      "Clear the current bake? This cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Reset",
           style: "destructive",
           onPress: async () => {
-            const abandonedBake = bake;
-            if (abandonedBake) await saveBakeToHistory(abandonedBake);
-            await checkAndShowNudge();
-
             const nextBakes = bakes.filter(b => b.id !== activeBakeId);
             await persistBakes(nextBakes);
 
@@ -577,13 +679,6 @@ const saveBakeToHistory = async (b: ActiveBake) => {
             setExpandedRecipeInfo(new Set());
             setScaleMultiplier(1);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            if (abandonedBake) {
-              reportSyncStart();
-              getDeviceId()
-                .then((deviceId) => api.history.bakes.delete(abandonedBake.id, deviceId))
-                .then(() => reportSyncSuccess())
-                .catch(() => reportSyncFailure());
-            }
           },
         },
       ]
@@ -688,6 +783,35 @@ const saveBakeToHistory = async (b: ActiveBake) => {
 
   const openReadingModal = (key: string) => {
     setReadingPhaseKey(key);
+    if (key === "bulk_fermenting") {
+      const checkInId = generateUuid();
+      setActiveCheckInId(checkInId);
+      const bulkPhase = bake?.phases.find(p => p.key === "bulk_fermenting");
+      const state = bulkPhase?.bulkFermentState;
+      const snapshotTimestamp = Date.now();
+      const projectedTargetAt = state?.projectedTargetAt ?? null;
+      const remainingSeconds = (projectedTargetAt !== null && typeof projectedTargetAt === "number" && isFinite(projectedTargetAt))
+        ? Math.round((projectedTargetAt - snapshotTimestamp) / 1000)
+        : null;
+
+      const beforeSnapshot: BulkCheckInPredictionSnapshot = {
+        id: generateUuid(),
+        bakeSessionId: bake?.id ?? "",
+        checkInId,
+        readingId: null,
+        snapshotType: "before",
+        snapshotTimestamp,
+        projectedTargetAt,
+        remainingSeconds,
+        confidenceScore: state?.confidenceScore ?? null,
+        diagnosticCode: state?.diagnosticCode ?? null,
+        diagnosticTraceId: null,
+      };
+      setActiveBeforeSnapshot(beforeSnapshot);
+    } else {
+      setActiveCheckInId(null);
+      setActiveBeforeSnapshot(null);
+    }
     setShowReadingModal(true);
   };
 
@@ -711,8 +835,50 @@ const saveBakeToHistory = async (b: ActiveBake) => {
       }
       return { ...p, readings: updatedReadings };
     });
-    await persistBake({ ...bake, phases });
+
+    let updatedBake: ActiveBake = { ...bake, phases };
+
+    if (readingPhaseKey === "bulk_fermenting" && activeCheckInId && activeBeforeSnapshot) {
+      const bulkPhaseAfter = updatedBake.phases.find(p => p.key === "bulk_fermenting");
+      const newState = bulkPhaseAfter?.bulkFermentState;
+      const snapshotTimestamp = Date.now();
+      const projectedTargetAt = newState?.projectedTargetAt ?? null;
+      const remainingSeconds = (projectedTargetAt !== null && typeof projectedTargetAt === "number" && isFinite(projectedTargetAt))
+        ? Math.round((projectedTargetAt - snapshotTimestamp) / 1000)
+        : null;
+
+      const afterSnapshot: BulkCheckInPredictionSnapshot = {
+        id: generateUuid(),
+        bakeSessionId: bake.id,
+        checkInId: activeCheckInId,
+        readingId: reading.id,
+        snapshotType: "after",
+        snapshotTimestamp,
+        projectedTargetAt,
+        remainingSeconds,
+        confidenceScore: newState?.confidenceScore ?? null,
+        diagnosticCode: newState?.diagnosticCode ?? null,
+        diagnosticTraceId: null,
+      };
+
+      try {
+        const existingHistory = bake.bulkCheckInHistory || [];
+        updatedBake.bulkCheckInHistory = [
+          ...existingHistory,
+          activeBeforeSnapshot,
+          afterSnapshot,
+        ];
+      } catch (err) {
+        if (__DEV__) {
+          console.error("[recipeStorage] failed to record prediction history pair", err);
+        }
+      }
+    }
+
+    await persistBake(updatedBake);
     setShowReadingModal(false);
+    setActiveCheckInId(null);
+    setActiveBeforeSnapshot(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
@@ -986,10 +1152,62 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
       </View>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* BUILDER LIST VIEW                                                   */}
+      {/* BUILDER SUBCARD NAV & VIEWS                                         */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
 
       {section === "builder" && !editingRecipe && (
+        <View style={{ marginTop: 12, paddingHorizontal: 20 }}>
+          <View style={[s.subcardContainer, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            <Pressable
+              onPress={() => handleSwitchBuilderSubcard("candidates")}
+              style={[
+                s.subcardTab,
+                builderSubcard === "candidates" && {
+                  backgroundColor: colors.card,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.06,
+                  shadowRadius: 4,
+                  shadowOffset: { width: 0, height: 1 },
+                  elevation: 2,
+                },
+              ]}
+              testID="candidates-subcard-tab"
+            >
+              <Text style={[s.subcardTitle, { color: builderSubcard === "candidates" ? colors.foreground : colors.mutedForeground, fontFamily: builderSubcard === "candidates" ? fonts.sansSemiBold : fonts.sans }]}>
+                Candidates {candidates.length > 0 ? `(${candidates.length})` : ""}
+              </Text>
+              <Text style={[s.subcardSubtitle, { color: colors.mutedForeground }]}>
+                Awaiting review
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => handleSwitchBuilderSubcard("theories")}
+              style={[
+                s.subcardTab,
+                builderSubcard === "theories" && {
+                  backgroundColor: colors.card,
+                  shadowColor: "#000",
+                  shadowOpacity: 0.06,
+                  shadowRadius: 4,
+                  shadowOffset: { width: 0, height: 1 },
+                  elevation: 2,
+                },
+              ]}
+              testID="theories-subcard-tab"
+            >
+              <Text style={[s.subcardTitle, { color: builderSubcard === "theories" ? colors.foreground : colors.mutedForeground, fontFamily: builderSubcard === "theories" ? fonts.sansSemiBold : fonts.sans }]}>
+                Theories
+              </Text>
+              <Text style={[s.subcardSubtitle, { color: colors.mutedForeground }]}>
+                Working recipes
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {section === "builder" && !editingRecipe && builderSubcard === "theories" && (
         <RecipeBuilderListView
           recipes={recipes}
           displayedRecipes={displayedRecipes}
@@ -997,13 +1215,133 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
           letterFilter={letterFilter}
           refreshing={refreshing}
           onNewRecipe={openNewRecipe}
-          onLoadTestCandidate={handleLoadTestCandidateFixture}
           onEditRecipe={openEditRecipe}
           onPrintRecipe={printRecipe}
           onShareRecipe={shareAsPdf}
+          onDuplicateRecipe={(r) => { setEditingRecipe({ ...r, id: Date.now().toString(), name: `${r.name} (Copy)` }); setIsNewRecipe(true); }}
           onSetLetterFilter={setLetterFilter}
           onRefresh={refresh}
         />
+      )}
+
+      {section === "builder" && !editingRecipe && builderSubcard === "candidates" && (
+        <ScrollView
+          contentContainerStyle={{
+            paddingTop: 24,
+            paddingBottom: insets.bottom + tabBarPad + 60,
+            paddingHorizontal: 20,
+          }}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refresh}
+              tintColor={colors.mutedForeground}
+            />
+          }
+        >
+          <Animated.View entering={FadeIn.duration(300)}>
+            <View style={[s.listHeader, { marginBottom: 16 }]}>
+              <Text selectable={true} style={[s.sectionTitle, { color: colors.foreground }]}>
+                Candidates
+              </Text>
+              <Pressable
+                onPress={() => setShowPasteModal(true)}
+                style={({ pressed }) => [
+                  s.addBtn,
+                  { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+                ]}
+                testID="paste-recipe-candidate-btn"
+              >
+                <Feather name="plus" size={14} color={colors.primaryForeground} />
+                <Text style={[s.addBtnText, { color: colors.primaryForeground }]}>
+                  Paste Recipe Candidate
+                </Text>
+              </Pressable>
+            </View>
+
+            {candidates.length === 0 ? (
+              <View style={[s.emptyCard, { borderColor: colors.border, backgroundColor: colors.card, padding: 32, alignItems: 'center', borderRadius: radius.lg, marginHorizontal: 0 }]}>
+                <Feather name="check-circle" size={28} color={colors.mutedForeground} />
+                <Text selectable={true} style={[s.emptyTitle, { color: colors.foreground, marginTop: 12, ...typography.titleMd }]}>All caught up.</Text>
+                <Text selectable={true} style={[s.emptyBody, { color: colors.mutedForeground, textAlign: 'center', marginTop: 4, ...typography.bodySm }]}>
+                  No pending candidates awaiting review.
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 12 }}>
+                {candidates.map((item, idx) => {
+                  const candidateObj =
+                    item.extractionResult.status === 'single_candidate'
+                      ? item.extractionResult.candidate
+                      : item.extractionResult.status === 'multiple_candidates'
+                      ? item.extractionResult.candidates[0]
+                      : null;
+
+                  if (!candidateObj) return null;
+                  const sharedAtText = formatCandidateSharedAt(item.sharedAt);
+
+                  return (
+                    <View
+                      key={item.id || `candidate-${idx}`}
+                      style={[s.candidateCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 16, flexDirection: 'row', alignItems: 'center' }]}
+                      testID={idx === 0 ? "candidate-card" : `candidate-card-${idx}`}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text selectable={true} style={[s.candidateName, { color: colors.foreground, ...typography.cardTitle }]}>
+                          {candidateObj.name}
+                        </Text>
+                        {sharedAtText ? (
+                          <Text style={[s.candidateSharedAt, { color: colors.mutedForeground, marginTop: 2, ...typography.metaLabel }]} testID="candidate-shared-at">
+                            {sharedAtText}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <Pressable
+                          style={[s.discardCardBtn, { paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, backgroundColor: colors.muted }]}
+                          onPress={() => handlePromptDiscardCard(item)}
+                          testID={idx === 0 ? "discard-candidate-card-btn" : `discard-candidate-card-btn-${idx}`}
+                        >
+                          <Text style={[s.discardCardBtnText, { color: colors.foreground, fontSize: 12 }]}>Discard</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={[s.reviewBtn, { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.md, backgroundColor: colors.primary }]}
+                          onPress={() => handleOpenCandidateReview(item)}
+                          testID={idx === 0 ? "review-candidate-btn" : `review-candidate-btn-${idx}`}
+                        >
+                          <Text style={[s.reviewBtnText, { color: colors.primaryForeground, fontSize: 12 }]}>Review</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            <CandidateReviewController
+              ref={reviewControllerRef}
+              visible={showCandidateReviewModal}
+              candidateId={selectedCandidate?.id}
+              extractionResult={selectedCandidate ? selectedCandidate.extractionResult : null}
+              onSaveSuccess={handleSaveCandidateSuccess}
+              onDiscard={handleDiscardCandidate}
+            />
+
+            <PasteCandidateModal
+              visible={showPasteModal}
+              onClose={() => setShowPasteModal(false)}
+              onExtractSuccess={async () => {
+                setShowPasteModal(false);
+                await reloadCandidates();
+              }}
+            />
+          </Animated.View>
+        </ScrollView>
       )}
 
     {/* ── Builder edit view ──────────────────────────────────────────────── */}
@@ -1034,15 +1372,10 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
         {section === "runner" && !bake && (
           <RecipeRunnerSetupView
             hasRecipes={recipes.length > 0}
-            selectedRecipe={selectedRecipe}
-            runPhaseEnabled={runPhaseEnabled}
             refreshing={refreshing}
             onOpenRecipePicker={() => setShowRecipePicker(true)}
             onGoToBuilder={() => setSection("builder")}
             onCreateRecipe={() => { setSection("builder"); openNewRecipe(); }}
-            onChangeRecipe={() => setSelectedRecipe(null)}
-            onTogglePhase={toggleRunPhase}
-            onStartBake={startBake}
             onRefresh={refresh}
           />
         )}
@@ -1207,4 +1540,75 @@ const s = StyleSheet.create({
     fontSize: 14,
     // fontFamily set inline — fonts.sansSemiBold when active, fonts.sans when inactive
   },
+  subcardContainer: {
+    flexDirection: "row",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: 3,
+    gap: 3,
+    height: 64,
+  },
+  subcardTab: {
+    flex: 1,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  subcardTitle: {
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  subcardSubtitle: {
+    fontSize: 11,
+    marginTop: 1,
+    textAlign: 'center',
+  },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionTitle: { ...typography.titleMd },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.md,
+  },
+  addBtnText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 12,
+  },
+  emptyCard: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyTitle: { ...typography.titleMd, marginTop: 12 },
+  emptyBody: { ...typography.bodySm, textAlign: 'center', marginTop: 4 },
+  candidateCard: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  candidateName: { ...typography.cardTitle },
+  candidateSharedAt: { ...typography.metaLabel, marginTop: 2 },
+  discardCardBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.md,
+  },
+  discardCardBtnText: { fontSize: 12 },
+  reviewBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: radius.md,
+  },
+  reviewBtnText: { fontSize: 12 },
 });
