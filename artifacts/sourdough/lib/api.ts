@@ -252,8 +252,16 @@ export function unpackBakeOutcome(storedOutcome: any): { outcome: any; estimator
         bulkCheckInHistory: storedOutcome.bulkCheckInHistory,
       };
     }
-    // Backward compatibility for legacy wrapped records without _bread_lab_wrapped marker
-    if ('estimatorState' in storedOutcome || 'bulkCheckInHistory' in storedOutcome) {
+    // Bounded legacy detection: recognize legacy wrapper shapes based on concrete evidence
+    // (e.g. valid BulkEstimatorState object or bulkCheckInHistory array) without reinterpreting ordinary user objects.
+    const est = storedOutcome.estimatorState;
+    const hasValidEstimator = est && typeof est === 'object' && !Array.isArray(est) && (
+      'targetTemp' in est || 'flourG' in est || 'waterG' in est || 'starterG' in est ||
+      'startVolume_ml' in est || 'yeastType' in est || 'plannedProofMode' in est
+    );
+    const hasHistory = Array.isArray(storedOutcome.bulkCheckInHistory);
+
+    if (hasValidEstimator || hasHistory) {
       return {
         outcome: storedOutcome.outcome !== undefined ? storedOutcome.outcome : null,
         estimatorState: storedOutcome.estimatorState,

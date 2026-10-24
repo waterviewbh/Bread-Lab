@@ -28,7 +28,7 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Outcome Compatibility", () => {
+describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Legacy Outcome Wrapper Ambiguity Closure", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -204,96 +204,123 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Outcome Compatibi
       return Promise.resolve(null);
     });
 
-    // Make first remote upsert fail
     const upsertMock = api.history.feed.upsert as jest.Mock;
     upsertMock.mockRejectedValueOnce(new Error("Network connection lost"));
 
-    // First migration attempt results in partial failure (feed failed: 1)
     const firstResult = await migrateLocalDataToAccount("fail-retry-token");
     expect(firstResult.feed.failed).toBe(1);
 
-    // Verify assigned local ID was persisted in local session
     expect(storedFeedJson).toBeDefined();
     const parsedLocalSession = JSON.parse(storedFeedJson!);
     expect(parsedLocalSession.id).toBeDefined();
     const assignedLocalId = parsedLocalSession.id;
 
-    // Subsequent upsert succeeds
     upsertMock.mockResolvedValueOnce({});
 
-    // Retry migration with same account
     const retryResult = await migrateLocalDataToAccount("fail-retry-token");
     expect(retryResult.feed.ok).toBe(1);
 
-    // Verify the remote target ID reused the ledger entry for the same assigned ID
     const secondCallArg = upsertMock.mock.calls[1][0];
     const firstCallLedgerKey = `feed:${assignedLocalId}`;
     const ledgerParsed = JSON.parse(storedLedgerJson!);
     expect(secondCallArg.id).toBe(ledgerParsed[firstCallLedgerKey]);
   });
 
-  it("preserves ordinary outcome objects including those with an 'outcome' property", () => {
-    const ordinaryOutcomeObj = { rating: 5, outcome: "success", notes: "Great open crumb" };
-    const packed = packBakeOutcome(ordinaryOutcomeObj, undefined, undefined);
-    expect(packed).toEqual(ordinaryOutcomeObj);
+  it("correctly handles all outcome compatibility variants (new wrappers, legacy wrappers, ordinary objects, strings, null)", () => {
+    // 1. Null
+    const unpackedNull = unpackBakeOutcome(null);
+    expect(unpackedNull).toEqual({ outcome: null });
 
-    const unpacked = unpackBakeOutcome(packed);
-    expect(unpacked.outcome).toEqual(ordinaryOutcomeObj);
-    expect(unpacked.estimatorState).toBeUndefined();
-    expect(unpacked.bulkCheckInHistory).toBeUndefined();
-  });
+    // 2. String
+    const unpackedStr = unpackBakeOutcome("success");
+    expect(unpackedStr).toEqual({ outcome: "success" });
 
-  it("retains backward compatibility for legacy wrapped records without _bread_lab_wrapped marker", () => {
-    const legacyWrapped = {
-      outcome: "good",
-      estimatorState: { flourG: "300" },
-      bulkCheckInHistory: [{ checkInId: "legacy-1" }],
+    // 3. Existing standard outcome object (BakeOutcome)
+    const standardOutcome = { overallScore: 5, defects: [] };
+    const unpackedStandard = unpackBakeOutcome(standardOutcome);
+    expect(unpackedStandard).toEqual({ outcome: standardOutcome });
+
+    // 4. New explicitly marked wrapper
+    const newWrapper = packBakeOutcome("completed", { targetTemp: "76" }, [{ id: "s-1" }]);
+    expect(newWrapper._bread_lab_wrapped).toBe(true);
+    const unpackedNew = unpackBakeOutcome(newWrapper);
+    expect(unpackedNew).toEqual({
+      outcome: "completed",
+      estimatorState: { targetTemp: "76" },
+      bulkCheckInHistory: [{ id: "s-1" }],
+    });
+
+    // 5. Known legacy wrapper shape (unmarked object with valid estimator state and/or history)
+    const legacyWrapper = {
+      outcome: "active",
+      estimatorState: { targetTemp: "78" },
+      bulkCheckInHistory: [],
     };
+    const unpackedLegacy = unpackBakeOutcome(legacyWrapper);
+    expect(unpackedLegacy).toEqual({
+      outcome: "active",
+      estimatorState: { targetTemp: "78" },
+      bulkCheckInHistory: [],
+    });
 
-    const unpacked = unpackBakeOutcome(legacyWrapped);
-    expect(unpacked.outcome).toBe("good");
-    expect(unpacked.estimatorState).toEqual({ flourG: "300" });
-    expect(unpacked.bulkCheckInHistory).toEqual([{ checkInId: "legacy-1" }]);
+    // 6. Ordinary outcome object containing an 'outcome' property
+    const ordWithOutcomeProp = { outcome: "delicious", rating: 5, notes: "notes" };
+    const unpackedOrd1 = unpackBakeOutcome(ordWithOutcomeProp);
+    expect(unpackedOrd1).toEqual({ outcome: ordWithOutcomeProp });
+
+    // 7. Ordinary outcome object containing 'estimatorState' (non-estimator string/value)
+    const ordWithEstProp = { estimatorState: "user-custom-tag", score: 4 };
+    const unpackedOrd2 = unpackBakeOutcome(ordWithEstProp);
+    expect(unpackedOrd2).toEqual({ outcome: ordWithEstProp });
+
+    // 8. Ordinary outcome object containing 'bulkCheckInHistory' (non-array value)
+    const ordWithHistoryProp = { bulkCheckInHistory: "user-history-notes", crumb: "open" };
+    const unpackedOrd3 = unpackBakeOutcome(ordWithHistoryProp);
+    expect(unpackedOrd3).toEqual({ outcome: ordWithHistoryProp });
+
+    // 9. Ordinary object containing both state-like property names as ordinary/custom data
+    const ordWithBothProps = { estimatorState: "custom-est", bulkCheckInHistory: "custom-hist", rating: 3 };
+    const unpackedOrd4 = unpackBakeOutcome(ordWithBothProps);
+    expect(unpackedOrd4).toEqual({ outcome: ordWithBothProps });
   });
 
-  it("tests the actual conversion path through rowToApiBakeSession", () => {
-    const mockRow = {
-      id: "row-123",
-      device_id: "dev-1",
-      user_id: "user-1",
-      recipe_id: "rec-1",
-      recipe_name: "Test Bake",
-      saved_at: 1000,
-      started_at: 900,
+  it("exercises the real conversion boundary through rowToApiBakeSession for wrappers and ordinary objects", () => {
+    const baseRow = {
+      id: "row-789",
+      device_id: "dev-2",
+      user_id: "user-2",
+      recipe_id: "rec-2",
+      recipe_name: "Boundary Bake",
+      saved_at: 2000,
+      started_at: 1900,
       phases: [],
-      in_progress: true,
+      in_progress: false,
       created_at: new Date().toISOString(),
-      yield_value: 2,
-      completed_at: null,
-      status: "active",
-      outcome: {
-        _bread_lab_wrapped: true,
-        outcome: "active",
-        estimatorState: { targetTemp: "75" },
-        bulkCheckInHistory: [{ id: "snap-1" }],
-      },
-      notes: "some notes",
+      yield_value: 1,
+      completed_at: 2500,
+      status: "completed",
+      notes: "notes",
     };
 
-    const apiSession = rowToApiBakeSession(mockRow as any);
-    expect(apiSession.id).toBe("row-123");
-    expect(apiSession.outcome).toBe("active");
-    expect(apiSession.estimatorState).toEqual({ targetTemp: "75" });
-    expect(apiSession.bulkCheckInHistory).toEqual([{ id: "snap-1" }]);
+    // Row with new wrapper
+    const wrappedRow = {
+      ...baseRow,
+      outcome: packBakeOutcome("success", { flourG: "500" }, [{ id: "h-2" }]),
+    };
+    const sessionWrapped = rowToApiBakeSession(wrappedRow as any);
+    expect(sessionWrapped.outcome).toBe("success");
+    expect(sessionWrapped.estimatorState).toEqual({ flourG: "500" });
+    expect(sessionWrapped.bulkCheckInHistory).toEqual([{ id: "h-2" }]);
 
-    // Test with ordinary outcome object row
+    // Row with ordinary outcome object containing 'outcome' and custom state-like properties
     const ordinaryRow = {
-      ...mockRow,
-      outcome: { outcome: "delicious", rating: 5 },
+      ...baseRow,
+      outcome: { outcome: "failed", estimatorState: "my-custom-value", rating: 1 },
     };
-    const apiSessionOrdinary = rowToApiBakeSession(ordinaryRow as any);
-    expect(apiSessionOrdinary.outcome).toEqual({ outcome: "delicious", rating: 5 });
-    expect(apiSessionOrdinary.estimatorState).toBeUndefined();
+    const sessionOrdinary = rowToApiBakeSession(ordinaryRow as any);
+    expect(sessionOrdinary.outcome).toEqual({ outcome: "failed", estimatorState: "my-custom-value", rating: 1 });
+    expect(sessionOrdinary.estimatorState).toBeUndefined();
+    expect(sessionOrdinary.bulkCheckInHistory).toBeUndefined();
   });
 
   it("rejects malformed records or missing/invalid identity fields before migration", async () => {
