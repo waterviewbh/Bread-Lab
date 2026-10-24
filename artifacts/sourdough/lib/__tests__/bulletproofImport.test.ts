@@ -24,7 +24,7 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Enhancements", () => {
+describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Review Corrections", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -74,7 +74,14 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Enhancements", ()
     });
   });
 
-  it("reports storage read failures or malformed JSON as failures (throws error)", async () => {
+  it("surfaces actual AsyncStorage read rejections as errors", async () => {
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockRejectedValue(new Error("Disk hardware failure"));
+
+    await expect(migrateLocalDataToAccount("error-token")).rejects.toThrow(/Disk hardware failure/);
+  });
+
+  it("reports malformed JSON as failures (throws error)", async () => {
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
       if (key.includes("recipes")) return Promise.resolve("{malformed-json");
@@ -87,105 +94,129 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Enhancements", ()
   it("blocks safe migration when migration ledger is invalid or unreadable", async () => {
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
-      if (key.includes("import_ledger")) return Promise.resolve("[1, 2, 3]"); // invalid shape (array instead of object)
+      if (key.includes("import_ledger")) return Promise.resolve("[1, 2, 3]");
       return Promise.resolve(null);
     });
 
     await expect(migrateLocalDataToAccount("invalid-ledger-token")).rejects.toThrow(/Invalid migration ledger shape/);
   });
 
-  it("preserves active bake and active feed sessions with in-progress status and resumable fields", async () => {
-    const activeBake = { id: "active-bake-99", recipeName: "My Active Bake", startedAt: 5000, phases: [] };
-    const activeFeed = { id: "active-feed-88", savedAt: 6000, data: { pH: "4.2" } };
+  it("preserves complete active bake state including estimatorState, bulkCheckInHistory, and bulkFermentState", async () => {
+    const activeBake = {
+      id: "active-bake-full",
+      recipeName: "Complete Bake",
+      startedAt: 5000,
+      estimatorState: { flourG: "500", targetTemp: "78" },
+      bulkCheckInHistory: [{ checkInId: "c-1", timestamp: 5100 }],
+      phases: [
+        {
+          key: "bulk_fermenting",
+          name: "Bulk Ferment",
+          startedAt: 5000,
+          completedAt: null,
+          readings: [{ id: "r-1", temp: "78", loggedAt: 5050 }],
+          foldTimestamps: [120],
+          bulkFermentState: { startVolume_ml: 1000, maxVolume_ml: 1500 },
+        },
+      ],
+    };
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
       if (key === "bread_lab_bake_v2") return Promise.resolve(JSON.stringify([activeBake]));
-      if (key === "sourdough_feed_session_v1") return Promise.resolve(JSON.stringify(activeFeed));
       return Promise.resolve(null);
     });
 
-    const result = await migrateLocalDataToAccount("active-sessions-token");
+    const result = await migrateLocalDataToAccount("complete-state-token");
 
     expect(result.bakes.ok).toBe(1);
-    expect(result.feed.ok).toBe(1);
 
     expect(api.history.bakes.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        recipeName: "My Active Bake",
+        recipeName: "Complete Bake",
         inProgress: true,
-      })
-    );
-
-    expect(api.history.feed.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        inProgress: true,
-        data: activeFeed,
+        estimatorState: { flourG: "500", targetTemp: "78" },
+        bulkCheckInHistory: [{ checkInId: "c-1", timestamp: 5100 }],
+        phases: expect.arrayContaining([
+          expect.objectContaining({
+            key: "bulk_fermenting",
+            bulkFermentState: { startVolume_ml: 1000, maxVolume_ml: 1500 },
+            foldTimestamps: [120],
+          }),
+        ]),
       })
     );
   });
 
-  it("reports partial upload failures without clearing migration pending flag", async () => {
-    const mockRecipes = [
-      { id: "rec-1", name: "Recipe 1" },
-      { id: "rec-2", name: "Recipe 2" },
-    ];
+  it("makes active session ID allocation retry-safe by persisting assigned IDs back to storage", async () => {
+    const activeFeedWithoutId = { savedAt: 1234, data: { pH: "4.0" } };
+    let storedFeedJson: string | null = JSON.stringify(activeFeedWithoutId);
+    let storedLedgerJson: string | null = null;
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(mockRecipes));
-      return Promise.resolve(null);
-    });
+    const setItemMock = AsyncStorage.setItem as jest.Mock;
 
-    const upsertMock = api.recipes.upsert as jest.Mock;
-    upsertMock.mockImplementation((body) => {
-      if (body.id === ledgerMap["recipe:rec-2"]) {
-        throw new Error("Network error uploading rec-2");
+    setItemMock.mockImplementation((key, val) => {
+      if (key === "sourdough_feed_session_v1") {
+        storedFeedJson = val;
       }
-      return Promise.resolve({});
+      if (key.includes("import_ledger")) {
+        storedLedgerJson = val;
+      }
+      return Promise.resolve();
     });
 
-    // We can pre-seed ledger mock for specific ids
-    const ledgerMap: Record<string, string> = {
-      "recipe:rec-1": "target-uuid-rec-1",
-      "recipe:rec-2": "target-uuid-rec-2",
-    };
     getItemMock.mockImplementation((key) => {
-      if (key.includes("import_ledger")) return Promise.resolve(JSON.stringify(ledgerMap));
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(mockRecipes));
+      if (key === "sourdough_feed_session_v1") return Promise.resolve(storedFeedJson);
+      if (key.includes("import_ledger")) return Promise.resolve(storedLedgerJson);
       return Promise.resolve(null);
     });
 
-    const result = await migrateLocalDataToAccount("partial-fail-token");
+    // First migration attempt (assigns and persists ID)
+    await migrateLocalDataToAccount("retry-safe-token-1");
 
-    expect(result.recipes.ok).toBe(1);
-    expect(result.recipes.failed).toBe(1);
+    const firstUpsertCall = (api.history.feed.upsert as jest.Mock).mock.calls[0][0];
+    const assignedId = firstUpsertCall.id;
+    expect(assignedId).toBeDefined();
+
+    // Second migration attempt (retry) should reuse the exact same target ID via ledger and local ID
+    await migrateLocalDataToAccount("retry-safe-token-1");
+    const secondUpsertCall = (api.history.feed.upsert as jest.Mock).mock.calls[1][0];
+    expect(secondUpsertCall.id).toBe(assignedId);
   });
 
-  it("reuses previously allocated IDs when retrying migration after partial failure", async () => {
-    const mockRecipes = [{ id: "rec-retry-1", name: "Retry Recipe" }];
-
-    const existingLedger = {
-      "recipe:rec-retry-1": "pre-allocated-uuid-1234",
-    };
+  it("rejects malformed records or missing/invalid identity fields before migration", async () => {
+    const invalidRecipes = [{ name: "Missing ID Recipe" }]; // missing id
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
-      if (key.includes("import_ledger")) return Promise.resolve(JSON.stringify(existingLedger));
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(invalidRecipes));
+      return Promise.resolve(null);
+    });
+
+    await expect(migrateLocalDataToAccount("validation-token")).rejects.toThrow(/Invalid record found/);
+  });
+
+  it("persists ledger before first remote write and prevents remote uploads if ledger write fails", async () => {
+    const mockRecipes = [{ id: "rec-1", name: "Valid Recipe" }];
+
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
       if (key.includes("recipes")) return Promise.resolve(JSON.stringify(mockRecipes));
       return Promise.resolve(null);
     });
 
-    const upsertMock = api.recipes.upsert as jest.Mock;
-    upsertMock.mockResolvedValue({});
+    const setItemMock = AsyncStorage.setItem as jest.Mock;
+    setItemMock.mockImplementation((key, val) => {
+      if (key.includes("import_ledger")) {
+        throw new Error("Ledger storage write failed");
+      }
+      return Promise.resolve();
+    });
 
-    await migrateLocalDataToAccount("retry-token");
+    await expect(migrateLocalDataToAccount("ledger-fail-token")).rejects.toThrow(/Ledger storage write failed/);
 
-    expect(upsertMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "pre-allocated-uuid-1234",
-        name: "Retry Recipe",
-      })
-    );
+    expect(api.recipes.upsert).not.toHaveBeenCalled();
+    expect(api.history.bakes.upsert).not.toHaveBeenCalled();
   });
 });

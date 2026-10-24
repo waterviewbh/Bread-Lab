@@ -32,6 +32,8 @@ interface LocalBakeSession {
   startedAt: number;
   yieldValue?: string;
   notes?: string;
+  estimatorState?: any;
+  bulkCheckInHistory?: any[];
   phases: any[];
   [key: string]: unknown;
 }
@@ -47,7 +49,7 @@ interface LocalRecipe {
   [key: string]: unknown;
 }
 
-async function readLocalArrayOrThrow<T>(key: string): Promise<T[]> {
+async function readLocalArrayOrThrow<T>(key: string, validator?: (item: any) => boolean): Promise<T[]> {
   let raw: string | null;
   try {
     raw = await AsyncStorage.getItem(key);
@@ -63,6 +65,13 @@ async function readLocalArrayOrThrow<T>(key: string): Promise<T[]> {
   }
   if (!Array.isArray(parsed)) {
     throw new Error(`Invalid top-level data shape for key ${key}: expected array, got ${typeof parsed}`);
+  }
+  if (validator) {
+    for (const item of parsed) {
+      if (!validator(item)) {
+        throw new Error(`Invalid record found in ${key}: missing or invalid identity/fields`);
+      }
+    }
   }
   return parsed as T[];
 }
@@ -114,7 +123,6 @@ function generateSecureUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  // Fallback for runtimes without crypto.randomUUID
   throw new Error("Secure crypto.randomUUID() is required for robust ID generation.");
 }
 
@@ -151,13 +159,51 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     throw new Error(`Failed to retrieve device ID: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  // 1. Read and validate local records
+  const recipeValidator = (r: any) => r && typeof r === "object" && typeof r.id === "string" && r.id.trim() !== "" && typeof r.name === "string" && r.name.trim() !== "";
+  const bakeHistoryValidator = (b: any) => b && typeof b === "object" && typeof b.id === "string" && b.id.trim() !== "";
+  const feedHistoryValidator = (f: any) => f && typeof f === "object" && typeof f.id === "string" && f.id.trim() !== "";
+
   const [recipes, bakeHistory, activeBakes, feedHistory, activeFeed] = await Promise.all([
-    readLocalArrayOrThrow<LocalRecipe>(RECIPES_KEY),
-    readLocalArrayOrThrow<LocalBakeSession>(BAKE_HISTORY_KEY),
+    readLocalArrayOrThrow<LocalRecipe>(RECIPES_KEY, recipeValidator),
+    readLocalArrayOrThrow<LocalBakeSession>(BAKE_HISTORY_KEY, bakeHistoryValidator),
     readActiveBakesOrThrow(ACTIVE_BAKE_KEY),
-    readLocalArrayOrThrow<LocalFeedSession>(HISTORY_KEY),
+    readLocalArrayOrThrow<LocalFeedSession>(HISTORY_KEY, feedHistoryValidator),
     readLocalObjectOrThrow<LocalFeedSession>(ACTIVE_FEED_KEY),
   ]);
+
+  // Ensure active sessions without IDs get durable IDs assigned and persisted back to storage
+  let activeBakesUpdated = false;
+  for (const bake of activeBakes) {
+    if (!bake || typeof bake !== "object") {
+      throw new Error("Invalid active bake record: expected object");
+    }
+    if (!bake.id || typeof bake.id !== "string" || bake.id.trim() === "") {
+      bake.id = generateSecureUUID();
+      activeBakesUpdated = true;
+    }
+  }
+  if (activeBakesUpdated) {
+    try {
+      await AsyncStorage.setItem(ACTIVE_BAKE_KEY, JSON.stringify(activeBakes));
+    } catch (error) {
+      throw new Error(`Failed to persist assigned active bake ID: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (activeFeed) {
+    if (typeof activeFeed !== "object") {
+      throw new Error("Invalid active feed record: expected object");
+    }
+    if (!activeFeed.id || typeof activeFeed.id !== "string" || activeFeed.id.trim() === "") {
+      activeFeed.id = generateSecureUUID();
+      try {
+        await AsyncStorage.setItem(ACTIVE_FEED_KEY, JSON.stringify(activeFeed));
+      } catch (error) {
+        throw new Error(`Failed to persist assigned active feed ID: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
 
   const ledgerKey = LEDGER_KEY(token);
   let ledgerRaw: string | null;
@@ -203,7 +249,6 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   }
 
   for (const bake of activeBakes) {
-    if (!bake.id) bake.id = generateSecureUUID();
     const key = `bake:${bake.id}`;
     if (!ledger[key]) {
       ledger[key] = generateSecureUUID();
@@ -220,7 +265,6 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   }
 
   if (activeFeed) {
-    if (!activeFeed.id) activeFeed.id = generateSecureUUID();
     const key = `feed:${activeFeed.id}`;
     if (!ledger[key]) {
       ledger[key] = generateSecureUUID();
@@ -228,7 +272,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
-  // Durably persist Pass 1 ledger state before uploading
+  // Durably persist Pass 1 ledger state before uploading (prevents remote uploads if ledger persistence fails)
   try {
     await AsyncStorage.setItem(ledgerKey, JSON.stringify(ledger));
   } catch (error) {
@@ -274,7 +318,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     }
   }
 
-  // 2. Upload Bake Sessions (History & Active)
+  // 2. Upload Bake Sessions (History & Active) preserving complete active state
   let bakesOk = 0;
   let bakesFailed = 0;
   const allBakes = [
@@ -305,6 +349,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         completedAt: (b as any).completedAt || null,
         status: (b as any).status || null,
         outcome: b.outcome || null,
+        estimatorState: b.estimatorState || null,
+        bulkCheckInHistory: b.bulkCheckInHistory || null,
         notes: b.notes || null,
         inProgress: b.inProgress,
         phases: (b.phases || []).map((p: any) => ({
@@ -314,10 +360,11 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
           instructions: p.instructions,
           startedAt: p.startedAt ?? null,
           completedAt: p.completedAt ?? null,
-          readings: p.readings,
+          readings: p.readings ?? [],
           startVolume: p.startVolume,
           foldCount: p.foldCount,
           foldTimestamps: p.foldTimestamps,
+          bulkFermentState: p.bulkFermentState,
         })),
       });
       bakesOk++;

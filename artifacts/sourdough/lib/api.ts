@@ -116,6 +116,8 @@ export type ApiBakeSession = {
   completedAt?: number | null;
   status?: string | null;
   outcome?: any | null;
+  estimatorState?: any;
+  bulkCheckInHistory?: any[];
   notes?: string | null;
 };
 
@@ -230,6 +232,7 @@ function rowToApiFeedSession(r: FeedSessionRow): ApiFeedSession {
 }
 
 function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
+  const outcomeObj = r.outcome && typeof r.outcome === 'object' ? r.outcome : {};
   return {
     id: r.id,
     deviceId: r.device_id,
@@ -237,13 +240,21 @@ function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
     recipeName: r.recipe_name,
     savedAt: Number(r.saved_at),
     startedAt: Number(r.started_at),
-    phases: r.phases ?? [],
+    phases: (r.phases ?? []).map((p: any) => ({
+      ...p,
+      bulkFermentState: p.bulkFermentState,
+      readings: p.readings ?? [],
+      foldCount: p.foldCount,
+      foldTimestamps: p.foldTimestamps,
+    })),
     inProgress: r.in_progress ?? false,
     createdAt: r.created_at,
     yield_value: r.yield_value,
     completedAt: r.completed_at != null ? Number(r.completed_at) : null,
     status: r.status ?? undefined,
-    outcome: r.outcome ?? undefined,
+    outcome: (outcomeObj as any).outcome !== undefined ? (outcomeObj as any).outcome : r.outcome,
+    estimatorState: (outcomeObj as any).estimatorState ?? (r.outcome as any)?.estimatorState,
+    bulkCheckInHistory: (outcomeObj as any).bulkCheckInHistory ?? (r.outcome as any)?.bulkCheckInHistory,
     notes: r.notes ?? undefined,
   };
 }
@@ -559,11 +570,16 @@ export const api = {
         if (!supabase) throw new Error("Supabase not configured");
         const { data: { session } } = await supabase.auth.getSession();
         if (body.userId && !session) throw new Error("No active Supabase session");
+
+        const storedOutcome = typeof body.outcome === 'object' && body.outcome !== null
+          ? { ...body.outcome, estimatorState: body.estimatorState, bulkCheckInHistory: body.bulkCheckInHistory }
+          : { outcome: body.outcome, estimatorState: body.estimatorState, bulkCheckInHistory: body.bulkCheckInHistory };
+
         const { data, error } = await supabase.from("bake_sessions").upsert({
           id: body.id, device_id: body.deviceId, user_id: body.userId ?? null, recipe_id: body.recipeId ?? null,
           recipe_name: body.recipeName, yield_value: body.yield_value, saved_at: body.savedAt,
           started_at: body.startedAt, completed_at: body.completedAt ?? null, status: body.status ?? null,
-          outcome: body.outcome ?? null, notes: body.notes ?? null,
+          outcome: storedOutcome, notes: body.notes ?? null,
           phases: flattenPhasesForLegacy(body.phases), in_progress: body.inProgress ?? true,
         }).select().returns<BakeSessionRow[]>().single();
         if (error) throw error;
