@@ -18,8 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
-import { saveAuth, type AuthUser } from "@/lib/auth";
-import { clearAllAppData } from "@/lib/storageUtils";
+import { saveAuth, getStoredToken, clearAuth, type AuthUser } from "@/lib/auth";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
@@ -62,6 +61,23 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     }
     setLoading(true);
     try {
+      // 1. If an account (Account A) is already authenticated, switch securely
+      const currentToken = await getStoredToken();
+      if (currentToken) {
+        startMigration();
+        const preMigrationResult = await migrateLocalDataToAccount(currentToken);
+        finishMigration(preMigrationResult);
+
+        const totalFailed = preMigrationResult.feed.failed + preMigrationResult.bakes.failed + preMigrationResult.recipes.failed;
+        if (totalFailed > 0) {
+          throw new Error("Local data preservation under current account failed. Switch aborted to protect your data.");
+        }
+
+        await api.auth.signout();
+        await clearAuth();
+      }
+
+      // 2. Authenticate Account B (destination account)
       const result = await api.auth.identify({
         firstName: firstName.trim(),
         starterName: starterName.trim(),
@@ -71,10 +87,13 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
+
+      // 3. Migrate local data to Account B
       await setMigrationPending();
       startMigration();
-      const migrationResult = await migrateLocalDataToAccount(result.token).catch(() => null);
+      const migrationResult = await migrateLocalDataToAccount(result.token);
       finishMigration(migrationResult);
+
       await getDeviceId()
         .then(async (deviceId) => {
           let linked = false;
@@ -86,19 +105,19 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
               if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
             }
           }
-          // Suppress the "Sync Notice" Alert — the migration toast already
-          // communicates any sync failure to the user, and showing both
-          // simultaneously causes conflicting messages.
         })
         .catch(() => {});
     } catch (error) {
-      console.error("Auth Identification Technical Diagnostics:", error);
+      console.error("Auth Identification/Switch Technical Diagnostics:", error);
       const errMessage = error instanceof Error ? error.message : String(error);
 
-      let userFriendlyTitle = "Something went wrong";
-      let userFriendlyMessage = "Check your connection and try again.";
+      let userFriendlyTitle = "Switch Failed";
+      let userFriendlyMessage = errMessage;
 
-      if (errMessage.includes("recovery failed") || errMessage.includes("User already registered") || errMessage.includes("already registered")) {
+      if (errMessage.includes("preservation failed") || errMessage.includes("Local data preservation")) {
+        userFriendlyTitle = "Migration Blocked";
+        userFriendlyMessage = errMessage;
+      } else if (errMessage.includes("recovery failed") || errMessage.includes("User already registered") || errMessage.includes("already registered")) {
         userFriendlyTitle = "Account Conflict";
         userFriendlyMessage = "This starter name is registered, but the recovery key didn't match. Double-check your spelling or capitalization.";
       } else if (errMessage.includes("Email address") && errMessage.includes("invalid")) {
@@ -126,16 +145,34 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
   const handleClearIdentity = async () => {
     const performClear = async () => {
-      await api.auth.signout().catch(() => {});
-      await clearAllAppData();
-      onAuthChange(null);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      onClose();
+      try {
+        const currentToken = await getStoredToken();
+        if (currentToken) {
+          const migrationResult = await migrateLocalDataToAccount(currentToken);
+          const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
+          if (totalFailed > 0) {
+            throw new Error("Cannot sign out: local data sync incomplete. Please check your connection.");
+          }
+        }
+
+        await api.auth.signout();
+        await clearAuth();
+        onAuthChange(null);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onClose();
+      } catch (error) {
+        const errMessage = error instanceof Error ? error.message : String(error);
+        if (Platform.OS === 'web') {
+          window.alert(`Sign-out failed: ${errMessage}`);
+        } else {
+          Alert.alert("Sign-out failed", errMessage);
+        }
+      }
     };
 
     // WEB FIX: Use window.confirm if on web, otherwise use native Alert
     if (Platform.OS === "web") {
-      if (window.confirm("Remove name? Your data stays synced to the server. You can re-enter your name any time to reconnect.")) {
+      if (window.confirm("Sign out? Your operational records are preserved locally and synced to the cloud.")) {
         await performClear();
       }
       return;
@@ -143,12 +180,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
     // Original Mobile Alert logic
     Alert.alert(
-      "Remove name?",
-      "Your data stays synced to the server. You can re-enter your name any time to reconnect.",
+      "Sign out?",
+      "Your operational records are preserved locally and synced to the cloud.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Remove",
+          text: "Sign out",
           style: "destructive",
           onPress: performClear,
         },
@@ -179,108 +216,120 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           <View style={s.header}>
             <View style={{ flex: 1 }}>
               <Text style={[s.title, { color: colors.foreground }]}>
-                {currentUser ? displayName : isFind ? "Find your data" : "Name your data"}
+                {currentUser ? "Starter Account" : "Identify Starter"}
               </Text>
               <Text style={[s.subtitle, { color: colors.mutedForeground }]}>
                 {currentUser
-                  ? "Your data syncs automatically across devices."
-                  : isFind
-                  ? "Enter your first name and starter name to reconnect to your existing data."
-                  : "Your data already syncs automatically. Adding a name lets you access it on another device or after reinstalling."}
+                  ? "Manage identity and cloud sync"
+                  : "Connect your baking data to the cloud"}
               </Text>
             </View>
             <Pressable
               onPress={onClose}
-              style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+              style={[s.closeButton, { backgroundColor: colors.card }]}
             >
-              <Ionicons name="close" size={24} color={colors.foreground} />
+              <Ionicons name="close" size={20} color={colors.foreground} />
             </Pressable>
           </View>
 
           {currentUser ? (
-            <View style={[s.identityCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={s.identityTopRow}>
-                <View style={[s.avatarCircle, { backgroundColor: colors.primary }]}>
-                  <Text style={[s.avatarInitial, { color: colors.primaryForeground }]}>
-                    {currentUser.firstName?.[0]?.toUpperCase() ?? "?"}
-                  </Text>
+            <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={s.cardHeader}>
+                <View style={[s.avatar, { backgroundColor: colors.primary }]}>
+                  <Text style={s.avatarText}>{currentUser.firstName.charAt(0).toUpperCase()}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.identityName, { color: colors.foreground }]} numberOfLines={2}>
-                    {displayName}
-                  </Text>
-                  <Text style={[s.identityLabel, { color: colors.mutedForeground }]}>
-                    Data named · syncing automatically
-                  </Text>
+                  <Text style={[s.cardName, { color: colors.foreground }]}>{displayName}</Text>
+                  <Text style={[s.cardSub, { color: colors.mutedForeground }]}>Active cloud identity</Text>
+                </View>
+                <View style={[s.badge, { backgroundColor: colors.primary + "20" }]}>
+                  <Text style={[s.badgeText, { color: colors.primary }]}>Synced</Text>
                 </View>
               </View>
 
+              <Text style={[s.cardInfo, { color: colors.mutedForeground }]}>
+                Your recipes, bakes, and feed sessions are securely linked to this name. You can sign out or switch starters anytime.
+              </Text>
+
               <Pressable
                 onPress={handleClearIdentity}
-                style={({ pressed }) => [s.clearBtn, { borderColor: colors.border, opacity: pressed ? 0.6 : 1, marginTop: 12 }]}
+                style={[s.outlineButton, { borderColor: colors.border }]}
               >
-                <Text style={[s.clearBtnText, { color: colors.mutedForeground }]}>Track different starter</Text>
+                <Ionicons name="log-out-outline" size={18} color={colors.destructive || "#EF4444"} />
+                <Text style={[s.outlineButtonText, { color: colors.destructive || "#EF4444" }]}>
+                  Sign Out / Remove Name
+                </Text>
               </Pressable>
             </View>
           ) : (
-            <>
-              <Text style={[s.label, { color: colors.mutedForeground }]}>First name</Text>
-              <TextInput
-                style={[s.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                placeholder="Jerry"
-                placeholderTextColor={colors.mutedForeground}
-                value={firstName}
-                onChangeText={setFirstName}
-                autoCapitalize="words"
-                autoComplete="given-name"
-                returnKeyType="next"
-              />
-
-              <Text style={[s.label, { color: colors.mutedForeground, marginTop: 16 }]}>Starter name</Text>
-              <TextInput
-                style={[s.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-                placeholder="Dough for Justice"
-                placeholderTextColor={colors.mutedForeground}
-                value={starterName}
-                onChangeText={setStarterName}
-                autoCapitalize="words"
-                returnKeyType="done"
-                onSubmitEditing={handleIdentify}
-              />
-
-              <Pressable
-                onPress={handleIdentify}
-                disabled={loading}
-                style={({ pressed }) => [
-                  s.submitBtn,
-                  { backgroundColor: colors.primary, opacity: pressed || loading ? 0.8 : 1, marginTop: 24 },
-                ]}
-              >
-                {loading ? (
-                  <ActivityIndicator color={colors.primaryForeground} />
-                ) : (
-                  <Text style={[s.submitText, { color: colors.primaryForeground }]}>
-                    {isFind ? "Find my data" : "Save"}
+            <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={s.modeTabs}>
+                <Pressable
+                  onPress={() => setMode("name")}
+                  style={[
+                    s.modeTab,
+                    mode === "name" && { backgroundColor: colors.background, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+                  ]}
+                >
+                  <Text style={[s.modeTabText, { color: mode === "name" ? colors.foreground : colors.mutedForeground }]}>
+                    New / Existing
                   </Text>
-                )}
-              </Pressable>
+                </Pressable>
+                <Pressable
+                  onPress={() => setMode("find")}
+                  style={[
+                    s.modeTab,
+                    mode === "find" && { backgroundColor: colors.background, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+                  ]}
+                >
+                  <Text style={[s.modeTabText, { color: mode === "find" ? colors.foreground : colors.mutedForeground }]}>
+                    Find Name
+                  </Text>
+                </Pressable>
+              </View>
 
-              <View style={[s.divider, { borderTopColor: colors.border }]} />
+              <View style={s.form}>
+                <View style={s.field}>
+                  <Text style={[s.label, { color: colors.foreground }]}>Your First Name</Text>
+                  <TextInput
+                    style={[s.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+                    placeholder="e.g. Jane"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
 
-              <Pressable
-                onPress={() => {
-                  setMode(isFind ? "name" : "find");
-                  setFirstName("");
-                  setStarterName("");
-                  Haptics.selectionAsync();
-                }}
-                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, alignItems: "center" })}
-              >
-                <Text style={[s.switchLink, { color: colors.primary }]}>
-                  {isFind ? "← Name my data instead" : "Already named? Find my data →"}
-                </Text>
-              </Pressable>
-            </>
+                <View style={s.field}>
+                  <Text style={[s.label, { color: colors.foreground }]}>Starter Name</Text>
+                  <TextInput
+                    style={[s.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+                    placeholder="e.g. DoughtheVoodoo"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={starterName}
+                    onChangeText={setStarterName}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
+
+                <Pressable
+                  onPress={handleIdentify}
+                  disabled={loading}
+                  style={[s.primaryButton, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={s.primaryButtonText}>
+                      {mode === "find" ? "Recover Starter" : "Connect & Sync"}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -290,92 +339,135 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
 const s = StyleSheet.create({
   content: {
-    paddingHorizontal: spacing.lg,             // 24
+    paddingHorizontal: 20,
   },
   header: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    marginBottom: spacing.lg + 4,              // 28 — matches original
+    alignItems: "center",
+    marginBottom: 24,
   },
   title: {
-    ...typography.headlineLgMobile,            // LibreCaslonText_700Bold, 28px — modal headline in serif
-    letterSpacing: -0.5,
-    marginBottom: spacing.xs,                  // 4
+    fontSize: 22,
+    fontWeight: "700",
   },
   subtitle: {
-    fontFamily: fonts.sans,                    // HankenGrotesk_400Regular
     fontSize: 14,
-    lineHeight: 20,
-  },
-  label: {
-    fontFamily: fonts.sansMedium,              // HankenGrotesk_500Medium
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  input: {
-    height: 48,
-    paddingHorizontal: 14,
-    fontSize: 16,
-    borderWidth: 1,
-    borderRadius: radius.lg,                   // 12
-    fontFamily: fonts.sans,                    // HankenGrotesk_400Regular
-  },
-  submitBtn: {
-    height: 52,
-    borderRadius: radius.lg,                   // 12
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  submitText: {
-    fontFamily: fonts.sansSemiBold,            // HankenGrotesk_600SemiBold — primary action
-    fontSize: 16,
-  },
-  divider: {
-    borderTopWidth: 1,
-    marginVertical: spacing.md + 4,            // 20 — matches original
-  },
-  switchLink: {
-    fontFamily: fonts.sansMedium,              // HankenGrotesk_500Medium
-    fontSize: 13,
-  },
-  identityCard: {
-    padding: spacing.md,                       // 16
-    borderRadius: radius.lg,                   // 12
-    borderWidth: 1,
-  },
-  identityTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarInitial: {
-    fontFamily: fonts.serifBold,               // LibreCaslonText_700Bold — initial letter in serif feels artisanal
-    fontSize: 18,
-  },
-  identityName: {
-    fontFamily: fonts.sansMedium,              // HankenGrotesk_500Medium
-    fontSize: 15,
-  },
-  identityLabel: {
-    ...typography.metaLabel,                   // HankenGrotesk_400Regular, 12px
     marginTop: 2,
   },
-  clearBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: radius.md,                   // 8
-    borderWidth: 1,
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  clearBtnText: {
-    fontFamily: fonts.sans,                    // HankenGrotesk_400Regular
+  card: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: 20,
+    marginBottom: 20,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  avatarText: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  cardName: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  cardSub: {
     fontSize: 13,
+    marginTop: 1,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  cardInfo: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  outlineButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  outlineButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  modeTabs: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.04)",
+    borderRadius: radius.md,
+    padding: 3,
+    marginBottom: 20,
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderRadius: radius.sm,
+  },
+  modeTabText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  form: {
+    gap: 16,
+  },
+  field: {
+    gap: 6,
+  },
+  dataPreservationency: {
+    // metadata or marker
+  },
+  label: {
+    fontSize: 14,
+    net_session: true,
+    fontWeight: "600",
+  } as any,
+  input: {
+    height: 48,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    fontSize: 16,
+  },
+  primaryButton: {
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

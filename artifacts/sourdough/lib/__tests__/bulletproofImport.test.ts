@@ -2,12 +2,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { migrateLocalDataToAccount, clearMigrationPending } from "../migrate";
 import { api, packBakeOutcome, unpackBakeOutcome, rowToApiBakeSession } from "../api";
+import { clearAuth, saveAuth, getStoredToken, getStoredUser } from "../auth";
 
 // Mock AsyncStorage and api
 jest.mock("@react-native-async-storage/async-storage", () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
+  multiRemove: jest.fn(),
 }));
 
 jest.mock("../api", () => {
@@ -15,6 +17,11 @@ jest.mock("../api", () => {
   return {
     ...actualApi,
     api: {
+      ...actualApi.api,
+      auth: {
+        ...actualApi.api.auth,
+        signout: jest.fn().mockResolvedValue({ signedOut: true }),
+      },
       history: {
         feed: { upsert: jest.fn().mockResolvedValue({}) },
         bakes: { upsert: jest.fn().mockResolvedValue({}) },
@@ -28,7 +35,7 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Final Correction: Legacy Wrapper Ambiguity Closure", () => {
+describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Phase 2 Safe Identity Switching", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -227,7 +234,6 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Final Correction:
   });
 
   it("correctly preserves ordinary objects colliding with state-like property names and unpacks explicitly marked wrappers", () => {
-    // 1. Explicitly marked new wrapper
     const markedWrapper = packBakeOutcome("completed", { targetTemp: "76" }, [{ id: "s-1" }]);
     expect(markedWrapper._bread_lab_wrapped).toBe(true);
     const unpackedMarked = unpackBakeOutcome(markedWrapper);
@@ -237,22 +243,18 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Final Correction:
       bulkCheckInHistory: [{ id: "s-1" }],
     });
 
-    // 2. Ordinary object containing bulkCheckInHistory: [] with unrelated user data
     const ordWithHistory = { outcome: "success", rating: 5, bulkCheckInHistory: [] };
     const unpackedHistory = unpackBakeOutcome(ordWithHistory);
     expect(unpackedHistory).toEqual({ outcome: ordWithHistory });
 
-    // 3. Ordinary object containing estimatorState with custom user data
     const ordWithEstimator = { outcome: "good", rating: 4, estimatorState: { targetTemp: "custom user data" } };
     const unpackedEstimator = unpackBakeOutcome(ordWithEstimator);
     expect(unpackedEstimator).toEqual({ outcome: ordWithEstimator });
 
-    // 4. Ordinary object containing both state-like property names in a colliding shape
     const ordWithBoth = { outcome: "ok", estimatorState: { targetTemp: "custom" }, bulkCheckInHistory: [] };
     const unpackedBoth = unpackBakeOutcome(ordWithBoth);
     expect(unpackedBoth).toEqual({ outcome: ordWithBoth });
 
-    // 5. null, strings, standard outcome objects
     expect(unpackBakeOutcome(null)).toEqual({ outcome: null });
     expect(unpackBakeOutcome("success")).toEqual({ outcome: "success" });
     const stdOutcome = { overallScore: 5, defects: [] };
@@ -277,7 +279,6 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Final Correction:
       notes: "notes",
     };
 
-    // Row with marked wrapper
     const wrappedRow = {
       ...baseRow,
       outcome: packBakeOutcome("success", { flourG: "500" }, [{ id: "h-2" }]),
@@ -287,7 +288,6 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Final Correction:
     expect(sessionWrapped.estimatorState).toEqual({ flourG: "500" });
     expect(sessionWrapped.bulkCheckInHistory).toEqual([{ id: "h-2" }]);
 
-    // Row with ordinary colliding object
     const collidingRow = {
       ...baseRow,
       outcome: { outcome: "delicious", estimatorState: { targetTemp: "custom user data" }, bulkCheckInHistory: [] },
@@ -300,6 +300,20 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Final Correction:
     });
     expect(sessionColliding.estimatorState).toBeUndefined();
     expect(sessionColliding.bulkCheckInHistory).toBeUndefined();
+  });
+
+  it("performs safe ordinary sign-out via api.auth.signout() and clearAuth() preserving local operational records", async () => {
+    const setItemMock = AsyncStorage.setItem as jest.Mock;
+    const removeItemMock = AsyncStorage.removeItem as jest.Mock;
+
+    await saveAuth("token-xyz", { id: "user-1", firstName: "Test", starterName: "Sourdough" });
+    await api.auth.signout();
+    await clearAuth();
+
+    expect(api.auth.signout).toHaveBeenCalled();
+    // Verify clearAuth removed auth token and user keys
+    expect(removeItemMock).toHaveBeenCalledWith("bread_lab_auth_token_v1");
+    expect(removeItemMock).toHaveBeenCalledWith("bread_lab_auth_user_v1");
   });
 
   it("rejects malformed records or missing/invalid identity fields before migration", async () => {

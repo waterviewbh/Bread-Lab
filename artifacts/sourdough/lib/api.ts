@@ -440,7 +440,12 @@ export const api = {
       return { linked: false };
     },
     claimOrphans: async () => ({ claimed: { feed: 0, bakes: 0, recipes: 0 } }),
-    signout: async () => ({ signedOut: true }),
+    signout: async () => {
+      if (!supabase) return { signedOut: true };
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      return { signedOut: true };
+    },
   },
 
   recipes: {
