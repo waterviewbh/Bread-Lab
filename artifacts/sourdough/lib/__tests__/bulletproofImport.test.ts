@@ -28,7 +28,7 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Legacy Outcome Wrapper Ambiguity Closure", () => {
+describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Final Correction: Legacy Wrapper Ambiguity Closure", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -226,71 +226,46 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Legacy Outcome Wr
     expect(secondCallArg.id).toBe(ledgerParsed[firstCallLedgerKey]);
   });
 
-  it("correctly handles all outcome compatibility variants (new wrappers, legacy wrappers, ordinary objects, strings, null)", () => {
-    // 1. Null
-    const unpackedNull = unpackBakeOutcome(null);
-    expect(unpackedNull).toEqual({ outcome: null });
-
-    // 2. String
-    const unpackedStr = unpackBakeOutcome("success");
-    expect(unpackedStr).toEqual({ outcome: "success" });
-
-    // 3. Existing standard outcome object (BakeOutcome)
-    const standardOutcome = { overallScore: 5, defects: [] };
-    const unpackedStandard = unpackBakeOutcome(standardOutcome);
-    expect(unpackedStandard).toEqual({ outcome: standardOutcome });
-
-    // 4. New explicitly marked wrapper
-    const newWrapper = packBakeOutcome("completed", { targetTemp: "76" }, [{ id: "s-1" }]);
-    expect(newWrapper._bread_lab_wrapped).toBe(true);
-    const unpackedNew = unpackBakeOutcome(newWrapper);
-    expect(unpackedNew).toEqual({
+  it("correctly preserves ordinary objects colliding with state-like property names and unpacks explicitly marked wrappers", () => {
+    // 1. Explicitly marked new wrapper
+    const markedWrapper = packBakeOutcome("completed", { targetTemp: "76" }, [{ id: "s-1" }]);
+    expect(markedWrapper._bread_lab_wrapped).toBe(true);
+    const unpackedMarked = unpackBakeOutcome(markedWrapper);
+    expect(unpackedMarked).toEqual({
       outcome: "completed",
       estimatorState: { targetTemp: "76" },
       bulkCheckInHistory: [{ id: "s-1" }],
     });
 
-    // 5. Known legacy wrapper shape (unmarked object with valid estimator state and/or history)
-    const legacyWrapper = {
-      outcome: "active",
-      estimatorState: { targetTemp: "78" },
-      bulkCheckInHistory: [],
-    };
-    const unpackedLegacy = unpackBakeOutcome(legacyWrapper);
-    expect(unpackedLegacy).toEqual({
-      outcome: "active",
-      estimatorState: { targetTemp: "78" },
-      bulkCheckInHistory: [],
-    });
+    // 2. Ordinary object containing bulkCheckInHistory: [] with unrelated user data
+    const ordWithHistory = { outcome: "success", rating: 5, bulkCheckInHistory: [] };
+    const unpackedHistory = unpackBakeOutcome(ordWithHistory);
+    expect(unpackedHistory).toEqual({ outcome: ordWithHistory });
 
-    // 6. Ordinary outcome object containing an 'outcome' property
-    const ordWithOutcomeProp = { outcome: "delicious", rating: 5, notes: "notes" };
-    const unpackedOrd1 = unpackBakeOutcome(ordWithOutcomeProp);
-    expect(unpackedOrd1).toEqual({ outcome: ordWithOutcomeProp });
+    // 3. Ordinary object containing estimatorState with custom user data
+    const ordWithEstimator = { outcome: "good", rating: 4, estimatorState: { targetTemp: "custom user data" } };
+    const unpackedEstimator = unpackBakeOutcome(ordWithEstimator);
+    expect(unpackedEstimator).toEqual({ outcome: ordWithEstimator });
 
-    // 7. Ordinary outcome object containing 'estimatorState' (non-estimator string/value)
-    const ordWithEstProp = { estimatorState: "user-custom-tag", score: 4 };
-    const unpackedOrd2 = unpackBakeOutcome(ordWithEstProp);
-    expect(unpackedOrd2).toEqual({ outcome: ordWithEstProp });
+    // 4. Ordinary object containing both state-like property names in a colliding shape
+    const ordWithBoth = { outcome: "ok", estimatorState: { targetTemp: "custom" }, bulkCheckInHistory: [] };
+    const unpackedBoth = unpackBakeOutcome(ordWithBoth);
+    expect(unpackedBoth).toEqual({ outcome: ordWithBoth });
 
-    // 8. Ordinary outcome object containing 'bulkCheckInHistory' (non-array value)
-    const ordWithHistoryProp = { bulkCheckInHistory: "user-history-notes", crumb: "open" };
-    const unpackedOrd3 = unpackBakeOutcome(ordWithHistoryProp);
-    expect(unpackedOrd3).toEqual({ outcome: ordWithHistoryProp });
-
-    // 9. Ordinary object containing both state-like property names as ordinary/custom data
-    const ordWithBothProps = { estimatorState: "custom-est", bulkCheckInHistory: "custom-hist", rating: 3 };
-    const unpackedOrd4 = unpackBakeOutcome(ordWithBothProps);
-    expect(unpackedOrd4).toEqual({ outcome: ordWithBothProps });
+    // 5. null, strings, standard outcome objects
+    expect(unpackBakeOutcome(null)).toEqual({ outcome: null });
+    expect(unpackBakeOutcome("success")).toEqual({ outcome: "success" });
+    const stdOutcome = { overallScore: 5, defects: [] };
+    expect(unpackBakeOutcome(stdOutcome)).toEqual({ outcome: stdOutcome });
   });
 
-  it("exercises the real conversion boundary through rowToApiBakeSession for wrappers and ordinary objects", () => {
+  it("exercises the real conversion boundary through rowToApiBakeSession for marked wrappers and colliding ordinary objects", () => {
     const baseRow = {
       id: "row-789",
       device_id: "dev-2",
       user_id: "user-2",
       recipe_id: "rec-2",
-      recipe_name: "Boundary Bake",
+      recipe_name: "Collision Test Bake",
       saved_at: 2000,
       started_at: 1900,
       phases: [],
@@ -302,7 +277,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Legacy Outcome Wr
       notes: "notes",
     };
 
-    // Row with new wrapper
+    // Row with marked wrapper
     const wrappedRow = {
       ...baseRow,
       outcome: packBakeOutcome("success", { flourG: "500" }, [{ id: "h-2" }]),
@@ -312,15 +287,19 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Legacy Outcome Wr
     expect(sessionWrapped.estimatorState).toEqual({ flourG: "500" });
     expect(sessionWrapped.bulkCheckInHistory).toEqual([{ id: "h-2" }]);
 
-    // Row with ordinary outcome object containing 'outcome' and custom state-like properties
-    const ordinaryRow = {
+    // Row with ordinary colliding object
+    const collidingRow = {
       ...baseRow,
-      outcome: { outcome: "failed", estimatorState: "my-custom-value", rating: 1 },
+      outcome: { outcome: "delicious", estimatorState: { targetTemp: "custom user data" }, bulkCheckInHistory: [] },
     };
-    const sessionOrdinary = rowToApiBakeSession(ordinaryRow as any);
-    expect(sessionOrdinary.outcome).toEqual({ outcome: "failed", estimatorState: "my-custom-value", rating: 1 });
-    expect(sessionOrdinary.estimatorState).toBeUndefined();
-    expect(sessionOrdinary.bulkCheckInHistory).toBeUndefined();
+    const sessionColliding = rowToApiBakeSession(collidingRow as any);
+    expect(sessionColliding.outcome).toEqual({
+      outcome: "delicious",
+      estimatorState: { targetTemp: "custom user data" },
+      bulkCheckInHistory: [],
+    });
+    expect(sessionColliding.estimatorState).toBeUndefined();
+    expect(sessionColliding.bulkCheckInHistory).toBeUndefined();
   });
 
   it("rejects malformed records or missing/invalid identity fields before migration", async () => {

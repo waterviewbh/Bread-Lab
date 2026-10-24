@@ -245,6 +245,7 @@ export function packBakeOutcome(outcome: any, estimatorState: any, bulkCheckInHi
 
 export function unpackBakeOutcome(storedOutcome: any): { outcome: any; estimatorState?: any; bulkCheckInHistory?: any[] } {
   if (storedOutcome && typeof storedOutcome === 'object' && !Array.isArray(storedOutcome)) {
+    // 1. Explicitly marked new records
     if (storedOutcome._bread_lab_wrapped === true) {
       return {
         outcome: storedOutcome.outcome !== undefined ? storedOutcome.outcome : null,
@@ -252,24 +253,14 @@ export function unpackBakeOutcome(storedOutcome: any): { outcome: any; estimator
         bulkCheckInHistory: storedOutcome.bulkCheckInHistory,
       };
     }
-    // Bounded legacy detection: recognize legacy wrapper shapes based on concrete evidence
-    // (e.g. valid BulkEstimatorState object or bulkCheckInHistory array) without reinterpreting ordinary user objects.
-    const est = storedOutcome.estimatorState;
-    const hasValidEstimator = est && typeof est === 'object' && !Array.isArray(est) && (
-      'targetTemp' in est || 'flourG' in est || 'waterG' in est || 'starterG' in est ||
-      'startVolume_ml' in est || 'yeastType' in est || 'plannedProofMode' in est
-    );
-    const hasHistory = Array.isArray(storedOutcome.bulkCheckInHistory);
-
-    if (hasValidEstimator || hasHistory) {
-      return {
-        outcome: storedOutcome.outcome !== undefined ? storedOutcome.outcome : null,
-        estimatorState: storedOutcome.estimatorState,
-        bulkCheckInHistory: storedOutcome.bulkCheckInHistory,
-      };
-    }
+    // Trade-off note: Heuristic guessing on unmarked objects is ambiguous because ordinary user outcome
+    // objects can legitimately contain properties named `estimatorState` or `bulkCheckInHistory`.
+    // To prevent silent data loss and misinterpretation of user data, heuristic fallback is intentionally
+    // omitted. Unmarked objects are preserved as ordinary outcomes, relying on the explicit `_bread_lab_wrapped: true`
+    // marker for wrapped records.
   }
-  // Ordinary outcome objects (even if they contain an 'outcome' property), strings, nulls, etc.
+
+  // 2. Fallback: Ordinary outcome objects, strings, nulls, etc., are preserved as ordinary outcomes.
   return {
     outcome: storedOutcome !== undefined ? storedOutcome : null,
   };
