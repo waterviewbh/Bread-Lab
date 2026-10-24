@@ -231,8 +231,33 @@ function rowToApiFeedSession(r: FeedSessionRow): ApiFeedSession {
   };
 }
 
+export function packBakeOutcome(outcome: any, estimatorState: any, bulkCheckInHistory: any): any {
+  if (estimatorState !== undefined || bulkCheckInHistory !== undefined) {
+    return {
+      outcome: outcome !== undefined ? outcome : null,
+      estimatorState,
+      bulkCheckInHistory,
+    };
+  }
+  return outcome !== undefined ? outcome : null;
+}
+
+export function unpackBakeOutcome(storedOutcome: any): { outcome: any; estimatorState?: any; bulkCheckInHistory?: any[] } {
+  const isWrapped = storedOutcome && typeof storedOutcome === 'object' && !Array.isArray(storedOutcome) && ('estimatorState' in storedOutcome || 'bulkCheckInHistory' in storedOutcome || 'outcome' in storedOutcome);
+  if (isWrapped) {
+    return {
+      outcome: storedOutcome.outcome !== undefined ? storedOutcome.outcome : null,
+      estimatorState: storedOutcome.estimatorState,
+      bulkCheckInHistory: storedOutcome.bulkCheckInHistory,
+    };
+  }
+  return {
+    outcome: storedOutcome !== undefined ? storedOutcome : null,
+  };
+}
+
 function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
-  const outcomeObj = r.outcome && typeof r.outcome === 'object' ? r.outcome : {};
+  const unpacked = unpackBakeOutcome(r.outcome);
   return {
     id: r.id,
     deviceId: r.device_id,
@@ -252,9 +277,9 @@ function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
     yield_value: r.yield_value,
     completedAt: r.completed_at != null ? Number(r.completed_at) : null,
     status: r.status ?? undefined,
-    outcome: (outcomeObj as any).outcome !== undefined ? (outcomeObj as any).outcome : r.outcome,
-    estimatorState: (outcomeObj as any).estimatorState ?? (r.outcome as any)?.estimatorState,
-    bulkCheckInHistory: (outcomeObj as any).bulkCheckInHistory ?? (r.outcome as any)?.bulkCheckInHistory,
+    outcome: unpacked.outcome,
+    estimatorState: unpacked.estimatorState,
+    bulkCheckInHistory: unpacked.bulkCheckInHistory,
     notes: r.notes ?? undefined,
   };
 }
@@ -571,9 +596,7 @@ export const api = {
         const { data: { session } } = await supabase.auth.getSession();
         if (body.userId && !session) throw new Error("No active Supabase session");
 
-        const storedOutcome = typeof body.outcome === 'object' && body.outcome !== null
-          ? { ...body.outcome, estimatorState: body.estimatorState, bulkCheckInHistory: body.bulkCheckInHistory }
-          : { outcome: body.outcome, estimatorState: body.estimatorState, bulkCheckInHistory: body.bulkCheckInHistory };
+        const storedOutcome = packBakeOutcome(body.outcome, body.estimatorState, body.bulkCheckInHistory);
 
         const { data, error } = await supabase.from("bake_sessions").upsert({
           id: body.id, device_id: body.deviceId, user_id: body.userId ?? null, recipe_id: body.recipeId ?? null,

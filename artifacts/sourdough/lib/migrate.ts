@@ -76,14 +76,14 @@ async function readLocalArrayOrThrow<T>(key: string, validator?: (item: any) => 
   return parsed as T[];
 }
 
-async function readActiveBakesOrThrow(key: string): Promise<LocalBakeSession[]> {
+async function readActiveBakesOrThrow(key: string): Promise<{ bakes: LocalBakeSession[]; isArray: boolean }> {
   let raw: string | null;
   try {
     raw = await AsyncStorage.getItem(key);
   } catch (error) {
     throw new Error(`Storage read error for key ${key}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (raw === null || raw === undefined) return [];
+  if (raw === null || raw === undefined) return { bakes: [], isArray: true };
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -91,9 +91,9 @@ async function readActiveBakesOrThrow(key: string): Promise<LocalBakeSession[]> 
     throw new Error(`Malformed JSON for key ${key}: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (Array.isArray(parsed)) {
-    return parsed as LocalBakeSession[];
+    return { bakes: parsed as LocalBakeSession[], isArray: true };
   } else if (parsed !== null && typeof parsed === "object") {
-    return [parsed as LocalBakeSession];
+    return { bakes: [parsed as LocalBakeSession], isArray: false };
   } else {
     throw new Error(`Invalid top-level data shape for key ${key}: expected array or object`);
   }
@@ -164,15 +164,17 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   const bakeHistoryValidator = (b: any) => b && typeof b === "object" && typeof b.id === "string" && b.id.trim() !== "";
   const feedHistoryValidator = (f: any) => f && typeof f === "object" && typeof f.id === "string" && f.id.trim() !== "";
 
-  const [recipes, bakeHistory, activeBakes, feedHistory, activeFeed] = await Promise.all([
+  const bakeResult = await readActiveBakesOrThrow(ACTIVE_BAKE_KEY);
+  const activeBakes = bakeResult.bakes;
+
+  const [recipes, bakeHistory, feedHistory, activeFeed] = await Promise.all([
     readLocalArrayOrThrow<LocalRecipe>(RECIPES_KEY, recipeValidator),
     readLocalArrayOrThrow<LocalBakeSession>(BAKE_HISTORY_KEY, bakeHistoryValidator),
-    readActiveBakesOrThrow(ACTIVE_BAKE_KEY),
     readLocalArrayOrThrow<LocalFeedSession>(HISTORY_KEY, feedHistoryValidator),
     readLocalObjectOrThrow<LocalFeedSession>(ACTIVE_FEED_KEY),
   ]);
 
-  // Ensure active sessions without IDs get durable IDs assigned and persisted back to storage
+  // Ensure active bakes without IDs get durable IDs assigned and persisted back to storage in original shape (array vs object)
   let activeBakesUpdated = false;
   for (const bake of activeBakes) {
     if (!bake || typeof bake !== "object") {
@@ -185,7 +187,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   }
   if (activeBakesUpdated) {
     try {
-      await AsyncStorage.setItem(ACTIVE_BAKE_KEY, JSON.stringify(activeBakes));
+      const dataToStore = bakeResult.isArray ? activeBakes : activeBakes[0];
+      await AsyncStorage.setItem(ACTIVE_BAKE_KEY, JSON.stringify(dataToStore));
     } catch (error) {
       throw new Error(`Failed to persist assigned active bake ID: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -272,7 +275,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
-  // Durably persist Pass 1 ledger state before uploading (prevents remote uploads if ledger persistence fails)
+  // Durably persist Pass 1 ledger state before uploading
   try {
     await AsyncStorage.setItem(ledgerKey, JSON.stringify(ledger));
   } catch (error) {

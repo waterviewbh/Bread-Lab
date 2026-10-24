@@ -1,7 +1,7 @@
 // artifacts/sourdough/lib/__tests__/bulletproofImport.test.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { migrateLocalDataToAccount, clearMigrationPending } from "../migrate";
-import { api } from "../api";
+import { api, packBakeOutcome, unpackBakeOutcome } from "../api";
 
 // Mock AsyncStorage and api
 jest.mock("@react-native-async-storage/async-storage", () => ({
@@ -10,21 +10,25 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   removeItem: jest.fn(),
 }));
 
-jest.mock("../api", () => ({
-  api: {
-    history: {
-      feed: { upsert: jest.fn().mockResolvedValue({}) },
-      bakes: { upsert: jest.fn().mockResolvedValue({}) },
+jest.mock("../api", () => {
+  const actualApi = jest.requireActual("../api");
+  return {
+    ...actualApi,
+    api: {
+      history: {
+        feed: { upsert: jest.fn().mockResolvedValue({}) },
+        bakes: { upsert: jest.fn().mockResolvedValue({}) },
+      },
+      recipes: { upsert: jest.fn().mockResolvedValue({}) },
     },
-    recipes: { upsert: jest.fn().mockResolvedValue({}) },
-  },
-}));
+  };
+});
 
 jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Review Corrections", () => {
+describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Final Review Corrections", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -148,7 +152,35 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Review Correction
     );
   });
 
-  it("makes active session ID allocation retry-safe by persisting assigned IDs back to storage", async () => {
+  it("persists active bake missing ID as an object without converting object-shaped value to array", async () => {
+    const objectShapedBake = { recipeName: "Single Object Bake", startedAt: 1000, phases: [] };
+    let storedBakeJson: string | null = JSON.stringify(objectShapedBake);
+
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    const setItemMock = AsyncStorage.setItem as jest.Mock;
+
+    getItemMock.mockImplementation((key) => {
+      if (key === "bread_lab_bake_v2") return Promise.resolve(storedBakeJson);
+      return Promise.resolve(null);
+    });
+
+    setItemMock.mockImplementation((key, val) => {
+      if (key === "bread_lab_bake_v2") {
+        storedBakeJson = val;
+      }
+      return Promise.resolve();
+    });
+
+    await migrateLocalDataToAccount("object-bake-token");
+
+    expect(storedBakeJson).toBeDefined();
+    const parsedStored = JSON.parse(storedBakeJson!);
+    expect(Array.isArray(parsedStored)).toBe(false);
+    expect(parsedStored.id).toBeDefined();
+    expect(parsedStored.recipeName).toBe("Single Object Bake");
+  });
+
+  it("tests a genuine failed migration and retry with assigned ID persistence and ID reuse, keeping local session intact", async () => {
     const activeFeedWithoutId = { savedAt: 1234, data: { pH: "4.0" } };
     let storedFeedJson: string | null = JSON.stringify(activeFeedWithoutId);
     let storedLedgerJson: string | null = null;
@@ -172,21 +204,66 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Review Correction
       return Promise.resolve(null);
     });
 
-    // First migration attempt (assigns and persists ID)
-    await migrateLocalDataToAccount("retry-safe-token-1");
+    // Make first remote upsert fail
+    const upsertMock = api.history.feed.upsert as jest.Mock;
+    upsertMock.mockRejectedValueOnce(new Error("Network connection lost"));
 
-    const firstUpsertCall = (api.history.feed.upsert as jest.Mock).mock.calls[0][0];
-    const assignedId = firstUpsertCall.id;
-    expect(assignedId).toBeDefined();
+    // First migration attempt results in partial failure (feed failed: 1)
+    const firstResult = await migrateLocalDataToAccount("fail-retry-token");
+    expect(firstResult.feed.failed).toBe(1);
 
-    // Second migration attempt (retry) should reuse the exact same target ID via ledger and local ID
-    await migrateLocalDataToAccount("retry-safe-token-1");
-    const secondUpsertCall = (api.history.feed.upsert as jest.Mock).mock.calls[1][0];
-    expect(secondUpsertCall.id).toBe(assignedId);
+    // Verify assigned local ID was persisted in local session
+    expect(storedFeedJson).toBeDefined();
+    const parsedLocalSession = JSON.parse(storedFeedJson!);
+    expect(parsedLocalSession.id).toBeDefined();
+    const assignedLocalId = parsedLocalSession.id;
+
+    // Subsequent upsert succeeds
+    upsertMock.mockResolvedValueOnce({});
+
+    // Retry migration with same account
+    const retryResult = await migrateLocalDataToAccount("fail-retry-token");
+    expect(retryResult.feed.ok).toBe(1);
+
+    // Verify the remote target ID reused the ledger entry for the same assigned ID
+    const secondCallArg = upsertMock.mock.calls[1][0];
+    const firstCallLedgerKey = `feed:${assignedLocalId}`;
+    const ledgerParsed = JSON.parse(storedLedgerJson!);
+    expect(secondCallArg.id).toBe(ledgerParsed[firstCallLedgerKey]);
+  });
+
+  it("tests API round-trip compatibility for estimatorState and bulkCheckInHistory through bake outcome field", () => {
+    // 1. Null outcome
+    const packedNull = packBakeOutcome(null, undefined, undefined);
+    expect(packedNull).toBeNull();
+    const unpackedNull = unpackBakeOutcome(packedNull);
+    expect(unpackedNull.outcome).toBeNull();
+    expect(unpackedNull.estimatorState).toBeUndefined();
+
+    // 2. Existing outcome string
+    const packedStr = packBakeOutcome("success", undefined, undefined);
+    expect(packedStr).toBe("success");
+    const unpackedStr = unpackBakeOutcome(packedStr);
+    expect(unpackedStr.outcome).toBe("success");
+
+    // 3. Outcome with estimatorState and bulkCheckInHistory
+    const estimator = { flourG: "400", targetTemp: "76" };
+    const history = [{ checkInId: "h-1" }];
+    const packedState = packBakeOutcome("completed", estimator, history);
+    expect(packedState).toEqual({
+      outcome: "completed",
+      estimatorState: estimator,
+      bulkCheckInHistory: history,
+    });
+
+    const unpackedState = unpackBakeOutcome(packedState);
+    expect(unpackedState.outcome).toBe("completed");
+    expect(unpackedState.estimatorState).toEqual(estimator);
+    expect(unpackedState.bulkCheckInHistory).toEqual(history);
   });
 
   it("rejects malformed records or missing/invalid identity fields before migration", async () => {
-    const invalidRecipes = [{ name: "Missing ID Recipe" }]; // missing id
+    const invalidRecipes = [{ name: "Missing ID Recipe" }];
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
