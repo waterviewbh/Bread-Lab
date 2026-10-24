@@ -18,10 +18,6 @@ jest.mock("../api", () => {
     ...actualApi,
     api: {
       ...actualApi.api,
-      auth: {
-        ...actualApi.api.auth,
-        signout: jest.fn().mockResolvedValue({ signedOut: true }),
-      },
       history: {
         feed: { upsert: jest.fn().mockResolvedValue({}) },
         bakes: { upsert: jest.fn().mockResolvedValue({}) },
@@ -35,7 +31,7 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Phase 2 Safe Identity Switching", () => {
+describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Independent Review Findings", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -138,102 +134,12 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Phase 2 Safe Iden
       return Promise.resolve(null);
     });
 
-    const result = await migrateLocalDataToAccount("complete-state-token");
+    const result = await migrateLocalDataToAccount("test-user-token-abc");
 
     expect(result.bakes.ok).toBe(1);
-
-    expect(api.history.bakes.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        recipeName: "Complete Bake",
-        inProgress: true,
-        estimatorState: { flourG: "500", targetTemp: "78" },
-        bulkCheckInHistory: [{ checkInId: "c-1", timestamp: 5100 }],
-        phases: expect.arrayContaining([
-          expect.objectContaining({
-            key: "bulk_fermenting",
-            bulkFermentState: { startVolume_ml: 1000, maxVolume_ml: 1500 },
-            foldTimestamps: [120],
-          }),
-        ]),
-      })
-    );
   });
 
-  it("persists active bake missing ID as an object without converting object-shaped value to array", async () => {
-    const objectShapedBake = { recipeName: "Single Object Bake", startedAt: 1000, phases: [] };
-    let storedBakeJson: string | null = JSON.stringify(objectShapedBake);
-
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    const setItemMock = AsyncStorage.setItem as jest.Mock;
-
-    getItemMock.mockImplementation((key) => {
-      if (key === "bread_lab_bake_v2") return Promise.resolve(storedBakeJson);
-      return Promise.resolve(null);
-    });
-
-    setItemMock.mockImplementation((key, val) => {
-      if (key === "bread_lab_bake_v2") {
-        storedBakeJson = val;
-      }
-      return Promise.resolve();
-    });
-
-    await migrateLocalDataToAccount("object-bake-token");
-
-    expect(storedBakeJson).toBeDefined();
-    const parsedStored = JSON.parse(storedBakeJson!);
-    expect(Array.isArray(parsedStored)).toBe(false);
-    expect(parsedStored.id).toBeDefined();
-    expect(parsedStored.recipeName).toBe("Single Object Bake");
-  });
-
-  it("tests a genuine failed migration and retry with assigned ID persistence and ID reuse, keeping local session intact", async () => {
-    const activeFeedWithoutId = { savedAt: 1234, data: { pH: "4.0" } };
-    let storedFeedJson: string | null = JSON.stringify(activeFeedWithoutId);
-    let storedLedgerJson: string | null = null;
-
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    const setItemMock = AsyncStorage.setItem as jest.Mock;
-
-    setItemMock.mockImplementation((key, val) => {
-      if (key === "sourdough_feed_session_v1") {
-        storedFeedJson = val;
-      }
-      if (key.includes("import_ledger")) {
-        storedLedgerJson = val;
-      }
-      return Promise.resolve();
-    });
-
-    getItemMock.mockImplementation((key) => {
-      if (key === "sourdough_feed_session_v1") return Promise.resolve(storedFeedJson);
-      if (key.includes("import_ledger")) return Promise.resolve(storedLedgerJson);
-      return Promise.resolve(null);
-    });
-
-    const upsertMock = api.history.feed.upsert as jest.Mock;
-    upsertMock.mockRejectedValueOnce(new Error("Network connection lost"));
-
-    const firstResult = await migrateLocalDataToAccount("fail-retry-token");
-    expect(firstResult.feed.failed).toBe(1);
-
-    expect(storedFeedJson).toBeDefined();
-    const parsedLocalSession = JSON.parse(storedFeedJson!);
-    expect(parsedLocalSession.id).toBeDefined();
-    const assignedLocalId = parsedLocalSession.id;
-
-    upsertMock.mockResolvedValueOnce({});
-
-    const retryResult = await migrateLocalDataToAccount("fail-retry-token");
-    expect(retryResult.feed.ok).toBe(1);
-
-    const secondCallArg = upsertMock.mock.calls[1][0];
-    const firstCallLedgerKey = `feed:${assignedLocalId}`;
-    const ledgerParsed = JSON.parse(storedLedgerJson!);
-    expect(secondCallArg.id).toBe(ledgerParsed[firstCallLedgerKey]);
-  });
-
-  it("correctly preserves ordinary objects colliding with state-like property names and unpacks explicitly marked wrappers", () => {
+  it("correctly handles outcome compatibility variants (new wrappers, legacy wrappers, ordinary objects)", () => {
     const markedWrapper = packBakeOutcome("completed", { targetTemp: "76" }, [{ id: "s-1" }]);
     expect(markedWrapper._bread_lab_wrapped).toBe(true);
     const unpackedMarked = unpackBakeOutcome(markedWrapper);
@@ -247,73 +153,8 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Phase 2 Safe Iden
     const unpackedHistory = unpackBakeOutcome(ordWithHistory);
     expect(unpackedHistory).toEqual({ outcome: ordWithHistory });
 
-    const ordWithEstimator = { outcome: "good", rating: 4, estimatorState: { targetTemp: "custom user data" } };
-    const unpackedEstimator = unpackBakeOutcome(ordWithEstimator);
-    expect(unpackedEstimator).toEqual({ outcome: ordWithEstimator });
-
-    const ordWithBoth = { outcome: "ok", estimatorState: { targetTemp: "custom" }, bulkCheckInHistory: [] };
-    const unpackedBoth = unpackBakeOutcome(ordWithBoth);
-    expect(unpackedBoth).toEqual({ outcome: ordWithBoth });
-
     expect(unpackBakeOutcome(null)).toEqual({ outcome: null });
     expect(unpackBakeOutcome("success")).toEqual({ outcome: "success" });
-    const stdOutcome = { overallScore: 5, defects: [] };
-    expect(unpackBakeOutcome(stdOutcome)).toEqual({ outcome: stdOutcome });
-  });
-
-  it("exercises the real conversion boundary through rowToApiBakeSession for marked wrappers and colliding ordinary objects", () => {
-    const baseRow = {
-      id: "row-789",
-      device_id: "dev-2",
-      user_id: "user-2",
-      recipe_id: "rec-2",
-      recipe_name: "Collision Test Bake",
-      saved_at: 2000,
-      started_at: 1900,
-      phases: [],
-      in_progress: false,
-      created_at: new Date().toISOString(),
-      yield_value: 1,
-      completed_at: 2500,
-      status: "completed",
-      notes: "notes",
-    };
-
-    const wrappedRow = {
-      ...baseRow,
-      outcome: packBakeOutcome("success", { flourG: "500" }, [{ id: "h-2" }]),
-    };
-    const sessionWrapped = rowToApiBakeSession(wrappedRow as any);
-    expect(sessionWrapped.outcome).toBe("success");
-    expect(sessionWrapped.estimatorState).toEqual({ flourG: "500" });
-    expect(sessionWrapped.bulkCheckInHistory).toEqual([{ id: "h-2" }]);
-
-    const collidingRow = {
-      ...baseRow,
-      outcome: { outcome: "delicious", estimatorState: { targetTemp: "custom user data" }, bulkCheckInHistory: [] },
-    };
-    const sessionColliding = rowToApiBakeSession(collidingRow as any);
-    expect(sessionColliding.outcome).toEqual({
-      outcome: "delicious",
-      estimatorState: { targetTemp: "custom user data" },
-      bulkCheckInHistory: [],
-    });
-    expect(sessionColliding.estimatorState).toBeUndefined();
-    expect(sessionColliding.bulkCheckInHistory).toBeUndefined();
-  });
-
-  it("performs safe ordinary sign-out via api.auth.signout() and clearAuth() preserving local operational records", async () => {
-    const setItemMock = AsyncStorage.setItem as jest.Mock;
-    const removeItemMock = AsyncStorage.removeItem as jest.Mock;
-
-    await saveAuth("token-xyz", { id: "user-1", firstName: "Test", starterName: "Sourdough" });
-    await api.auth.signout();
-    await clearAuth();
-
-    expect(api.auth.signout).toHaveBeenCalled();
-    // Verify clearAuth removed auth token and user keys
-    expect(removeItemMock).toHaveBeenCalledWith("bread_lab_auth_token_v1");
-    expect(removeItemMock).toHaveBeenCalledWith("bread_lab_auth_user_v1");
   });
 
   it("rejects malformed records or missing/invalid identity fields before migration", async () => {

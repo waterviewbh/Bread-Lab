@@ -461,7 +461,12 @@ export const api = {
     upsert: async (body: any): Promise<ApiRecipe> => {
       if (!supabase) throw new Error("Supabase not configured");
       const { data: { session } } = await supabase.auth.getSession();
-      const resolvedUserId = session?.user?.id ?? body.userId ?? null;
+      const sessionUserId = session?.user?.id ?? null;
+      const targetUserId = body.userId ?? null;
+      if (sessionUserId && targetUserId && sessionUserId !== targetUserId) {
+        throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match target user (${targetUserId}).`);
+      }
+      const resolvedUserId = sessionUserId ?? targetUserId ?? null;
       const { data, error } = await supabase.from("recipes").upsert({
         id: body.id, device_id: body.deviceId, user_id: resolvedUserId, name: body.name,
         overview: body.overview ?? null, yield_value: body.yield_value,
@@ -555,8 +560,15 @@ export const api = {
 
       upsert: async (body: any): Promise<ApiFeedSession> => {
         if (!supabase) throw new Error("Supabase not configured");
+        const { data: { session } } = await supabase.auth.getSession();
+        const sessionUserId = session?.user?.id ?? null;
+        const targetUserId = body.userId ?? null;
+        if (sessionUserId && targetUserId && sessionUserId !== targetUserId) {
+          throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match target user (${targetUserId}).`);
+        }
+        const resolvedUserId = sessionUserId ?? targetUserId ?? null;
         const { data, error } = await supabase.from("feed_sessions").upsert({
-          id: body.id, device_id: body.deviceId, user_id: body.userId ?? null, saved_at: body.savedAt,
+          id: body.id, device_id: body.deviceId, user_id: resolvedUserId, saved_at: body.savedAt,
           started_at: body.startedAt ?? null, updated_at: body.updatedAt ?? Date.now(),
           in_progress: body.inProgress ?? false, data: body.data,
         }).select().returns<FeedSessionRow[]>().single();
@@ -609,12 +621,17 @@ export const api = {
       upsert: async (body: any): Promise<ApiBakeSession> => {
         if (!supabase) throw new Error("Supabase not configured");
         const { data: { session } } = await supabase.auth.getSession();
-        if (body.userId && !session) throw new Error("No active Supabase session");
+        const sessionUserId = session?.user?.id ?? null;
+        const targetUserId = body.userId ?? null;
+        if (sessionUserId && targetUserId && sessionUserId !== targetUserId) {
+          throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match target user (${targetUserId}).`);
+        }
+        const resolvedUserId = sessionUserId ?? targetUserId ?? null;
 
         const storedOutcome = packBakeOutcome(body.outcome, body.estimatorState, body.bulkCheckInHistory);
 
         const { data, error } = await supabase.from("bake_sessions").upsert({
-          id: body.id, device_id: body.deviceId, user_id: body.userId ?? null, recipe_id: body.recipeId ?? null,
+          id: body.id, device_id: body.deviceId, user_id: resolvedUserId, recipe_id: body.recipeId ?? null,
           recipe_name: body.recipeName, yield_value: body.yield_value, saved_at: body.savedAt,
           started_at: body.startedAt, completed_at: body.completedAt ?? null, status: body.status ?? null,
           outcome: storedOutcome, notes: body.notes ?? null,
