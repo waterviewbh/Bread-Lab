@@ -4,7 +4,9 @@ import { api } from "./api";
 import { getDeviceId } from "./deviceId";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
+const ACTIVE_FEED_KEY = "sourdough_feed_session_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
+const ACTIVE_BAKE_KEY = "bread_lab_bake_v2";
 const RECIPES_KEY = "bread_lab_recipes_v1";
 
 export const MIGRATION_PENDING_KEY = "bread_lab_migration_pending_v1";
@@ -45,15 +47,67 @@ interface LocalRecipe {
   [key: string]: unknown;
 }
 
-async function readLocalArray<T>(key: string): Promise<T[]> {
+async function readLocalArrayOrThrow<T>(key: string): Promise<T[]> {
+  let raw: string | null;
   try {
-    const raw = await AsyncStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
-    return [];
+    raw = await AsyncStorage.getItem(key);
+  } catch (error) {
+    throw new Error(`Storage read error for key ${key}: ${error instanceof Error ? error.message : String(error)}`);
   }
+  if (raw === null || raw === undefined) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Malformed JSON for key ${key}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Invalid top-level data shape for key ${key}: expected array, got ${typeof parsed}`);
+  }
+  return parsed as T[];
+}
+
+async function readActiveBakesOrThrow(key: string): Promise<LocalBakeSession[]> {
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(key);
+  } catch (error) {
+    throw new Error(`Storage read error for key ${key}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (raw === null || raw === undefined) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Malformed JSON for key ${key}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (Array.isArray(parsed)) {
+    return parsed as LocalBakeSession[];
+  } else if (parsed !== null && typeof parsed === "object") {
+    return [parsed as LocalBakeSession];
+  } else {
+    throw new Error(`Invalid top-level data shape for key ${key}: expected array or object`);
+  }
+}
+
+async function readLocalObjectOrThrow<T>(key: string): Promise<T | null> {
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(key);
+  } catch (error) {
+    throw new Error(`Storage read error for key ${key}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (raw === null || raw === undefined) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Malformed JSON for key ${key}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid top-level data shape for key ${key}: expected object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`);
+  }
+  return parsed as T;
 }
 
 function generateSecureUUID(): string {
@@ -90,19 +144,42 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   let deviceId: string;
   try {
     deviceId = await getDeviceId();
-  } catch {
-    return { feed: empty, bakes: empty, recipes: empty };
+    if (!deviceId || typeof deviceId !== "string") {
+      throw new Error("Invalid device ID retrieved");
+    }
+  } catch (error) {
+    throw new Error(`Failed to retrieve device ID: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const [feedSessions, bakeSessions, recipes] = await Promise.all([
-    readLocalArray<LocalFeedSession>(HISTORY_KEY),
-    readLocalArray<LocalBakeSession>(BAKE_HISTORY_KEY),
-    readLocalArray<LocalRecipe>(RECIPES_KEY),
+  const [recipes, bakeHistory, activeBakes, feedHistory, activeFeed] = await Promise.all([
+    readLocalArrayOrThrow<LocalRecipe>(RECIPES_KEY),
+    readLocalArrayOrThrow<LocalBakeSession>(BAKE_HISTORY_KEY),
+    readActiveBakesOrThrow(ACTIVE_BAKE_KEY),
+    readLocalArrayOrThrow<LocalFeedSession>(HISTORY_KEY),
+    readLocalObjectOrThrow<LocalFeedSession>(ACTIVE_FEED_KEY),
   ]);
 
   const ledgerKey = LEDGER_KEY(token);
-  const ledgerRaw = await AsyncStorage.getItem(ledgerKey);
-  const ledger: Record<string, string> = ledgerRaw ? JSON.parse(ledgerRaw) : {};
+  let ledgerRaw: string | null;
+  try {
+    ledgerRaw = await AsyncStorage.getItem(ledgerKey);
+  } catch (error) {
+    throw new Error(`Storage read error for migration ledger: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  let ledger: Record<string, string> = {};
+  if (ledgerRaw !== null && ledgerRaw !== undefined) {
+    let parsedLedger: unknown;
+    try {
+      parsedLedger = JSON.parse(ledgerRaw);
+    } catch (error) {
+      throw new Error(`Malformed JSON for migration ledger: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (parsedLedger === null || typeof parsedLedger !== "object" || Array.isArray(parsedLedger)) {
+      throw new Error(`Invalid migration ledger shape: expected object, got ${Array.isArray(parsedLedger) ? 'array' : typeof parsedLedger}`);
+    }
+    ledger = parsedLedger as Record<string, string>;
+  }
 
   // -------------------------------------------------------------
   // PASS 1: Allocate & Persist Target UUIDs for ALL Records (Typed Keys)
@@ -117,7 +194,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
-  for (const bake of bakeSessions) {
+  for (const bake of bakeHistory) {
     const key = `bake:${bake.id}`;
     if (!ledger[key]) {
       ledger[key] = generateSecureUUID();
@@ -125,7 +202,16 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
-  for (const feed of feedSessions) {
+  for (const bake of activeBakes) {
+    if (!bake.id) bake.id = generateSecureUUID();
+    const key = `bake:${bake.id}`;
+    if (!ledger[key]) {
+      ledger[key] = generateSecureUUID();
+    }
+    typeMapping.set(key, ledger[key]);
+  }
+
+  for (const feed of feedHistory) {
     const key = `feed:${feed.id}`;
     if (!ledger[key]) {
       ledger[key] = generateSecureUUID();
@@ -133,8 +219,21 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
+  if (activeFeed) {
+    if (!activeFeed.id) activeFeed.id = generateSecureUUID();
+    const key = `feed:${activeFeed.id}`;
+    if (!ledger[key]) {
+      ledger[key] = generateSecureUUID();
+    }
+    typeMapping.set(key, ledger[key]);
+  }
+
   // Durably persist Pass 1 ledger state before uploading
-  await AsyncStorage.setItem(ledgerKey, JSON.stringify(ledger));
+  try {
+    await AsyncStorage.setItem(ledgerKey, JSON.stringify(ledger));
+  } catch (error) {
+    throw new Error(`Failed to persist migration ledger: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   // -------------------------------------------------------------
   // PASS 2: Remap Relationships & Upload in Dependency Order
@@ -175,10 +274,15 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     }
   }
 
-  // 2. Upload Bake Sessions
+  // 2. Upload Bake Sessions (History & Active)
   let bakesOk = 0;
   let bakesFailed = 0;
-  for (const b of bakeSessions) {
+  const allBakes = [
+    ...bakeHistory.map(b => ({ ...b, inProgress: false })),
+    ...activeBakes.map(b => ({ ...b, inProgress: true }))
+  ];
+
+  for (const b of allBakes) {
     const key = `bake:${b.id}`;
     const targetId = ledger[key];
 
@@ -194,14 +298,15 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         deviceId,
         userId: token,
         recipeId: remappedRecipeId,
-        recipeName: b.recipeName,
+        recipeName: b.recipeName || "Bake",
         yield_value: safeYield,
-        savedAt: b.savedAt,
-        startedAt: b.startedAt,
+        savedAt: b.savedAt || Date.now(),
+        startedAt: b.startedAt || Date.now(),
         completedAt: (b as any).completedAt || null,
         status: (b as any).status || null,
         outcome: b.outcome || null,
         notes: b.notes || null,
+        inProgress: b.inProgress,
         phases: (b.phases || []).map((p: any) => ({
           key: p.key,
           name: p.name,
@@ -221,21 +326,47 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     }
   }
 
-  // 3. Upload Feed Sessions
+  // 3. Upload Feed Sessions (History & Active)
   let feedOk = 0;
   let feedFailed = 0;
-  for (const s of feedSessions) {
+
+  for (const s of feedHistory) {
     const key = `feed:${s.id}`;
     const targetId = ledger[key];
 
     try {
+      const { inProgress: _, ...feedData } = s as any;
       await api.history.feed.upsert({
         id: targetId,
         deviceId,
         userId: token,
-        savedAt: s.savedAt,
-        startedAt: null,
-        data: s as Record<string, unknown>,
+        savedAt: s.savedAt || Date.now(),
+        startedAt: (s as any).startedAt ?? null,
+        updatedAt: (s as any).updatedAt ?? null,
+        inProgress: false,
+        data: feedData,
+      });
+      feedOk++;
+    } catch {
+      feedFailed++;
+    }
+  }
+
+  if (activeFeed) {
+    const key = `feed:${activeFeed.id}`;
+    const targetId = ledger[key];
+
+    try {
+      const { inProgress: _, ...feedData } = activeFeed as any;
+      await api.history.feed.upsert({
+        id: targetId,
+        deviceId,
+        userId: token,
+        savedAt: activeFeed.savedAt || Date.now(),
+        startedAt: (activeFeed as any).startedAt ?? null,
+        updatedAt: (activeFeed as any).updatedAt ?? null,
+        inProgress: true,
+        data: feedData,
       });
       feedOk++;
     } catch {
