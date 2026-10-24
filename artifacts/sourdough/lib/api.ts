@@ -234,6 +234,7 @@ function rowToApiFeedSession(r: FeedSessionRow): ApiFeedSession {
 export function packBakeOutcome(outcome: any, estimatorState: any, bulkCheckInHistory: any): any {
   if (estimatorState !== undefined || bulkCheckInHistory !== undefined) {
     return {
+      _bread_lab_wrapped: true,
       outcome: outcome !== undefined ? outcome : null,
       estimatorState,
       bulkCheckInHistory,
@@ -243,20 +244,30 @@ export function packBakeOutcome(outcome: any, estimatorState: any, bulkCheckInHi
 }
 
 export function unpackBakeOutcome(storedOutcome: any): { outcome: any; estimatorState?: any; bulkCheckInHistory?: any[] } {
-  const isWrapped = storedOutcome && typeof storedOutcome === 'object' && !Array.isArray(storedOutcome) && ('estimatorState' in storedOutcome || 'bulkCheckInHistory' in storedOutcome || 'outcome' in storedOutcome);
-  if (isWrapped) {
-    return {
-      outcome: storedOutcome.outcome !== undefined ? storedOutcome.outcome : null,
-      estimatorState: storedOutcome.estimatorState,
-      bulkCheckInHistory: storedOutcome.bulkCheckInHistory,
-    };
+  if (storedOutcome && typeof storedOutcome === 'object' && !Array.isArray(storedOutcome)) {
+    if (storedOutcome._bread_lab_wrapped === true) {
+      return {
+        outcome: storedOutcome.outcome !== undefined ? storedOutcome.outcome : null,
+        estimatorState: storedOutcome.estimatorState,
+        bulkCheckInHistory: storedOutcome.bulkCheckInHistory,
+      };
+    }
+    // Backward compatibility for legacy wrapped records without _bread_lab_wrapped marker
+    if ('estimatorState' in storedOutcome || 'bulkCheckInHistory' in storedOutcome) {
+      return {
+        outcome: storedOutcome.outcome !== undefined ? storedOutcome.outcome : null,
+        estimatorState: storedOutcome.estimatorState,
+        bulkCheckInHistory: storedOutcome.bulkCheckInHistory,
+      };
+    }
   }
+  // Ordinary outcome objects (even if they contain an 'outcome' property), strings, nulls, etc.
   return {
     outcome: storedOutcome !== undefined ? storedOutcome : null,
   };
 }
 
-function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
+export function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
   const unpacked = unpackBakeOutcome(r.outcome);
   return {
     id: r.id,
