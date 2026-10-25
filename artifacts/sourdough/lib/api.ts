@@ -326,6 +326,32 @@ function ownerFilter(
   return undefined;
 }
 
+async function resolveAndVerifyOwner(bodyUserId?: string | null): Promise<string | null> {
+  if (!supabase) throw new Error("Supabase not configured");
+  let session: any = null;
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    session = data?.session ?? null;
+  } catch (err) {
+    throw new Error(`Failed to retrieve active authentication session: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const sessionUserId = session?.user?.id ?? null;
+  const targetUserId = bodyUserId ?? null;
+
+  if (targetUserId) {
+    if (!sessionUserId) {
+      throw new Error("Authentication required: operation specifies a target user ID but no active session exists.");
+    }
+    if (sessionUserId !== targetUserId) {
+      throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match target user (${targetUserId}).`);
+    }
+  }
+
+  return sessionUserId ?? targetUserId ?? null;
+}
+
 export const api = {
   auth: {
     getSession: () => supabase?.auth.getSession(),
@@ -459,15 +485,8 @@ export const api = {
     },
 
     upsert: async (body: any): Promise<ApiRecipe> => {
-      if (!supabase) throw new Error("Supabase not configured");
-      const { data: { session } } = await supabase.auth.getSession();
-      const sessionUserId = session?.user?.id ?? null;
-      const targetUserId = body.userId ?? null;
-      if (sessionUserId && targetUserId && sessionUserId !== targetUserId) {
-        throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match target user (${targetUserId}).`);
-      }
-      const resolvedUserId = sessionUserId ?? targetUserId ?? null;
-      const { data, error } = await supabase.from("recipes").upsert({
+      const resolvedUserId = await resolveAndVerifyOwner(body.userId);
+      const { data, error } = await supabase!.from("recipes").upsert({
         id: body.id, device_id: body.deviceId, user_id: resolvedUserId, name: body.name,
         overview: body.overview ?? null, yield_value: body.yield_value,
         phases: flattenPhasesForLegacy(body.phases), recipe_data: body,
@@ -559,15 +578,8 @@ export const api = {
       },
 
       upsert: async (body: any): Promise<ApiFeedSession> => {
-        if (!supabase) throw new Error("Supabase not configured");
-        const { data: { session } } = await supabase.auth.getSession();
-        const sessionUserId = session?.user?.id ?? null;
-        const targetUserId = body.userId ?? null;
-        if (sessionUserId && targetUserId && sessionUserId !== targetUserId) {
-          throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match target user (${targetUserId}).`);
-        }
-        const resolvedUserId = sessionUserId ?? targetUserId ?? null;
-        const { data, error } = await supabase.from("feed_sessions").upsert({
+        const resolvedUserId = await resolveAndVerifyOwner(body.userId);
+        const { data, error } = await supabase!.from("feed_sessions").upsert({
           id: body.id, device_id: body.deviceId, user_id: resolvedUserId, saved_at: body.savedAt,
           started_at: body.startedAt ?? null, updated_at: body.updatedAt ?? Date.now(),
           in_progress: body.inProgress ?? false, data: body.data,
@@ -619,18 +631,11 @@ export const api = {
       },
 
       upsert: async (body: any): Promise<ApiBakeSession> => {
-        if (!supabase) throw new Error("Supabase not configured");
-        const { data: { session } } = await supabase.auth.getSession();
-        const sessionUserId = session?.user?.id ?? null;
-        const targetUserId = body.userId ?? null;
-        if (sessionUserId && targetUserId && sessionUserId !== targetUserId) {
-          throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match target user (${targetUserId}).`);
-        }
-        const resolvedUserId = sessionUserId ?? targetUserId ?? null;
+        const resolvedUserId = await resolveAndVerifyOwner(body.userId);
 
         const storedOutcome = packBakeOutcome(body.outcome, body.estimatorState, body.bulkCheckInHistory);
 
-        const { data, error } = await supabase.from("bake_sessions").upsert({
+        const { data, error } = await supabase!.from("bake_sessions").upsert({
           id: body.id, device_id: body.deviceId, user_id: resolvedUserId, recipe_id: body.recipeId ?? null,
           recipe_name: body.recipeName, yield_value: body.yield_value, saved_at: body.savedAt,
           started_at: body.startedAt, completed_at: body.completedAt ?? null, status: body.status ?? null,

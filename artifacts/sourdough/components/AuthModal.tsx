@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { saveAuth, getStoredToken, clearAuth, type AuthUser } from "@/lib/auth";
+import { clearAllAppData } from "@/lib/storageUtils";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
@@ -61,9 +62,18 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     }
     setLoading(true);
     try {
-      // 1. If an account (Account A) is already authenticated, switch securely
-      const currentToken = await getStoredToken();
+      // 1. Verify active Supabase session (Account A)
+      let sessionResponse: any = null;
+      try {
+        sessionResponse = await api.auth.getSession();
+      } catch {
+        sessionResponse = null;
+      }
+      const activeSession = sessionResponse?.data?.session ?? null;
+      const currentToken = activeSession?.user?.id ?? await getStoredToken();
+
       if (currentToken) {
+        // Switching from A to B: preserve A's local records under A first
         startMigration();
         const preMigrationResult = await migrateLocalDataToAccount(currentToken);
         finishMigration(preMigrationResult);
@@ -73,8 +83,13 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           throw new Error("Local data preservation under current account failed. Switch aborted to protect your data.");
         }
 
-        await api.auth.signout();
+        const signoutRes = await api.auth.signout();
+        if (!signoutRes.signedOut) {
+          throw new Error("Failed to sign out of previous account.");
+        }
         await clearAuth();
+        // Clear local operational working state so A's data is never uploaded to B
+        await clearAllAppData();
       }
 
       // 2. Authenticate Account B (destination account)
@@ -88,11 +103,19 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       reset();
       onClose();
 
-      // 3. Migrate local data to Account B
-      await setMigrationPending();
-      startMigration();
-      const migrationResult = await migrateLocalDataToAccount(result.token);
-      finishMigration(migrationResult);
+      // 3. If switching from A to B, do NOT migrate A's local dataset into B.
+      // If no account A was authenticated (anonymous local data), migrate to B and check failure counts.
+      if (!currentToken) {
+        await setMigrationPending();
+        startMigration();
+        const migrationResult = await migrateLocalDataToAccount(result.token);
+        finishMigration(migrationResult);
+
+        const destFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
+        if (destFailed > 0) {
+          throw new Error(`Destination migration completed with ${destFailed} sync failure(s). Please retry sync.`);
+        }
+      }
 
       await getDeviceId()
         .then(async (deviceId) => {
@@ -113,25 +136,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
       let userFriendlyTitle = "Switch Failed";
       let userFriendlyMessage = errMessage;
-
-      if (errMessage.includes("preservation failed") || errMessage.includes("Local data preservation")) {
-        userFriendlyTitle = "Migration Blocked";
-        userFriendlyMessage = errMessage;
-      } else if (errMessage.includes("recovery failed") || errMessage.includes("User already registered") || errMessage.includes("already registered")) {
-        userFriendlyTitle = "Account Conflict";
-        userFriendlyMessage = "This starter name is registered, but the recovery key didn't match. Double-check your spelling or capitalization.";
-      } else if (errMessage.includes("Email address") && errMessage.includes("invalid")) {
-        userFriendlyTitle = "Invalid Input";
-        userFriendlyMessage = "Please enter valid first and starter names.";
-      } else if (errMessage.includes("invalid login") || errMessage.includes("invalid credentials")) {
-        userFriendlyTitle = "Incorrect Key";
-        userFriendlyMessage = "This starter name is registered, but the recovery key didn't match. Double-check your spelling or capitalization.";
-      } else if (errMessage.includes("network") || errMessage.includes("fetch") || errMessage.includes("connection")) {
-        userFriendlyTitle = "Connection Error";
-        userFriendlyMessage = "Unable to reach the cloud. Please check your internet connection and try again.";
-      } else if (__DEV__) {
-        userFriendlyMessage = `Error: ${errMessage}`;
-      }
 
       if (Platform.OS === 'web') {
         window.alert(`${userFriendlyTitle}: ${userFriendlyMessage}`);
@@ -444,14 +448,10 @@ const s = StyleSheet.create({
   field: {
     gap: 6,
   },
-  dataPreservationency: {
-    // metadata or marker
-  },
   label: {
     fontSize: 14,
-    net_session: true,
     fontWeight: "600",
-  } as any,
+  },
   input: {
     height: 48,
     borderWidth: 1,
