@@ -62,14 +62,14 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     }
     setLoading(true);
     try {
-      // 1. Verify active Supabase session (Account A) and check consistency with stored identity
-      let sessionResponse: any = null;
+      // 1. Verify active Supabase session (Account A) — fail closed on lookup errors
+      let activeSession: any = null;
       try {
-        sessionResponse = await api.auth.getSession();
-      } catch {
-        sessionResponse = null;
+        const sessionResponse = await api.auth.getSession();
+        activeSession = sessionResponse?.data?.session ?? null;
+      } catch (err) {
+        throw new Error(`Supabase session lookup failed: ${err instanceof Error ? err.message : String(err)}`);
       }
-      const activeSession = sessionResponse?.data?.session ?? null;
       const sessionUserId = activeSession?.user?.id ?? null;
       const storedToken = await getStoredToken();
 
@@ -158,13 +158,14 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
   const handleClearIdentity = async () => {
     const performClear = async () => {
       try {
-        let sessionResponse: any = null;
+        let activeSession: any = null;
         try {
-          sessionResponse = await api.auth.getSession();
-        } catch {
-          sessionResponse = null;
+          const sessionResponse = await api.auth.getSession();
+          activeSession = sessionResponse?.data?.session ?? null;
+        } catch (err) {
+          throw new Error(`Supabase session lookup failed: ${err instanceof Error ? err.message : String(err)}`);
         }
-        const sessionUserId = sessionResponse?.data?.session?.user?.id ?? null;
+        const sessionUserId = activeSession?.user?.id ?? null;
         const currentToken = sessionUserId ?? await getStoredToken();
 
         if (currentToken) {
@@ -398,7 +399,7 @@ const s = StyleSheet.create({
   avatar: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: radius.lg,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 14,

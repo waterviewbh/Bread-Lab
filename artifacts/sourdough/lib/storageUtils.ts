@@ -60,17 +60,22 @@ export async function clearAllAppData(): Promise<void> {
     throw new Error(`Failed to clear local app data: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  // Verification pass: ensure operational keys are actually absent
-  const operationalKeysToCheck = [
+  // Verification pass: ensure all operational, deleted-tracking, and migration keys are absent
+  const keysToVerify = [
     APP_STORAGE_KEYS.RECIPES,
+    APP_STORAGE_KEYS.DELETED_RECIPE_IDS,
     APP_STORAGE_KEYS.ACTIVE_BAKE,
     APP_STORAGE_KEYS.BAKE_HISTORY,
+    APP_STORAGE_KEYS.DELETED_BAKE_IDS,
     APP_STORAGE_KEYS.ACTIVE_FEED,
     APP_STORAGE_KEYS.FEED_HISTORY,
+    APP_STORAGE_KEYS.DELETED_FEED_IDS,
+    APP_STORAGE_KEYS.MIGRATION_PENDING,
   ];
 
-  for (const key of operationalKeysToCheck) {
-    const val = await AsyncStorage.getItem(key).catch(() => null);
+  for (const key of keysToVerify) {
+    // Do not catch getItem errors — fail closed on verification read failures
+    const val = await AsyncStorage.getItem(key);
     if (val !== null && val !== undefined) {
       throw new Error(`Storage wipe verification failed: key ${key} remains present after clearing.`);
     }
