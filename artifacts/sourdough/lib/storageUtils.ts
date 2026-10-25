@@ -57,6 +57,23 @@ export async function clearAllAppData(): Promise<void> {
     await AsyncStorage.multiRemove(allKeys);
   } catch (error) {
     console.error("[StorageUtils] Failed to clear all app data", error);
+    throw new Error(`Failed to clear local app data: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // Verification pass: ensure operational keys are actually absent
+  const operationalKeysToCheck = [
+    APP_STORAGE_KEYS.RECIPES,
+    APP_STORAGE_KEYS.ACTIVE_BAKE,
+    APP_STORAGE_KEYS.BAKE_HISTORY,
+    APP_STORAGE_KEYS.ACTIVE_FEED,
+    APP_STORAGE_KEYS.FEED_HISTORY,
+  ];
+
+  for (const key of operationalKeysToCheck) {
+    const val = await AsyncStorage.getItem(key).catch(() => null);
+    if (val !== null && val !== undefined) {
+      throw new Error(`Storage wipe verification failed: key ${key} remains present after clearing.`);
+    }
   }
 }
 

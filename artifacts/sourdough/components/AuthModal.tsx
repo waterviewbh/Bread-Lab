@@ -62,7 +62,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     }
     setLoading(true);
     try {
-      // 1. Verify active Supabase session (Account A)
+      // 1. Verify active Supabase session (Account A) and check consistency with stored identity
       let sessionResponse: any = null;
       try {
         sessionResponse = await api.auth.getSession();
@@ -70,10 +70,17 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         sessionResponse = null;
       }
       const activeSession = sessionResponse?.data?.session ?? null;
-      const currentToken = activeSession?.user?.id ?? await getStoredToken();
+      const sessionUserId = activeSession?.user?.id ?? null;
+      const storedToken = await getStoredToken();
+
+      if (sessionUserId && storedToken && sessionUserId !== storedToken) {
+        throw new Error("Identity consistency conflict: stored local user ID does not match active Supabase session.");
+      }
+
+      const currentToken = sessionUserId ?? storedToken;
 
       if (currentToken) {
-        // Switching from A to B: preserve A's local records under A first
+        // 2. Pre-sync local pending records to Account A before sign-out
         startMigration();
         const preMigrationResult = await migrateLocalDataToAccount(currentToken);
         finishMigration(preMigrationResult);
@@ -83,16 +90,18 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           throw new Error("Local data preservation under current account failed. Switch aborted to protect your data.");
         }
 
+        // 3. Sign-out must succeed before workflow proceeds
         const signoutRes = await api.auth.signout();
         if (!signoutRes.signedOut) {
           throw new Error("Failed to sign out of previous account.");
         }
         await clearAuth();
-        // Clear local operational working state so A's data is never uploaded to B
+
+        // 4. Clear and verify local operational records wipe before Account B data loading
         await clearAllAppData();
       }
 
-      // 2. Authenticate Account B (destination account)
+      // 5. Authenticate Account B (destination account)
       const result = await api.auth.identify({
         firstName: firstName.trim(),
         starterName: starterName.trim(),
@@ -103,8 +112,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       reset();
       onClose();
 
-      // 3. If switching from A to B, do NOT migrate A's local dataset into B.
-      // If no account A was authenticated (anonymous local data), migrate to B and check failure counts.
+      // 6. If switching from unauthenticated state (anonymous local data), migrate to B and validate destination results explicitly.
       if (!currentToken) {
         await setMigrationPending();
         startMigration();
@@ -150,7 +158,15 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
   const handleClearIdentity = async () => {
     const performClear = async () => {
       try {
-        const currentToken = await getStoredToken();
+        let sessionResponse: any = null;
+        try {
+          sessionResponse = await api.auth.getSession();
+        } catch {
+          sessionResponse = null;
+        }
+        const sessionUserId = sessionResponse?.data?.session?.user?.id ?? null;
+        const currentToken = sessionUserId ?? await getStoredToken();
+
         if (currentToken) {
           const migrationResult = await migrateLocalDataToAccount(currentToken);
           const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
@@ -159,7 +175,10 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           }
         }
 
-        await api.auth.signout();
+        const signoutRes = await api.auth.signout();
+        if (!signoutRes.signedOut) {
+          throw new Error("Failed to sign out from cloud session.");
+        }
         await clearAuth();
         onAuthChange(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
