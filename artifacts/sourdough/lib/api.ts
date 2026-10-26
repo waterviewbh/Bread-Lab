@@ -320,9 +320,14 @@ function ownerFilter(
   deviceId: string | undefined,
   userId: string | undefined
 ): string | undefined {
-  if (deviceId && userId) return `device_id.eq.${deviceId},user_id.eq.${userId}`;
-  if (userId) return `user_id.eq.${userId}`;
-  if (deviceId) return `device_id.eq.${deviceId}`;
+  if (userId) {
+    // Authenticated reads are scoped strictly to the authenticated user.
+    // Device ID fallback is disabled for authenticated users to prevent cross-account contamination on shared devices.
+    return `user_id.eq.${userId}`;
+  }
+  if (deviceId) {
+    return `device_id.eq.${deviceId}`;
+  }
   return undefined;
 }
 

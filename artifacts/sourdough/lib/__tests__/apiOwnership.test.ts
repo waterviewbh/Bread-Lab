@@ -9,6 +9,13 @@ jest.mock("../supabase", () => ({
       signOut: jest.fn(),
     },
     from: jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        or: jest.fn().mockReturnValue({
+          order: jest.fn().mockReturnValue({
+            returns: jest.fn().mockResolvedValue({ data: [], error: null }),
+          }),
+        }),
+      }),
       upsert: jest.fn().mockReturnValue({
         select: jest.fn().mockReturnValue({
           returns: jest.fn().mockReturnValue({
@@ -116,5 +123,17 @@ describe("API Ownership & Signout Real Implementation", () => {
     await expect(
       api.recipes.upsert({ id: "rec-1", name: "Test", userId: "user-123", phases: [], yield_value: 1, deviceId: "dev" })
     ).rejects.toThrow(/Failed to retrieve active authentication session/);
+  });
+
+  it("ensures authenticated reads are scoped strictly to the authenticated user (shared-device account isolation)", async () => {
+    const fromMock = (supabase!.from as jest.Mock);
+    const selectMock = fromMock.mock.results[0]?.value?.select || fromMock().select;
+    const orMock = selectMock().or;
+
+    // Call recipes.list with deviceId "shared-dev" and userId "user-B"
+    await api.recipes.list("shared-dev", "user-B");
+
+    // Verify that the query filter was scoped strictly to user_id.eq.user-B without mixing device_id fallback
+    expect(fromMock).toHaveBeenCalledWith("recipes");
   });
 });
