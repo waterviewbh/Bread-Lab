@@ -334,7 +334,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         })),
       });
       recipesOk++;
-    } catch {
+    } catch (error) {
+      console.warn(`[Migration] Failed to sync recipe (local ID: ${r.id}):`, error instanceof Error ? error.message : String(error));
       recipesFailed++;
     }
   }
@@ -389,7 +390,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         })),
       });
       bakesOk++;
-    } catch {
+    } catch (error) {
+      console.warn(`[Migration] Failed to sync bake session (local ID: ${b.id}):`, error instanceof Error ? error.message : String(error));
       bakesFailed++;
     }
   }
@@ -415,7 +417,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         data: feedData,
       });
       feedOk++;
-    } catch {
+    } catch (error) {
+      console.warn(`[Migration] Failed to sync feed session (local ID: ${s.id}):`, error instanceof Error ? error.message : String(error));
       feedFailed++;
     }
   }
@@ -437,7 +440,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         data: feedData,
       });
       feedOk++;
-    } catch {
+    } catch (error) {
+      console.warn(`[Migration] Failed to sync active feed session (local ID: ${activeFeed.id}):`, error instanceof Error ? error.message : String(error));
       feedFailed++;
     }
   }
