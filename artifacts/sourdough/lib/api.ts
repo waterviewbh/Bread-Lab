@@ -504,6 +504,7 @@ export const api = {
     },
 
     duplicate: async (id: string, newName: string, deviceId: string, userId?: string, makeIndependent?: boolean): Promise<ApiRecipe> => {
+      const resolvedUserId = await resolveAndVerifyOwner(userId);
       if (!supabase) throw new Error("Supabase not configured");
 
       const { data: source, error: fetchError } = await supabase
@@ -514,6 +515,10 @@ export const api = {
 
       if (fetchError || !source) {
         throw fetchError || new Error("Source recipe not found");
+      }
+
+      if (source.user_id && resolvedUserId && source.user_id !== resolvedUserId) {
+        throw new Error("Unauthorized: cannot duplicate a recipe owned by another user.");
       }
 
       const newId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);

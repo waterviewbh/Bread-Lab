@@ -15,6 +15,29 @@ jest.mock("../supabase", () => ({
             returns: jest.fn().mockResolvedValue({ data: [], error: null }),
           }),
         }),
+        eq: jest.fn().mockReturnValue({
+          single: jest.fn().mockResolvedValue({
+            data: {
+              id: "res-1",
+              device_id: "dev-1",
+              user_id: "user-1",
+              name: "Test",
+              phases: [],
+              created_at: new Date().toISOString(),
+              yield_value: 1,
+              recipe_data: {},
+              is_archived: false,
+              saved_at: 1,
+              started_at: 1,
+              in_progress: false,
+              completed_at: null,
+              status: null,
+              outcome: null,
+              notes: null,
+            },
+            error: null,
+          }),
+        }),
       }),
       upsert: jest.fn().mockReturnValue({
         select: jest.fn().mockReturnValue({
@@ -125,15 +148,33 @@ describe("API Ownership & Signout Real Implementation", () => {
     ).rejects.toThrow(/Failed to retrieve active authentication session/);
   });
 
+  it("refuses recipe duplication when source recipe belongs to another user", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-B" } } },
+      error: null,
+    });
+
+    const fromMock = (supabase!.from as jest.Mock);
+    fromMock.mockReturnValueOnce({
+      select: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          single: jest.fn().mockResolvedValue({
+            data: { id: "rec-A", user_id: "user-A", name: "User A Recipe", phases: [] },
+            error: null,
+          }),
+        }),
+      }),
+    });
+
+    await expect(
+      api.recipes.duplicate("rec-A", "Copy", "dev-1", "user-B")
+    ).rejects.toThrow(/Unauthorized: cannot duplicate a recipe owned by another user/);
+  });
+
   it("ensures authenticated reads are scoped strictly to the authenticated user (shared-device account isolation)", async () => {
     const fromMock = (supabase!.from as jest.Mock);
-    const selectMock = fromMock.mock.results[0]?.value?.select || fromMock().select;
-    const orMock = selectMock().or;
-
-    // Call recipes.list with deviceId "shared-dev" and userId "user-B"
     await api.recipes.list("shared-dev", "user-B");
-
-    // Verify that the query filter was scoped strictly to user_id.eq.user-B without mixing device_id fallback
     expect(fromMock).toHaveBeenCalledWith("recipes");
   });
 });
