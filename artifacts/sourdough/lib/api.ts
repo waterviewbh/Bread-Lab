@@ -491,6 +491,16 @@ export const api = {
 
     upsert: async (body: any): Promise<ApiRecipe> => {
       const resolvedUserId = await resolveAndVerifyOwner(body.userId);
+
+      const rawCreatedAt = body.createdAt ?? body.created_at;
+      let formattedCreatedAt: string | undefined = undefined;
+      if (rawCreatedAt !== undefined && rawCreatedAt !== null) {
+        const parsedMs = typeof rawCreatedAt === "number" ? rawCreatedAt : new Date(rawCreatedAt).getTime();
+        if (!isNaN(parsedMs) && parsedMs > 0) {
+          formattedCreatedAt = new Date(parsedMs).toISOString();
+        }
+      }
+
       const { data, error } = await supabase!.from("recipes").upsert({
         id: body.id, device_id: body.deviceId, user_id: resolvedUserId, name: body.name,
         overview: body.overview ?? null, yield_value: body.yield_value,
@@ -498,6 +508,7 @@ export const api = {
         updated_at: new Date().toISOString(), total_flour_g: body.total_flour_g,
         hydration_pct: body.hydration_pct, parent_recipe_id: body.parentRecipeId ?? null,
         version_label: body.versionLabel ?? null, is_archived: body.isArchived ?? false,
+        ...(formattedCreatedAt ? { created_at: formattedCreatedAt } : {}),
       }).select().returns<RecipeRow[]>().single();
       if (error) throw error;
       return rowToApiRecipe(data);

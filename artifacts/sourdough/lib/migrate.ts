@@ -324,6 +324,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         userId: token,
         name: r.name,
         overview: r.overview,
+        createdAt: r.createdAt ?? (r as any).created_at,
         yield_value: safeYield,
         parentRecipeId: remappedParent,
         phases: (r.phases || []).map((p: any) => ({

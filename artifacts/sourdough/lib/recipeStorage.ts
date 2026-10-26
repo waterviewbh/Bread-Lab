@@ -305,6 +305,7 @@ export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
         userId: userId ?? undefined,
         name: recipe.name,
         overview: recipe.overview,
+        createdAt: recipe.createdAt,
         yield_value: recipe.yieldValue ? parseInt(recipe.yieldValue, 10) : 0,
         phases: recipe.phases.map((p) => ({
           key: p.key,

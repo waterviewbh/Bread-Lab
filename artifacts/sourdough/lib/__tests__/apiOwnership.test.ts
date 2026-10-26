@@ -182,6 +182,71 @@ describe("API Ownership & Signout Real Implementation", () => {
     ).rejects.toThrow(/Failed to retrieve active authentication session/);
   });
 
+  it("preserves original recipe creation timestamps in upsert payloads and handles missing/invalid values deliberately", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-123" } } },
+      error: null,
+    });
+
+    const fromMock = (supabase!.from as jest.Mock);
+
+    // Case 1: Valid numeric createdAt (1700000000000) -> formatted to ISO string in created_at
+    const mockUpsert1 = jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        returns: jest.fn().mockReturnValue({
+          single: jest.fn().mockResolvedValue({
+            data: { id: "rec-ts-1", name: "TS Test 1", phases: [], created_at: "2023-11-14T22:13:20.000Z" },
+            error: null,
+          }),
+        }),
+      }),
+    });
+    fromMock.mockReturnValueOnce({ upsert: mockUpsert1 });
+
+    await api.recipes.upsert({
+      id: "rec-ts-1",
+      name: "TS Test 1",
+      userId: "user-123",
+      createdAt: 1700000000000,
+      phases: [],
+      yield_value: 1,
+      deviceId: "dev",
+    });
+
+    expect(mockUpsert1).toHaveBeenCalledWith(
+      expect.objectContaining({
+        created_at: "2023-11-14T22:13:20.000Z",
+      })
+    );
+
+    // Case 2: Missing or invalid createdAt (e.g. NaN) -> created_at omitted so Postgres uses default on insert or leaves untouched on update
+    const mockUpsert2 = jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        returns: jest.fn().mockReturnValue({
+          single: jest.fn().mockResolvedValue({
+            data: { id: "rec-ts-2", name: "TS Test 2", phases: [], created_at: new Date().toISOString() },
+            error: null,
+          }),
+        }),
+      }),
+    });
+    fromMock.mockReturnValueOnce({ upsert: mockUpsert2 });
+
+    await api.recipes.upsert({
+      id: "rec-ts-2",
+      name: "TS Test 2",
+      userId: "user-123",
+      createdAt: NaN,
+      phases: [],
+      yield_value: 1,
+      deviceId: "dev",
+    });
+
+    const upsertPayload = mockUpsert2.mock.calls[0][0];
+    expect(upsertPayload.created_at).toBeUndefined();
+  });
+
   it("authorizes recipe duplication strictly based on ownership invariants", async () => {
     const getSessionMock = (supabase!.auth.getSession as jest.Mock);
 
