@@ -2,19 +2,28 @@
 import { api } from "../api";
 import { supabase } from "../supabase";
 
+const mockChain = {
+  order: jest.fn().mockReturnThis(),
+  eq: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
+  returns: jest.fn().mockResolvedValue({ data: [], error: null }),
+};
+
+const mockOr = jest.fn().mockReturnValue(mockChain);
+
+const mockDeleteEq = jest.fn().mockReturnValue({
+  or: jest.fn().mockResolvedValue({ error: null }),
+});
+
 jest.mock("../supabase", () => ({
   supabase: {
     auth: {
       getSession: jest.fn(),
       signOut: jest.fn(),
     },
-    from: jest.fn().mockReturnValue({
+    from: jest.fn().mockImplementation((table: string) => ({
       select: jest.fn().mockReturnValue({
-        or: jest.fn().mockReturnValue({
-          order: jest.fn().mockReturnValue({
-            returns: jest.fn().mockResolvedValue({ data: [], error: null }),
-          }),
-        }),
+        or: mockOr,
         eq: jest.fn().mockReturnValue({
           single: jest.fn().mockResolvedValue({
             data: {
@@ -36,6 +45,26 @@ jest.mock("../supabase", () => ({
               notes: null,
             },
             error: null,
+          }),
+        }),
+      }),
+      insert: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          returns: jest.fn().mockReturnValue({
+            single: jest.fn().mockResolvedValue({
+              data: {
+                id: "dup-1",
+                device_id: "dev-1",
+                user_id: "user-A",
+                name: "Copy",
+                phases: [],
+                created_at: new Date().toISOString(),
+                yield_value: 1,
+                recipe_data: {},
+                is_archived: false,
+              },
+              error: null,
+            }),
           }),
         }),
       }),
@@ -66,7 +95,10 @@ jest.mock("../supabase", () => ({
           }),
         }),
       }),
-    }),
+      delete: jest.fn().mockReturnValue({
+        eq: mockDeleteEq,
+      }),
+    })),
   },
 }));
 
@@ -148,13 +180,14 @@ describe("API Ownership & Signout Real Implementation", () => {
     ).rejects.toThrow(/Failed to retrieve active authentication session/);
   });
 
-  it("refuses recipe duplication when source recipe belongs to another user", async () => {
+  it("authorizes recipe duplication strictly based on ownership invariants", async () => {
     const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+
+    // 1. User B attempting to duplicate User A's recipe -> Rejected
     getSessionMock.mockResolvedValue({
       data: { session: { user: { id: "user-B" } } },
       error: null,
     });
-
     const fromMock = (supabase!.from as jest.Mock);
     fromMock.mockReturnValueOnce({
       select: jest.fn().mockReturnValue({
@@ -166,15 +199,68 @@ describe("API Ownership & Signout Real Implementation", () => {
         }),
       }),
     });
-
     await expect(
       api.recipes.duplicate("rec-A", "Copy", "dev-1", "user-B")
     ).rejects.toThrow(/Unauthorized: cannot duplicate a recipe owned by another user/);
+
+    // 2. Authenticated user attempting to duplicate an unassigned recipe -> Rejected
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-B" } } },
+      error: null,
+    });
+    fromMock.mockReturnValueOnce({
+      select: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          single: jest.fn().mockResolvedValue({
+            data: { id: "rec-unassigned", user_id: null, name: "Unassigned Recipe", phases: [] },
+            error: null,
+          }),
+        }),
+      }),
+    });
+    await expect(
+      api.recipes.duplicate("rec-unassigned", "Copy", "dev-1", "user-B")
+    ).rejects.toThrow(/Unauthorized: cannot duplicate an unassigned recipe into an authenticated account/);
+
+    // 3. Matching owner duplicating their own recipe -> Allowed
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-A" } } },
+      error: null,
+    });
+    fromMock.mockReturnValueOnce({
+      select: jest.fn().mockReturnValue({
+        eq: jest.fn().mockReturnValue({
+          single: jest.fn().mockResolvedValue({
+            data: { id: "rec-A", user_id: "user-A", name: "User A Recipe", phases: [] },
+            error: null,
+          }),
+        }),
+      }),
+    });
+    const dupRes = await api.recipes.duplicate("rec-A", "Copy", "dev-1", "user-A");
+    expect(dupRes).toBeDefined();
   });
 
-  it("ensures authenticated reads are scoped strictly to the authenticated user (shared-device account isolation)", async () => {
-    const fromMock = (supabase!.from as jest.Mock);
+  it("ensures authenticated reads and deletions are scoped strictly to the user_id without device_id fallback", async () => {
+    // Call recipes.list with deviceId "shared-dev" and userId "user-B"
     await api.recipes.list("shared-dev", "user-B");
-    expect(fromMock).toHaveBeenCalledWith("recipes");
+    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-B");
+    expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
+
+    // Call history.feed.list with deviceId "shared-dev" and userId "user-B"
+    mockOr.mockClear();
+    await api.history.feed.list("shared-dev", "user-B");
+    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-B");
+    expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
+
+    // Call history.bakes.list with deviceId "shared-dev" and userId "user-B"
+    mockOr.mockClear();
+    await api.history.bakes.list("shared-dev", "user-B");
+    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-B");
+    expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
+
+    // Call recipes.delete with deviceId "shared-dev" and userId "user-B"
+    await api.recipes.delete("rec-1", "shared-dev", "user-B");
+    expect(mockDeleteEq).toHaveBeenCalledWith("id", "rec-1");
   });
 });

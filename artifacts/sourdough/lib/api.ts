@@ -521,6 +521,12 @@ export const api = {
         throw new Error("Unauthorized: cannot duplicate a recipe owned by another user.");
       }
 
+      if (!source.user_id && resolvedUserId) {
+        throw new Error("Unauthorized: cannot duplicate an unassigned recipe into an authenticated account without an explicit claim.");
+      }
+
+      const targetUserId = source.user_id ?? null;
+
       const newId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
       const now = new Date().toISOString();
 
@@ -541,7 +547,7 @@ export const api = {
       const newRow = {
         id: newId,
         device_id: deviceId,
-        user_id: source.user_id ?? userId ?? null,
+        user_id: targetUserId,
         name: newName,
         overview: source.overview,
         phases: source.phases,
