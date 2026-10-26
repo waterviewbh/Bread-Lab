@@ -11,8 +11,10 @@ const mockChain = {
 
 const mockOr = jest.fn().mockReturnValue(mockChain);
 
+const mockDeleteOr = jest.fn().mockResolvedValue({ error: null });
+
 const mockDeleteEq = jest.fn().mockReturnValue({
-  or: jest.fn().mockResolvedValue({ error: null }),
+  or: mockDeleteOr,
 });
 
 jest.mock("../supabase", () => ({
@@ -260,7 +262,10 @@ describe("API Ownership & Signout Real Implementation", () => {
     expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
 
     // Call recipes.delete with deviceId "shared-dev" and userId "user-B"
+    mockDeleteOr.mockClear();
     await api.recipes.delete("rec-1", "shared-dev", "user-B");
     expect(mockDeleteEq).toHaveBeenCalledWith("id", "rec-1");
+    expect(mockDeleteOr).toHaveBeenCalledWith("user_id.eq.user-B");
+    expect(mockDeleteOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
   });
 });
