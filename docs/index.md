@@ -34,6 +34,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
 #### 📦 Version 2.5.5
+- [Session: Tracing Starter Vitality Percentage and Documenting Meaning (Issue #79) (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_starter_vitality_percentage_tracing.artifact.md)
 - [Session: Candidate Promotion & Empty Recipe Duplication Regression Fix (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_candidate_promotion_and_empty_recipe_regression.artifact.md)
 - [Session: Recipe Runner vs. Recipe Builder Phase Order Regression Fix (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_recipe_runner_vs_builder_phase_order.artifact.md)
 - [Session: Stretching & Folding Completion Chits & Version 2.5.5 Updates (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_stretch_and_fold_completion_chits.artifact.md)
@@ -92,7 +93,6 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🔍 Research & Status](file:///E:/Bread-Lab/docs/research/)
 **Purpose**: Findings from investigations, current status of ongoing initiatives, and lessons learned.
-- [Issue #79: Trace Starter Vitality Percentage and Document Its Meaning (2026-10-15)](file:///E:/Bread-Lab/docs/research/2026-10-15_issue_79_starter_vitality_percentage.md)
 - [Issue #73: Pre-Implementation Architecture Inspection — Moving Candidates to Recipe Builder (2026-10-12)](file:///E:/Bread-Lab/docs/research/2026-10-12_issue_73_recipe_builder_candidates_inspection.md)
 - [Maestro Testing: Status and Lessons Learned](file:///E:/Bread-Lab/docs/research/maestro_testing_status.artifact.md) [OPEN ITEM]
 

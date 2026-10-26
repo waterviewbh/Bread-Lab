@@ -31,7 +31,7 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Independent Review Findings", () => {
+describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID Generation Fix", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -137,6 +137,23 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Independent Revie
     const result = await migrateLocalDataToAccount("test-user-token-abc");
 
     expect(result.bakes.ok).toBe(1);
+  });
+
+  it("generates valid secure UUID v4 when global crypto.randomUUID is unavailable but expo-crypto is present", async () => {
+    const originalCrypto = global.crypto;
+    (global as any).crypto = undefined;
+
+    const activeFeedWithoutId = { savedAt: 1234, data: { pH: "4.0" } };
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key === "sourdough_feed_session_v1") return Promise.resolve(JSON.stringify(activeFeedWithoutId));
+      return Promise.resolve(null);
+    });
+
+    const result = await migrateLocalDataToAccount("expo-crypto-uuid-token");
+    expect(result.feed.ok).toBe(1);
+
+    (global as any).crypto = originalCrypto;
   });
 
   it("correctly handles outcome compatibility variants (new wrappers, legacy wrappers, ordinary objects)", () => {

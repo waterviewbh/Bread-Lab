@@ -29,13 +29,12 @@ export const HELP: HelpTab[] = [
         ],
       },
       {
-        heading: "Starter Vitality Percentage (Activity Score)",
+        heading: "Starter Acidification Rate",
         bullets: [
-          "What it represents: The percentage shown on the home screen greeting banner (e.g., '37% activity') measures the metabolic acidification speed of your most recent starter feed session.",
-          "Calculation & Formula: Calculated as acidification velocity (ΔpH per elapsed hour) normalized against a reference maximum rate of 0.3 pH units/hour = 100% activity. Formula: vitality % = min(round(velocity × 333), 100). For example, 37% activity corresponds to a drop of ~0.111 pH units/hour.",
-          "How to Interpret: Below 40% suggests your culture may need another refresh to reach peak activity; 40%–85% indicates normal active fermentation; above 85% signifies extreme activity requiring watchful proof times.",
-          "What it does not mean: It is not a static population count of bacteria/yeast, nor a lifetime average across all past feeds—it is a live snapshot of your most recent logged refresh.",
-          "Temporal Dynamics: The value updates automatically whenever you save a new feed session in the Feed Tracker based on its start/initial pH and end/peak pH over elapsed time.",
+          "What it represents: Acidification rate describes how quickly the pH of a starter changes during a recorded feed session. Bread Lab uses this measurement in its underlying starter analytics.",
+          "Calculation: The rate is calculated from the change in pH divided by the elapsed time, expressed in pH units per hour. The calculation uses the session's starting and ending pH values and their associated timestamps.",
+          "Relationship to the former activity score: An earlier version of the landing page expressed acidification rate as a normalized percentage, using a reference rate of 0.3 pH units per hour as 100%. The landing page now emphasizes observed pH change over time instead of displaying that percentage.",
+          "What it does not mean: Acidification rate is not a direct measurement of yeast or bacterial population, nor is it a comprehensive measure of starter health. It describes the observed pH change over the period measured.",
         ],
       },
       {

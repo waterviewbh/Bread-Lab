@@ -1,5 +1,6 @@
 // artifacts/sourdough/lib/migrate.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Crypto from "expo-crypto";
 import { api } from "./api";
 import { getDeviceId } from "./deviceId";
 
@@ -123,7 +124,24 @@ function generateSecureUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  throw new Error("Secure crypto.randomUUID() is required for robust ID generation.");
+  try {
+    if (typeof Crypto !== "undefined" && typeof Crypto.randomUUID === "function") {
+      return Crypto.randomUUID();
+    }
+  } catch {}
+
+  try {
+    if (typeof Crypto !== "undefined" && typeof Crypto.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      Crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+  } catch {}
+
+  throw new Error("Secure crypto.randomUUID() or Crypto.getRandomValues() is required for robust ID generation.");
 }
 
 export async function setMigrationPending(): Promise<void> {
