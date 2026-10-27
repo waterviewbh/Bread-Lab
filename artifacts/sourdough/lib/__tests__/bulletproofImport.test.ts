@@ -40,14 +40,14 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
 
   it("handles out-of-order recipe dependencies and cross-table ID collisions with typed composite keys", async () => {
     const mockRecipes = [
-      { id: "same-id", name: "Child Recipe", parentRecipeId: "same-id" },
-      { id: "parent-id", name: "Parent Recipe" },
+      { id: "same-id", name: "Child Recipe", parentRecipeId: "same-id", userId: "anonymous" },
+      { id: "parent-id", name: "Parent Recipe", userId: "anonymous" },
     ];
     const mockBakes = [
-      { id: "same-id", recipeName: "Bake with same ID", recipeId: "parent-id", savedAt: 1000, startedAt: 900, phases: [] },
+      { id: "same-id", recipeName: "Bake with same ID", recipeId: "parent-id", savedAt: 1000, startedAt: 900, phases: [], userId: "anonymous" },
     ];
     const mockFeeds = [
-      { id: "same-id", savedAt: 1000, data: {} },
+      { id: "same-id", savedAt: 1000, data: {}, userId: "anonymous" },
     ];
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
@@ -113,6 +113,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   it("preserves complete active bake state including estimatorState, bulkCheckInHistory, and bulkFermentState", async () => {
     const activeBake = {
       id: "active-bake-full",
+      userId: "anonymous",
       recipeName: "Complete Bake",
       startedAt: 5000,
       estimatorState: { flourG: "500", targetTemp: "78" },
@@ -145,7 +146,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     const originalCrypto = global.crypto;
     (global as any).crypto = undefined;
 
-    const activeFeedWithoutId = { savedAt: 1234, data: { pH: "4.0" } };
+    const activeFeedWithoutId = { savedAt: 1234, userId: "anonymous", data: { pH: "4.0" } };
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
       if (key === "sourdough_feed_session_v1") return Promise.resolve(JSON.stringify(activeFeedWithoutId));
@@ -177,7 +178,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   });
 
   it("rejects malformed records or missing/invalid identity fields before migration", async () => {
-    const invalidRecipes = [{ name: "Missing ID Recipe" }];
+    const invalidRecipes = [{ name: "Missing ID Recipe", userId: "anonymous" }];
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
@@ -189,7 +190,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   });
 
   it("persists ledger before first remote write and prevents remote uploads if ledger write fails", async () => {
-    const mockRecipes = [{ id: "rec-1", name: "Valid Recipe" }];
+    const mockRecipes = [{ id: "rec-1", name: "Valid Recipe", userId: "anonymous" }];
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
@@ -212,7 +213,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   });
 
   it("preserves local record IDs when migration ledger is missing and aligns ordinary sync with migration", async () => {
-    const localRecipe = { id: "rec-stable-123", name: "Stable Loaf", createdAt: 1700000000000, phases: [] };
+    const localRecipe = { id: "rec-stable-123", name: "Stable Loaf", userId: "anonymous", createdAt: 1700000000000, phases: [] };
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
       if (key.includes("recipes")) return Promise.resolve(JSON.stringify([localRecipe]));
@@ -231,7 +232,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     );
 
     // Verify ordinary sync also sends id = "rec-stable-123"
-    await upsertRecipeRemote({ id: "rec-stable-123", name: "Stable Loaf", createdAt: 1700000000000, phases: [] });
+    await upsertRecipeRemote({ id: "rec-stable-123", name: "Stable Loaf", userId: "anonymous", createdAt: 1700000000000, phases: [] });
     expect(api.recipes.upsert).toHaveBeenLastCalledWith(
       expect.objectContaining({
         id: "rec-stable-123",
@@ -241,8 +242,8 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   });
 
   it("preserves existing ledger target mapping if present and retains recipe references in bake sessions", async () => {
-    const mockRecipes = [{ id: "rec-1", name: "Recipe 1", parentRecipeId: "rec-1" }];
-    const mockBakes = [{ id: "bake-1", recipeName: "Bake 1", recipeId: "rec-1", savedAt: 1000, startedAt: 900, phases: [] }];
+    const mockRecipes = [{ id: "rec-1", name: "Recipe 1", parentRecipeId: "rec-1", userId: "anonymous" }];
+    const mockBakes = [{ id: "bake-1", recipeName: "Bake 1", recipeId: "rec-1", savedAt: 1000, startedAt: 900, phases: [], userId: "anonymous" }];
     const existingLedger = { "recipe:rec-1": "custom-remote-uuid-1", "bake:bake-1": "custom-remote-bake-uuid" };
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
@@ -273,7 +274,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   });
 
   it("is idempotent across repeated migrations under different user tokens without creating new random UUIDs", async () => {
-    const localRecipe = { id: "rec-idempotent-999", name: "Idempotent Recipe", phases: [] };
+    const localRecipe = { id: "rec-idempotent-999", name: "Idempotent Recipe", userId: "anonymous", phases: [] };
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
       if (key.includes("recipes")) return Promise.resolve(JSON.stringify([localRecipe]));
@@ -310,10 +311,11 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     expect(formatted).not.toContain("token");
   });
 
-  it("filters out records belonging to a different user to preserve account isolation", async () => {
+  it("filters out records belonging to a different user or with missing userId to preserve account isolation", async () => {
     const localRecipes = [
       { id: "rec-owner-A", name: "User A Recipe", userId: "user-A" },
-      { id: "rec-anon", name: "Anonymous Recipe" },
+      { id: "rec-missing-owner", name: "Missing Owner Recipe" },
+      { id: "rec-anon", name: "Anonymous Recipe", userId: "anonymous" },
     ];
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
@@ -322,10 +324,11 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
       return Promise.resolve(null);
     });
 
-    // Migrating for user-B: rec-owner-A should be filtered out, rec-anon should be migrated
+    // Migrating for user-B: rec-owner-A and rec-missing-owner should be filtered out, rec-anon should be migrated
     const result = await migrateLocalDataToAccount("user-B");
     expect(result.recipes.ok).toBe(1);
 
+    expect(api.recipes.upsert).toHaveBeenCalledTimes(1);
     expect(api.recipes.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "rec-anon",
@@ -335,7 +338,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   });
 
   it("preserves local records when migration fails and reports failed count", async () => {
-    const localRecipes = [{ id: "rec-fail", name: "Failing Recipe" }];
+    const localRecipes = [{ id: "rec-fail", name: "Failing Recipe", userId: "anonymous" }];
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
@@ -362,58 +365,38 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     consoleSpy.mockRestore();
   });
 
-  it("handles RLS 42501 collision by allocating fresh UUID, updating ledger, and retrying write once", async () => {
-    const collidingRecipe = { id: "rec-colliding-123", name: "Colliding Recipe", phases: [] };
+  it("fails closed without UUID reallocation when api.recipes.upsert returns RLS 42501 error", async () => {
+    const rlsFailingRecipe = { id: "rec-rls-123", name: "RLS Recipe", userId: "anonymous", phases: [] };
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([collidingRecipe]));
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([rlsFailingRecipe]));
       return Promise.resolve(null);
     });
 
-    // Mock initial upsert throwing RLS 42501 error
     (api.recipes.upsert as jest.Mock).mockRejectedValueOnce({
       message: 'new row violates row-level security policy (USING expression) for table "recipes"',
       code: '42501',
-    }).mockResolvedValueOnce({
-      id: "fresh-uuid-remapped",
-      name: "Colliding Recipe",
     });
 
     const consoleSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
 
-    const result = await migrateLocalDataToAccount("collision-token");
+    const result = await migrateLocalDataToAccount("rls-token");
 
-    expect(result.recipes.ok).toBe(1);
-    expect(result.recipes.failed).toBe(0);
+    expect(result.recipes.failed).toBe(1);
+    expect(result.recipes.ok).toBe(0);
 
-    // Verify initial upsert was called with targetId = "rec-colliding-123"
-    expect(api.recipes.upsert).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ id: "rec-colliding-123" })
-    );
-
-    // Verify second upsert was called with a fresh remapped UUID
-    expect(api.recipes.upsert).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        id: expect.not.stringMatching("rec-colliding-123"),
-        name: "Colliding Recipe",
-      })
-    );
-
-    // Verify ledger setItem was called with updated ledger mapping
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      expect.stringContaining("bread_lab_import_ledger_collision-token"),
-      expect.stringContaining("recipe:rec-colliding-123")
+    expect(api.recipes.upsert).toHaveBeenCalledTimes(1);
+    expect(api.recipes.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "rec-rls-123" })
     );
 
     consoleSpy.mockRestore();
   });
 
   it("resolves parent/child references correctly even when child precedes parent in input list", async () => {
-    const childRecipe = { id: "child-rec", name: "Child Recipe", parentRecipeId: "parent-rec", phases: [] };
-    const parentRecipe = { id: "parent-rec", name: "Parent Recipe", phases: [] };
+    const childRecipe = { id: "child-rec", name: "Child Recipe", userId: "anonymous", parentRecipeId: "parent-rec", phases: [] };
+    const parentRecipe = { id: "parent-rec", name: "Parent Recipe", userId: "anonymous", phases: [] };
 
     const getItemMock = AsyncStorage.getItem as jest.Mock;
     getItemMock.mockImplementation((key) => {
@@ -424,13 +407,11 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     const result = await migrateLocalDataToAccount("order-token");
     expect(result.recipes.ok).toBe(2);
 
-    // Verify parent was upserted first (dependency root)
     expect(api.recipes.upsert).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ id: "parent-rec", name: "Parent Recipe" })
     );
 
-    // Verify child was upserted second with correct parent reference
     expect(api.recipes.upsert).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ id: "child-rec", name: "Child Recipe", parentRecipeId: "parent-rec" })

@@ -216,10 +216,11 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     readLocalObjectOrThrow<LocalFeedSession>(ACTIVE_FEED_KEY),
   ]);
 
-  // Ownership Isolation Guard: Filter out records explicitly owned by a different user ID
+  // Strict Ownership Guard: Require explicit "anonymous" tag OR matching authenticated user ID.
+  // Unknown/missing ownership metadata (userId === undefined) is NOT eligible for migration.
   const isAnonymousOrOwned = (record: any) => {
     const owner = record?.userId ?? record?.user_id;
-    return !owner || owner === token;
+    return owner === "anonymous" || owner === token;
   };
 
   const recipesToMigrate = recipes.filter(isAnonymousOrOwned);
@@ -362,62 +363,22 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
       const rawParent = r.parentRecipeId ?? r.parent_recipe_id ?? null;
       const remappedParent = rawParent ? typeMapping.get(`recipe:${rawParent}`) ?? rawParent : null;
 
-      try {
-        await api.recipes.upsert({
-          id: targetId,
-          deviceId,
-          userId: token,
-          name: r.name,
-          overview: r.overview,
-          createdAt: r.createdAt ?? (r as any).created_at,
-          yield_value: safeYield,
-          parentRecipeId: remappedParent,
-          phases: (r.phases || []).map((p: any) => ({
-            key: p.key,
-            name: p.name,
-            ingredients: p.ingredients,
-            instructions: p.instructions,
-          })),
-        });
-      } catch (upsertError) {
-        const errDiag = formatErrorDiagnostic(upsertError);
-        const isRlsCollision = errDiag.includes("42501") || errDiag.includes("row-level security") || errDiag.includes("violates row-level security");
-
-        if (isRlsCollision) {
-          console.warn(`[Migration] RLS 42501 collision detected for recipe ID ${r.id} -> target ${targetId}. Allocating fresh UUID...`);
-          const freshTargetId = generateSecureUUID();
-
-          // Update ledger and typeMapping
-          ledger[key] = freshTargetId;
-          typeMapping.set(key, freshTargetId);
-
-          // Persist updated ledger before retrying write
-          await AsyncStorage.setItem(ledgerKey, JSON.stringify(ledger));
-
-          // Re-resolve parent with updated typeMapping if needed
-          const updatedParent = rawParent ? typeMapping.get(`recipe:${rawParent}`) ?? rawParent : null;
-
-          // Retry write once with fresh target ID
-          await api.recipes.upsert({
-            id: freshTargetId,
-            deviceId,
-            userId: token,
-            name: r.name,
-            overview: r.overview,
-            createdAt: r.createdAt ?? (r as any).created_at,
-            yield_value: safeYield,
-            parentRecipeId: updatedParent,
-            phases: (r.phases || []).map((p: any) => ({
-              key: p.key,
-              name: p.name,
-              ingredients: p.ingredients,
-              instructions: p.instructions,
-            })),
-          });
-        } else {
-          throw upsertError;
-        }
-      }
+      await api.recipes.upsert({
+        id: targetId,
+        deviceId,
+        userId: token,
+        name: r.name,
+        overview: r.overview,
+        createdAt: r.createdAt ?? (r as any).created_at,
+        yield_value: safeYield,
+        parentRecipeId: remappedParent,
+        phases: (r.phases || []).map((p: any) => ({
+          key: p.key,
+          name: p.name,
+          ingredients: p.ingredients,
+          instructions: p.instructions,
+        })),
+      });
       recipesOk++;
     } catch (error) {
       console.warn(`[Migration] Failed to sync recipe (local ID: ${r.id}):`, formatErrorDiagnostic(error));
