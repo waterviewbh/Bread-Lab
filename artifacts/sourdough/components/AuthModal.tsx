@@ -43,17 +43,117 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
   const [firstName, setFirstName] = useState("");
   const [starterName, setStarterName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [transitionPendingData, setTransitionPendingData] = useState<{
+    token: string;
+    user: AuthUser;
+  } | null>(null);
 
   const reset = () => {
     setFirstName("");
     setStarterName("");
     setLoading(false);
     setMode("name");
+    setTransitionPendingData(null);
   };
 
   const displayName = currentUser
     ? `${currentUser.firstName}'s ${currentUser.starterName}`
     : "";
+
+  const checkHasAnonymousRecords = async (): Promise<boolean> => {
+    try {
+      const [recipesRaw, bakesRaw, historyRaw] = await Promise.all([
+        AsyncStorage.getItem("bread_lab_recipes_v1"),
+        AsyncStorage.getItem("bread_lab_bake_history_v1"),
+        AsyncStorage.getItem("sourdough_feed_history_v1"),
+      ]);
+
+      const hasAnonRecipe = safeParse<any[]>(recipesRaw, [], Array.isArray).some(
+        (r) => r && (r.userId === "anonymous" || r.user_id === "anonymous")
+      );
+      const hasAnonBake = safeParse<any[]>(bakesRaw, [], Array.isArray).some(
+        (b) => b && (b.userId === "anonymous" || b.user_id === "anonymous")
+      );
+      const hasAnonFeed = safeParse<any[]>(historyRaw, [], Array.isArray).some(
+        (f) => f && (f.userId === "anonymous" || f.user_id === "anonymous")
+      );
+
+      return hasAnonRecipe || hasAnonBake || hasAnonFeed;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleChoiceImport = async () => {
+    if (!transitionPendingData) return;
+    setLoading(true);
+    try {
+      const { token, user } = transitionPendingData;
+      await setMigrationPending();
+      startMigration();
+      const migrationResult = await migrateLocalDataToAccount(token);
+      finishMigration(migrationResult);
+
+      const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
+      if (totalFailed > 0) {
+        await api.auth.signout().catch(() => {});
+        throw new Error(`Destination migration completed with ${totalFailed} sync failure(s). Anonymous workspace preserved intact.`);
+      }
+
+      await clearOperationalData();
+      await saveAuth(token, user);
+
+      onAuthChange(user);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      reset();
+      onClose();
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (Platform.OS === 'web') {
+        window.alert(`Import Failed: ${msg}`);
+      } else {
+        Alert.alert("Import Failed", msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChoiceProceedWithoutImport = async () => {
+    if (!transitionPendingData) return;
+    setLoading(true);
+    try {
+      const { token, user } = transitionPendingData;
+      await backupAnonymousWorkspace();
+      await clearOperationalData();
+      await saveAuth(token, user);
+
+      onAuthChange(user);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      reset();
+      onClose();
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (Platform.OS === 'web') {
+        window.alert(`Setup Failed: ${msg}`);
+      } else {
+        Alert.alert("Setup Failed", msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChoiceCancel = async () => {
+    setLoading(true);
+    try {
+      await api.auth.signout().catch(() => {});
+      setTransitionPendingData(null);
+      reset();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleIdentify = async () => {
     if (!firstName.trim() || !starterName.trim()) {
@@ -156,31 +256,21 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
       // 5. Switching from Anonymous -> Account B
       if (!currentToken) {
-        await setMigrationPending();
-        startMigration();
-        const migrationResult = await migrateLocalDataToAccount(result.token);
-        finishMigration(migrationResult);
-
-        const destFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
-        if (destFailed > 0) {
-          await api.auth.signout().catch(() => {});
-          throw new Error(`Destination migration completed with ${destFailed} sync failure(s). Anonymous workspace preserved intact.`);
-        }
-
-        try {
+        const hasAnonRecords = await checkHasAnonymousRecords();
+        if (hasAnonRecords) {
+          // Present Transition Choice Modal
+          setTransitionPendingData({ token: result.token, user: result.user });
+          return;
+        } else {
+          // No anonymous local records to migrate, proceed directly into clean account
           await clearOperationalData();
           await saveAuth(result.token, result.user);
-        } catch (saveErr) {
-          await clearAuth().catch(() => {});
-          await api.auth.signout().catch(() => {});
-          onAuthChange(null);
-          throw new Error("Credential persistence failed. Anonymous workspace preserved.");
+          onAuthChange(result.user);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          reset();
+          onClose();
+          return;
         }
-
-        onAuthChange(result.user);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        reset();
-        onClose();
       }
 
       await getDeviceId()
@@ -314,7 +404,50 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
             </Pressable>
           </View>
 
-          {currentUser ? (
+          {transitionPendingData ? (
+            <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[s.cardName, { color: colors.foreground, marginBottom: 8 }]}>
+                Offline Workspace Found
+              </Text>
+              <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 20 }]}>
+                You have local recipes or bakes created offline on this device. Choose how you would like to proceed with {transitionPendingData.user.firstName}&apos;s account:
+              </Text>
+
+              <View style={{ gap: 12 }}>
+                <Pressable
+                  onPress={handleChoiceImport}
+                  disabled={loading}
+                  style={[s.primaryButton, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={s.primaryButtonText}>Import & Proceed</Text>
+                  )}
+                </Pressable>
+
+                <Pressable
+                  onPress={handleChoiceProceedWithoutImport}
+                  disabled={loading}
+                  style={[s.outlineButton, { borderColor: colors.border }]}
+                >
+                  <Text style={[s.outlineButtonText, { color: colors.foreground, marginLeft: 0 }]}>
+                    Proceed Without Importing
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={handleChoiceCancel}
+                  disabled={loading}
+                  style={{ alignItems: "center", paddingVertical: 10 }}
+                >
+                  <Text style={{ color: colors.mutedForeground, fontSize: 14, fontWeight: "600" }}>
+                    Cancel Transition
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : currentUser ? (
             <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={s.cardHeader}>
                 <View style={[s.avatar, { backgroundColor: colors.primary }]}>

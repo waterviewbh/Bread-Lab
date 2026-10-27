@@ -1,6 +1,7 @@
 // artifacts/sourdough/lib/__tests__/historyOwnership.test.ts
 import { api } from "../api";
 import { supabase } from "../supabase";
+import { isOwnerMatch } from "../../app/(tabs)/history";
 
 const mockBakesChain = {
   order: jest.fn().mockReturnThis(),
@@ -87,15 +88,11 @@ describe("History Ownership Isolation Regression", () => {
     expect(mockOr).toHaveBeenCalledWith("user_id.eq.luke-token-123");
   });
 
-  it("filters out Padme's local history entries when querying for Luke", () => {
-    const isOwnerMatch = (entry: { userId?: string }, token: string | null) => {
-      if (!token) return !entry.userId;
-      return !entry.userId || entry.userId === token;
-    };
-
+  it("filters out Padme's local history entries when querying for Luke using production isOwnerMatch predicate", () => {
     const padmeBake = { id: "padme-bake-1", userId: "padme-token-999", recipeName: "Yum Food" };
     const lukeBake = { id: "luke-bake-1", userId: "luke-token-123", recipeName: "Luke Sourdough" };
-    const localEntries = [padmeBake, lukeBake];
+    const anonBake = { id: "anon-bake-1", userId: "anonymous", recipeName: "Anon Sourdough" };
+    const localEntries = [padmeBake, lukeBake, anonBake];
 
     const filteredForLuke = localEntries.filter((b) => isOwnerMatch(b, "luke-token-123"));
 
@@ -103,5 +100,6 @@ describe("History Ownership Isolation Regression", () => {
     expect(filteredForLuke[0].id).toBe("luke-bake-1");
     expect(filteredForLuke[0].recipeName).toBe("Luke Sourdough");
     expect(filteredForLuke.some((b) => b.userId === "padme-token-999")).toBe(false);
+    expect(filteredForLuke.some((b) => b.userId === "anonymous")).toBe(false);
   });
 });

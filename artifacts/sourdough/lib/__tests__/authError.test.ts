@@ -10,6 +10,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   removeItem: jest.fn().mockResolvedValue(undefined),
   multiSet: jest.fn().mockResolvedValue(undefined),
   multiRemove: jest.fn().mockResolvedValue(undefined),
+  multiGet: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock("../supabase", () => ({
@@ -173,5 +174,48 @@ describe("Auth Error Handling & Domain Regression", () => {
       "bread_lab_auth_token_v1",
       "bread_lab_auth_user_v1",
     ]);
+  });
+
+  it("backs up anonymous workspace to isolated key and restores operational data without data loss", async () => {
+    const { backupAnonymousWorkspace, restoreAnonymousWorkspace } = require("../storageUtils");
+
+    const multiGetMock = AsyncStorage.multiGet as jest.Mock;
+    multiGetMock.mockResolvedValue([
+      ["bread_lab_recipes_v1", JSON.stringify([{ id: "anon-rec-1", name: "Anon Loaf", userId: "anonymous" }])],
+    ]);
+
+    const hasData = await backupAnonymousWorkspace();
+    expect(hasData).toBe(true);
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      "bread_lab_anonymous_backup_v1",
+      expect.stringContaining("anon-rec-1")
+    );
+
+    // Test Restore
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key === "bread_lab_anonymous_backup_v1") {
+        return Promise.resolve(JSON.stringify({
+          bread_lab_recipes_v1: JSON.stringify([{ id: "anon-rec-1", name: "Anon Loaf", userId: "anonymous" }]),
+        }));
+      }
+      return Promise.resolve(null);
+    });
+
+    await restoreAnonymousWorkspace();
+    expect(AsyncStorage.multiSet).toHaveBeenCalledWith([
+      ["bread_lab_recipes_v1", JSON.stringify([{ id: "anon-rec-1", name: "Anon Loaf", userId: "anonymous" }])],
+    ]);
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("bread_lab_anonymous_backup_v1");
+  });
+
+  it("throws error and fails closed when clearOperationalData verification fails", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    // Simulate key remaining in storage after multiRemove
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockResolvedValue("remaining-value");
+
+    await expect(clearOperationalData()).rejects.toThrow(/Operational wipe verification failed/);
   });
 });

@@ -186,6 +186,15 @@ export function formatErrorDiagnostic(error: unknown): string {
 }
 
 /**
+ * Strict Ownership Guard: Require explicit "anonymous" tag OR matching authenticated user ID.
+ * Unknown/missing ownership metadata (userId === undefined) is NOT eligible for migration.
+ */
+export function isAnonymousOrOwned(record: any, token: string): boolean {
+  const owner = record?.userId ?? record?.user_id;
+  return owner === "anonymous" || owner === token;
+}
+
+/**
  * migrateLocalDataToAccount
  * Bulletproof Two-Pass Typed Import Engine with Durable Ledger & Relationship Remapping.
  */
@@ -216,18 +225,13 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     readLocalObjectOrThrow<LocalFeedSession>(ACTIVE_FEED_KEY),
   ]);
 
-  // Strict Ownership Guard: Require explicit "anonymous" tag OR matching authenticated user ID.
-  // Unknown/missing ownership metadata (userId === undefined) is NOT eligible for migration.
-  const isAnonymousOrOwned = (record: any) => {
-    const owner = record?.userId ?? record?.user_id;
-    return owner === "anonymous" || owner === token;
-  };
+  const isAnonymousOrOwnedGuard = (record: any) => isAnonymousOrOwned(record, token);
 
-  const recipesToMigrate = recipes.filter(isAnonymousOrOwned);
-  const bakeHistoryToMigrate = bakeHistory.filter(isAnonymousOrOwned);
-  const activeBakesToMigrate = activeBakes.filter(isAnonymousOrOwned);
-  const feedHistoryToMigrate = feedHistory.filter(isAnonymousOrOwned);
-  const activeFeedToMigrate = activeFeed && isAnonymousOrOwned(activeFeed) ? activeFeed : null;
+  const recipesToMigrate = recipes.filter(isAnonymousOrOwnedGuard);
+  const bakeHistoryToMigrate = bakeHistory.filter(isAnonymousOrOwnedGuard);
+  const activeBakesToMigrate = activeBakes.filter(isAnonymousOrOwnedGuard);
+  const feedHistoryToMigrate = feedHistory.filter(isAnonymousOrOwnedGuard);
+  const activeFeedToMigrate = activeFeed && isAnonymousOrOwnedGuard(activeFeed) ? activeFeed : null;
 
   // Ensure active bakes without IDs get durable IDs assigned and persisted back to storage in original shape (array vs object)
   let activeBakesUpdated = false;

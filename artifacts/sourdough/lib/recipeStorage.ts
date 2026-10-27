@@ -223,42 +223,63 @@ export async function loadAll(): Promise<{
 }
 
 export async function writeRecipesLocal(recipes: SavedRecipe[]): Promise<void> {
-  const validRecipes = recipes.filter(
-    r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
-  );
+  const token = await getStoredToken().catch(() => null);
+  const validRecipes = recipes
+    .filter(
+      r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
+    )
+    .map(r => ({
+      ...r,
+      userId: r.userId ?? token ?? "anonymous"
+    }));
   return storageMutex.run(() => AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(validRecipes)));
 }
 
 export async function appendRecipeLocal(newRecipe: SavedRecipe): Promise<SavedRecipe[]> {
+  const token = await getStoredToken().catch(() => null);
+  const stampedRecipe = {
+    ...newRecipe,
+    userId: newRecipe.userId ?? token ?? "anonymous"
+  };
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(RECIPES_KEY);
     const existing = safeParse<SavedRecipe[]>(raw, [], Array.isArray).filter(
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
     );
-    const updated = [newRecipe, ...existing];
+    const updated = [stampedRecipe, ...existing];
     await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(updated));
     return updated;
   });
 }
 
 export async function writeBakeLocal(bake: ActiveBake): Promise<void> {
+  const token = await getStoredToken().catch(() => null);
+  const stampedBake = {
+    ...bake,
+    userId: bake.userId ?? token ?? "anonymous"
+  };
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(BAKE_KEY).catch(() => null);
     let bakes = safeParse<ActiveBake[]>(raw, [], Array.isArray);
 
-    const idx = bakes.findIndex((b) => b.id === bake.id);
+    const idx = bakes.findIndex((b) => b.id === stampedBake.id);
     if (idx !== -1) {
-      bakes[idx] = bake;
+      bakes[idx] = stampedBake;
     } else {
-      if (bakes.length < 2) bakes.push(bake);
-      else bakes[0] = bake;
+      if (bakes.length < 2) bakes.push(stampedBake);
+      else bakes[0] = stampedBake;
     }
     await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes));
   });
 }
 
 export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
-  return storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes)));
+  const token = await getStoredToken().catch(() => null);
+  const stampedBakes = bakes.map(b => ({
+    ...b,
+    userId: b.userId ?? token ?? "anonymous"
+  }));
+  return storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(stampedBakes)));
 }
 
 export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
