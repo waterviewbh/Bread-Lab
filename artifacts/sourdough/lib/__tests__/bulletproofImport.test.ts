@@ -1,6 +1,6 @@
 // artifacts/sourdough/lib/__tests__/bulletproofImport.test.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { migrateLocalDataToAccount, clearMigrationPending, formatErrorDiagnostic } from "../migrate";
+import { migrateLocalDataToAccount, clearMigrationPending, formatErrorDiagnostic, isAnonymousOrOwned } from "../migrate";
 import { api, packBakeOutcome, unpackBakeOutcome, rowToApiBakeSession } from "../api";
 import { clearAuth, saveAuth, getStoredToken, getStoredUser } from "../auth";
 import { upsertRecipeRemote } from "../recipeStorage";
@@ -416,5 +416,35 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
       2,
       expect.objectContaining({ id: "child-rec", name: "Child Recipe", parentRecipeId: "parent-rec" })
     );
+  });
+
+  it("tests production isAnonymousOrOwned predicate across all 5 required cases", () => {
+    const token = "destination-token-123";
+
+    // 1. Explicitly anonymous record -> eligible
+    expect(isAnonymousOrOwned({ userId: "anonymous" }, token)).toBe(true);
+    expect(isAnonymousOrOwned({ user_id: "anonymous" }, token)).toBe(true);
+
+    // 2. Record owned by the destination account -> eligible
+    expect(isAnonymousOrOwned({ userId: token }, token)).toBe(true);
+
+    // 3. Record owned by another account -> ineligible
+    expect(isAnonymousOrOwned({ userId: "other-user-uuid" }, token)).toBe(false);
+
+    // 4. Record with missing ownership metadata -> ineligible
+    expect(isAnonymousOrOwned({}, token)).toBe(false);
+
+    // 5. Record with an empty or otherwise invalid owner value -> ineligible
+    expect(isAnonymousOrOwned({ userId: "" }, token)).toBe(false);
+    expect(isAnonymousOrOwned({ userId: null }, token)).toBe(false);
+    expect(isAnonymousOrOwned({ userId: "   " }, token)).toBe(false);
+  });
+
+  it("makes backup and restoration failures observable to the caller through explicit errors", async () => {
+    const { restoreAnonymousWorkspace } = require("../storageUtils");
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockRejectedValue(new Error("Storage read corruption"));
+
+    await expect(restoreAnonymousWorkspace()).rejects.toThrow(/Failed to restore anonymous workspace/);
   });
 });

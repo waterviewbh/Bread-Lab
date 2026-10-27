@@ -142,7 +142,8 @@ export async function restoreAnonymousWorkspace(): Promise<void> {
     }
     await AsyncStorage.removeItem(ANONYMOUS_BACKUP_KEY);
   } catch (error) {
-    console.warn("[StorageUtils] Failed to restore anonymous workspace", error);
+    console.error("[StorageUtils] Failed to restore anonymous workspace", error);
+    throw new Error(`Failed to restore anonymous workspace: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

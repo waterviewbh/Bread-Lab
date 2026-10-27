@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import { api } from "./api";
 import { getDeviceId } from "./deviceId";
+import { supabase } from "./supabase";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const ACTIVE_FEED_KEY = "sourdough_feed_session_v1";
@@ -190,7 +191,10 @@ export function formatErrorDiagnostic(error: unknown): string {
  * Unknown/missing ownership metadata (userId === undefined) is NOT eligible for migration.
  */
 export function isAnonymousOrOwned(record: any, token: string): boolean {
-  const owner = record?.userId ?? record?.user_id;
+  if (!record || typeof record !== "object") return false;
+  const owner = record.userId ?? record.user_id;
+  if (owner === undefined || owner === null) return false;
+  if (typeof owner !== "string" || owner.trim() === "") return false;
   return owner === "anonymous" || owner === token;
 }
 
@@ -297,7 +301,30 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   for (const recipe of recipesToMigrate) {
     const key = `recipe:${recipe.id}`;
     if (!ledger[key]) {
-      ledger[key] = recipe.id;
+      const isAnonymous = (recipe.userId ?? recipe.user_id) === "anonymous";
+      if (isAnonymous && supabase) {
+        try {
+          const { data: existingRow, error: preflightError } = await supabase
+            .from("recipes")
+            .select("id, user_id")
+            .eq("id", recipe.id)
+            .maybeSingle();
+
+          if (preflightError) {
+            throw new Error(`Preflight collision check failed for recipe ${recipe.id}: ${preflightError.message}`);
+          }
+
+          if (existingRow && existingRow.user_id && existingRow.user_id !== token) {
+            ledger[key] = generateSecureUUID();
+          } else {
+            ledger[key] = recipe.id;
+          }
+        } catch (preflightErr: any) {
+          throw new Error(`Migration preflight aborted for recipe ${recipe.id}: ${preflightErr.message || String(preflightErr)}`);
+        }
+      } else {
+        ledger[key] = recipe.id;
+      }
     }
     typeMapping.set(key, ledger[key]);
   }
