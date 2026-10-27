@@ -340,12 +340,20 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   // PASS 2: Remap Relationships & Upload in Dependency Order
   // -------------------------------------------------------------
 
-  // 1. Upload Recipes (Dependency Root)
+  // 1. Upload Recipes (Dependency Root) — Sort root recipes before child recipes
+  const sortedRecipesToMigrate = [...recipesToMigrate].sort((a, b) => {
+    const aHasParent = !!(a.parentRecipeId ?? a.parent_recipe_id);
+    const bHasParent = !!(b.parentRecipeId ?? b.parent_recipe_id);
+    if (!aHasParent && bHasParent) return -1;
+    if (aHasParent && !bHasParent) return 1;
+    return 0;
+  });
+
   let recipesOk = 0;
   let recipesFailed = 0;
-  for (const r of recipesToMigrate) {
+  for (const r of sortedRecipesToMigrate) {
     const key = `recipe:${r.id}`;
-    const targetId = ledger[key];
+    let targetId = ledger[key];
 
     try {
       const parsedYield = parseInt(r.yieldValue || "0", 10);
@@ -354,22 +362,62 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
       const rawParent = r.parentRecipeId ?? r.parent_recipe_id ?? null;
       const remappedParent = rawParent ? typeMapping.get(`recipe:${rawParent}`) ?? rawParent : null;
 
-      await api.recipes.upsert({
-        id: targetId,
-        deviceId,
-        userId: token,
-        name: r.name,
-        overview: r.overview,
-        createdAt: r.createdAt ?? (r as any).created_at,
-        yield_value: safeYield,
-        parentRecipeId: remappedParent,
-        phases: (r.phases || []).map((p: any) => ({
-          key: p.key,
-          name: p.name,
-          ingredients: p.ingredients,
-          instructions: p.instructions,
-        })),
-      });
+      try {
+        await api.recipes.upsert({
+          id: targetId,
+          deviceId,
+          userId: token,
+          name: r.name,
+          overview: r.overview,
+          createdAt: r.createdAt ?? (r as any).created_at,
+          yield_value: safeYield,
+          parentRecipeId: remappedParent,
+          phases: (r.phases || []).map((p: any) => ({
+            key: p.key,
+            name: p.name,
+            ingredients: p.ingredients,
+            instructions: p.instructions,
+          })),
+        });
+      } catch (upsertError) {
+        const errDiag = formatErrorDiagnostic(upsertError);
+        const isRlsCollision = errDiag.includes("42501") || errDiag.includes("row-level security") || errDiag.includes("violates row-level security");
+
+        if (isRlsCollision) {
+          console.warn(`[Migration] RLS 42501 collision detected for recipe ID ${r.id} -> target ${targetId}. Allocating fresh UUID...`);
+          const freshTargetId = generateSecureUUID();
+
+          // Update ledger and typeMapping
+          ledger[key] = freshTargetId;
+          typeMapping.set(key, freshTargetId);
+
+          // Persist updated ledger before retrying write
+          await AsyncStorage.setItem(ledgerKey, JSON.stringify(ledger));
+
+          // Re-resolve parent with updated typeMapping if needed
+          const updatedParent = rawParent ? typeMapping.get(`recipe:${rawParent}`) ?? rawParent : null;
+
+          // Retry write once with fresh target ID
+          await api.recipes.upsert({
+            id: freshTargetId,
+            deviceId,
+            userId: token,
+            name: r.name,
+            overview: r.overview,
+            createdAt: r.createdAt ?? (r as any).created_at,
+            yield_value: safeYield,
+            parentRecipeId: updatedParent,
+            phases: (r.phases || []).map((p: any) => ({
+              key: p.key,
+              name: p.name,
+              ingredients: p.ingredients,
+              instructions: p.instructions,
+            })),
+          });
+        } else {
+          throw upsertError;
+        }
+      }
       recipesOk++;
     } catch (error) {
       console.warn(`[Migration] Failed to sync recipe (local ID: ${r.id}):`, formatErrorDiagnostic(error));

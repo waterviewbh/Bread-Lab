@@ -361,4 +361,79 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
 
     consoleSpy.mockRestore();
   });
+
+  it("handles RLS 42501 collision by allocating fresh UUID, updating ledger, and retrying write once", async () => {
+    const collidingRecipe = { id: "rec-colliding-123", name: "Colliding Recipe", phases: [] };
+
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([collidingRecipe]));
+      return Promise.resolve(null);
+    });
+
+    // Mock initial upsert throwing RLS 42501 error
+    (api.recipes.upsert as jest.Mock).mockRejectedValueOnce({
+      message: 'new row violates row-level security policy (USING expression) for table "recipes"',
+      code: '42501',
+    }).mockResolvedValueOnce({
+      id: "fresh-uuid-remapped",
+      name: "Colliding Recipe",
+    });
+
+    const consoleSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await migrateLocalDataToAccount("collision-token");
+
+    expect(result.recipes.ok).toBe(1);
+    expect(result.recipes.failed).toBe(0);
+
+    // Verify initial upsert was called with targetId = "rec-colliding-123"
+    expect(api.recipes.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: "rec-colliding-123" })
+    );
+
+    // Verify second upsert was called with a fresh remapped UUID
+    expect(api.recipes.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        id: expect.not.stringMatching("rec-colliding-123"),
+        name: "Colliding Recipe",
+      })
+    );
+
+    // Verify ledger setItem was called with updated ledger mapping
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      expect.stringContaining("bread_lab_import_ledger_collision-token"),
+      expect.stringContaining("recipe:rec-colliding-123")
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("resolves parent/child references correctly even when child precedes parent in input list", async () => {
+    const childRecipe = { id: "child-rec", name: "Child Recipe", parentRecipeId: "parent-rec", phases: [] };
+    const parentRecipe = { id: "parent-rec", name: "Parent Recipe", phases: [] };
+
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([childRecipe, parentRecipe]));
+      return Promise.resolve(null);
+    });
+
+    const result = await migrateLocalDataToAccount("order-token");
+    expect(result.recipes.ok).toBe(2);
+
+    // Verify parent was upserted first (dependency root)
+    expect(api.recipes.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: "parent-rec", name: "Parent Recipe" })
+    );
+
+    // Verify child was upserted second with correct parent reference
+    expect(api.recipes.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ id: "child-rec", name: "Child Recipe", parentRecipeId: "parent-rec" })
+    );
+  });
 });
