@@ -256,7 +256,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   for (const recipe of recipes) {
     const key = `recipe:${recipe.id}`;
     if (!ledger[key]) {
-      ledger[key] = generateSecureUUID();
+      ledger[key] = recipe.id;
     }
     typeMapping.set(key, ledger[key]);
   }
@@ -264,7 +264,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   for (const bake of bakeHistory) {
     const key = `bake:${bake.id}`;
     if (!ledger[key]) {
-      ledger[key] = generateSecureUUID();
+      ledger[key] = bake.id;
     }
     typeMapping.set(key, ledger[key]);
   }
@@ -272,7 +272,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   for (const bake of activeBakes) {
     const key = `bake:${bake.id}`;
     if (!ledger[key]) {
-      ledger[key] = generateSecureUUID();
+      ledger[key] = bake.id;
     }
     typeMapping.set(key, ledger[key]);
   }
@@ -280,7 +280,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   for (const feed of feedHistory) {
     const key = `feed:${feed.id}`;
     if (!ledger[key]) {
-      ledger[key] = generateSecureUUID();
+      ledger[key] = feed.id;
     }
     typeMapping.set(key, ledger[key]);
   }
@@ -288,7 +288,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   if (activeFeed) {
     const key = `feed:${activeFeed.id}`;
     if (!ledger[key]) {
-      ledger[key] = generateSecureUUID();
+      ledger[key] = activeFeed.id;
     }
     typeMapping.set(key, ledger[key]);
   }

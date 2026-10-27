@@ -3,13 +3,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { migrateLocalDataToAccount, clearMigrationPending } from "../migrate";
 import { api, packBakeOutcome, unpackBakeOutcome, rowToApiBakeSession } from "../api";
 import { clearAuth, saveAuth, getStoredToken, getStoredUser } from "../auth";
+import { upsertRecipeRemote } from "../recipeStorage";
 
 // Mock AsyncStorage and api
 jest.mock("@react-native-async-storage/async-storage", () => ({
   getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  multiRemove: jest.fn(),
+  setItem: jest.fn().mockResolvedValue(undefined),
+  removeItem: jest.fn().mockResolvedValue(undefined),
+  multiRemove: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("../api", () => {
@@ -34,6 +35,7 @@ jest.mock("../deviceId", () => ({
 describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID Generation Fix", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
   });
 
   it("handles out-of-order recipe dependencies and cross-table ID collisions with typed composite keys", async () => {
@@ -207,5 +209,89 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
 
     expect(api.recipes.upsert).not.toHaveBeenCalled();
     expect(api.history.bakes.upsert).not.toHaveBeenCalled();
+  });
+
+  it("preserves local record IDs when migration ledger is missing and aligns ordinary sync with migration", async () => {
+    const localRecipe = { id: "rec-stable-123", name: "Stable Loaf", createdAt: 1700000000000, phases: [] };
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([localRecipe]));
+      return Promise.resolve(null);
+    });
+
+    const result = await migrateLocalDataToAccount("missing-ledger-token");
+    expect(result.recipes.ok).toBe(1);
+
+    // Verify migration sends targetId = "rec-stable-123" matching local ID
+    expect(api.recipes.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "rec-stable-123",
+        name: "Stable Loaf",
+      })
+    );
+
+    // Verify ordinary sync also sends id = "rec-stable-123"
+    await upsertRecipeRemote({ id: "rec-stable-123", name: "Stable Loaf", createdAt: 1700000000000, phases: [] });
+    expect(api.recipes.upsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: "rec-stable-123",
+        name: "Stable Loaf",
+      })
+    );
+  });
+
+  it("preserves existing ledger target mapping if present and retains recipe references in bake sessions", async () => {
+    const mockRecipes = [{ id: "rec-1", name: "Recipe 1", parentRecipeId: "rec-1" }];
+    const mockBakes = [{ id: "bake-1", recipeName: "Bake 1", recipeId: "rec-1", savedAt: 1000, startedAt: 900, phases: [] }];
+    const existingLedger = { "recipe:rec-1": "custom-remote-uuid-1", "bake:bake-1": "custom-remote-bake-uuid" };
+
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key.includes("import_ledger")) return Promise.resolve(JSON.stringify(existingLedger));
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(mockRecipes));
+      if (key.includes("bake_history")) return Promise.resolve(JSON.stringify(mockBakes));
+      return Promise.resolve(null);
+    });
+
+    const result = await migrateLocalDataToAccount("existing-ledger-token");
+    expect(result.recipes.ok).toBe(1);
+    expect(result.bakes.ok).toBe(1);
+
+    expect(api.recipes.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "custom-remote-uuid-1",
+        parentRecipeId: "custom-remote-uuid-1",
+      })
+    );
+
+    expect(api.history.bakes.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "custom-remote-bake-uuid",
+        recipeId: "custom-remote-uuid-1",
+      })
+    );
+  });
+
+  it("is idempotent across repeated migrations under different user tokens without creating new random UUIDs", async () => {
+    const localRecipe = { id: "rec-idempotent-999", name: "Idempotent Recipe", phases: [] };
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([localRecipe]));
+      return Promise.resolve(null);
+    });
+
+    // Migration 1 under Token A
+    const res1 = await migrateLocalDataToAccount("user-token-A");
+    expect(res1.recipes.ok).toBe(1);
+    expect(api.recipes.upsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "rec-idempotent-999" })
+    );
+
+    // Migration 2 under Token B (token changed, ledger missing for Token B)
+    const res2 = await migrateLocalDataToAccount("user-token-B");
+    expect(res2.recipes.ok).toBe(1);
+    expect(api.recipes.upsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "rec-idempotent-999" })
+    );
   });
 });
