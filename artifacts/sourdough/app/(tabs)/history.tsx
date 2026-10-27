@@ -88,6 +88,7 @@ interface BakePhaseReading {
 
 interface BakeHistoryEntry {
   id: string;
+  userId?: string;
   recipeId: string;
   recipeName: string;
   savedAt: number;
@@ -129,6 +130,7 @@ interface FeedReading {
 
 interface HistoryEntry {
   id: string;
+  userId?: string;
   savedAt: number;
   completedAt?: number;
   starterWeight: string;
@@ -310,6 +312,7 @@ export default function HistoryScreen() {
   const [bakeRecipeMap, setBakeRecipeMap] = useState<Record<string, { ingredients?: string; instructions?: string }>>({});
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const migrationInFlightRef = useRef(false);
+  const activeTokenRef = useRef<string | null>(null);
 
   const retryPendingMigration = useCallback(async () => {
     if (migrationInFlightRef.current) return;
@@ -349,7 +352,14 @@ export default function HistoryScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadHistory();
+      getStoredToken().then((token) => {
+        if (activeTokenRef.current !== token) {
+          activeTokenRef.current = token;
+          setHistory([]);
+          setBakeHistory([]);
+        }
+        loadHistory();
+      }).catch(() => loadHistory());
       getStoredUser().then(setCurrentUser).catch(() => {});
       getDeviceId().then(setLocalDeviceId).catch(() => {});
       retryPendingMigration();
@@ -678,24 +688,37 @@ export default function HistoryScreen() {
     };
 
     try {
-      const [feedStored, bakeStored, activeStored] = await Promise.all([
-        AsyncStorage.getItem(HISTORY_KEY),
-        AsyncStorage.getItem(BAKE_HISTORY_KEY),
-        AsyncStorage.getItem(ACTIVE_BAKE_KEY),
-      ]);
-      if (feedStored) setHistory(JSON.parse(feedStored));
-      const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
-      setBakeHistory(mergeActiveBake(bakeList, activeStored));
-    } catch (e) {}
-    try {
       const deviceId = await getDeviceId();
       const token = await getStoredToken().catch(() => null);
+
+      const isOwnerMatch = (entry: { userId?: string }) => {
+        if (!token) return !entry.userId;
+        return !entry.userId || entry.userId === token;
+      };
+
+      try {
+        const [feedStored, bakeStored, activeStored] = await Promise.all([
+          AsyncStorage.getItem(HISTORY_KEY),
+          AsyncStorage.getItem(BAKE_HISTORY_KEY),
+          AsyncStorage.getItem(ACTIVE_BAKE_KEY),
+        ]);
+        if (feedStored) {
+          const parsedFeed = JSON.parse(feedStored) as HistoryEntry[];
+          setHistory(parsedFeed.filter(isOwnerMatch));
+        }
+        const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
+        setBakeHistory(mergeActiveBake(bakeList.filter(isOwnerMatch), activeStored));
+      } catch (e) {}
+
       const [apiFeed, apiBakes, activeStored] = await Promise.all([
         api.history.feed.list(deviceId, token ?? undefined),
         api.history.bakes.list(deviceId, token ?? undefined),
         AsyncStorage.getItem(ACTIVE_BAKE_KEY),
       ]);
-      const mapped = apiFeed.map((s) => s.data as unknown as HistoryEntry);
+      const mapped = apiFeed.map((s) => ({
+        ...(s.data as unknown as HistoryEntry),
+        userId: token ?? (s.data as any)?.userId,
+      }));
 
       // Merge Supabase results with local-only entries so a failed or
       // incomplete sync never silently erases sessions that exist only
@@ -715,7 +738,7 @@ export default function HistoryScreen() {
       const localFeed: HistoryEntry[] = localFeedRaw ? JSON.parse(localFeedRaw) : [];
       const supabaseFeedIds = new Set(mapped.map((e) => e.id));
       const localOnlyFeed = localFeed.filter(
-        (e) => !supabaseFeedIds.has(e.id) && !deletedFeedIds.has(e.id)
+        (e) => !supabaseFeedIds.has(e.id) && !deletedFeedIds.has(e.id) && isOwnerMatch(e)
       );
       const mergedFeed = [
         ...mapped.filter((e) => !deletedFeedIds.has(e.id)),
@@ -733,6 +756,7 @@ export default function HistoryScreen() {
 
       const apiMapped: BakeHistoryEntry[] = apiBakes.map((b) => ({
         id: b.id,
+        userId: token ?? undefined,
         recipeId: b.recipeId ?? "",
         recipeName: b.recipeName,
         savedAt: b.savedAt,
@@ -764,7 +788,7 @@ export default function HistoryScreen() {
       const localBakes: BakeHistoryEntry[] = localBakeRaw ? JSON.parse(localBakeRaw) : [];
       const supabaseBakeIds = new Set(apiMapped.map((b) => b.id));
       const localOnlyBakes = localBakes.filter(
-        (b) => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id)
+        (b) => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id) && isOwnerMatch(b)
       );
       const mergedBakes = [
         ...apiMapped.filter((b) => !deletedBakeIds.has(b.id)),
