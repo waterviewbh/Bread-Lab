@@ -1,9 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+export const ANONYMOUS_BACKUP_KEY = "bread_lab_anonymous_backup_v1";
+
 /**
  * All AsyncStorage keys used by the Bread Lab app.
- * Keeping them in one place ensures that a sign-out or identity switch
- * can perform a truly exhaustive local data wipe.
  */
 export const APP_STORAGE_KEYS = {
   // Auth
@@ -47,8 +47,41 @@ export const APP_STORAGE_KEYS = {
   SCHEMA_VERSION: "bread_lab_schema_version_v1",
 };
 
+export const OPERATIONAL_KEYS = [
+  APP_STORAGE_KEYS.RECIPES,
+  APP_STORAGE_KEYS.DELETED_RECIPE_IDS,
+  APP_STORAGE_KEYS.ACTIVE_BAKE,
+  APP_STORAGE_KEYS.BAKE_HISTORY,
+  APP_STORAGE_KEYS.DELETED_BAKE_IDS,
+  APP_STORAGE_KEYS.ACTIVE_FEED,
+  APP_STORAGE_KEYS.FEED_HISTORY,
+  APP_STORAGE_KEYS.DELETED_FEED_IDS,
+  APP_STORAGE_KEYS.MIGRATION_PENDING,
+];
+
 /**
- * Perform an exhaustive wipe of all local app data.
+ * Clear local operational data without removing authentication credential keys.
+ */
+export async function clearOperationalData(): Promise<void> {
+  try {
+    console.log("[StorageUtils] Clearing local operational keys...");
+    await AsyncStorage.multiRemove(OPERATIONAL_KEYS);
+  } catch (error) {
+    console.error("[StorageUtils] Failed to clear operational data", error);
+    throw new Error(`Failed to clear local operational data: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // Verification pass
+  for (const key of OPERATIONAL_KEYS) {
+    const val = await AsyncStorage.getItem(key);
+    if (val !== null && val !== undefined) {
+      throw new Error(`Operational wipe verification failed: key ${key} remains present.`);
+    }
+  }
+}
+
+/**
+ * Perform an exhaustive wipe of all local app data including auth keys.
  */
 export async function clearAllAppData(): Promise<void> {
   const allKeys = Object.values(APP_STORAGE_KEYS);
@@ -60,25 +93,56 @@ export async function clearAllAppData(): Promise<void> {
     throw new Error(`Failed to clear local app data: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  // Verification pass: ensure all operational, deleted-tracking, and migration keys are absent
-  const keysToVerify = [
-    APP_STORAGE_KEYS.RECIPES,
-    APP_STORAGE_KEYS.DELETED_RECIPE_IDS,
-    APP_STORAGE_KEYS.ACTIVE_BAKE,
-    APP_STORAGE_KEYS.BAKE_HISTORY,
-    APP_STORAGE_KEYS.DELETED_BAKE_IDS,
-    APP_STORAGE_KEYS.ACTIVE_FEED,
-    APP_STORAGE_KEYS.FEED_HISTORY,
-    APP_STORAGE_KEYS.DELETED_FEED_IDS,
-    APP_STORAGE_KEYS.MIGRATION_PENDING,
-  ];
-
-  for (const key of keysToVerify) {
-    // Do not catch getItem errors — fail closed on verification read failures
+  for (const key of OPERATIONAL_KEYS) {
     const val = await AsyncStorage.getItem(key);
     if (val !== null && val !== undefined) {
       throw new Error(`Storage wipe verification failed: key ${key} remains present after clearing.`);
     }
+  }
+}
+
+/**
+ * Isolate anonymous local operational records in ANONYMOUS_BACKUP_KEY before clearing active workspace.
+ */
+export async function backupAnonymousWorkspace(): Promise<boolean> {
+  try {
+    const pairs = await AsyncStorage.multiGet(OPERATIONAL_KEYS);
+    const backupMap: Record<string, string> = {};
+    let hasData = false;
+
+    for (const [key, val] of pairs) {
+      if (val !== null && val !== undefined) {
+        backupMap[key] = val;
+        hasData = true;
+      }
+    }
+
+    if (hasData) {
+      await AsyncStorage.setItem(ANONYMOUS_BACKUP_KEY, JSON.stringify(backupMap));
+    }
+    return hasData;
+  } catch (error) {
+    throw new Error(`Failed to backup anonymous workspace: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Restore isolated anonymous operational records from ANONYMOUS_BACKUP_KEY.
+ */
+export async function restoreAnonymousWorkspace(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(ANONYMOUS_BACKUP_KEY);
+    if (!raw) return;
+
+    const backupMap = JSON.parse(raw) as Record<string, string>;
+    const pairs: [string, string][] = Object.entries(backupMap);
+
+    if (pairs.length > 0) {
+      await AsyncStorage.multiSet(pairs);
+    }
+    await AsyncStorage.removeItem(ANONYMOUS_BACKUP_KEY);
+  } catch (error) {
+    console.warn("[StorageUtils] Failed to restore anonymous workspace", error);
   }
 }
 
@@ -94,13 +158,11 @@ export function safeParse<T>(
     if (!json) return defaultValue;
     const parsed = JSON.parse(json);
 
-    // Type validation
     if (validate && !validate(parsed)) {
       console.warn("[StorageUtils] Validation failed for parsed data, using default.");
       return defaultValue;
     }
 
-    // Defensive Merging for objects (excluding arrays)
     if (
       typeof defaultValue === "object" &&
       defaultValue !== null &&
@@ -119,10 +181,6 @@ export function safeParse<T>(
   }
 }
 
-/**
- * Simple Async Mutex to prevent race conditions during read-modify-write
- * operations on AsyncStorage.
- */
 export class AsyncMutex {
   private tail: Promise<void> = Promise.resolve();
 

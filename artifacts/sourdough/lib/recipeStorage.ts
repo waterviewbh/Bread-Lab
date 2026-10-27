@@ -333,6 +333,7 @@ export async function archiveBakeWithDiagnostics(
   }
 ): Promise<void> {
   const savedAt = Date.now();
+  const token = await getStoredToken().catch(() => null);
 
   await storageMutex.run(async () => {
     try {
@@ -341,6 +342,7 @@ export async function archiveBakeWithDiagnostics(
 
       const historyItem = {
         ...bake,
+        userId: bake.userId ?? token ?? "anonymous",
         savedAt,
         status: (bake.status === 'post_mortem' ? 'post_mortem' : 'completed') as any,
       };
@@ -354,12 +356,11 @@ export async function archiveBakeWithDiagnostics(
 
   callbacks.reportSyncStart();
   const deviceId = await getDeviceId();
-  const token = await getStoredToken().catch(() => null);
 
   api.history.bakes.upsert({
     id: bake.id,
     deviceId,
-    userId: token ?? undefined,
+    userId: bake.userId ?? token ?? undefined,
     recipeId: bake.recipeId,
     recipeName: bake.recipeName,
     yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
@@ -425,6 +426,7 @@ export async function updateBakeOutcomeInHistory(
     bakeId: string,
     outcome: BakeOutcome
 ): Promise<void> {
+    const token = await getStoredToken().catch(() => null);
     return storageMutex.run(async () => {
         try {
             const storedHistory = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
@@ -436,6 +438,7 @@ export async function updateBakeOutcomeInHistory(
             if (index !== -1) {
                 updatedBake = {
                     ...history[index],
+                    userId: history[index].userId ?? token ?? "anonymous",
                     outcome: outcome
                 };
                 history[index] = updatedBake;
@@ -459,6 +462,7 @@ export async function updateBakeOutcomeInHistory(
                     if (activeIndex !== -1) {
                         updatedBake = {
                             ...activeBakes[activeIndex],
+                            userId: activeBakes[activeIndex].userId ?? token ?? "anonymous",
                             outcome: outcome,
                             status: 'completed',
                             completedAt: activeBakes[activeIndex].completedAt || Date.now()
@@ -476,12 +480,11 @@ export async function updateBakeOutcomeInHistory(
                 (async () => {
                     try {
                         const deviceId = await getDeviceId();
-                        const token = await getStoredToken().catch(() => null);
 
                         await api.history.bakes.upsert({
                             ...updatedBake,
                             deviceId,
-                            userId: token ?? undefined,
+                            userId: updatedBake.userId ?? token ?? undefined,
                             yield_value: updatedBake.yieldValue ? parseInt(updatedBake.yieldValue, 10) : 0,
                             savedAt: Date.now(),
                             inProgress: false

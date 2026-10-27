@@ -245,6 +245,9 @@ export function HistorySection() {
   const [selectedBakeDetail, setSelectedBakeDetail] = useState<BakeHistoryEntry | null>(null);
   const [bakeRecipeMap, setBakeRecipeMap] = useState<Record<string, { ingredients?: string; instructions?: string }>>({});
 
+  const loadSequenceRef = useRef(0);
+  const activeTokenRef = useRef<string | null>(null);
+
   useEffect(() => {
     AsyncStorage.getItem(FEED_FILTER_KEY).then((v) => {
       if (v === "sugar" || v === "ww") setFeedFilter(v as FeedFilter);
@@ -252,6 +255,14 @@ export function HistorySection() {
   }, []);
 
   const loadHistory = useCallback(async () => {
+    const sequenceId = ++loadSequenceRef.current;
+    const token = await getStoredToken().catch(() => null);
+
+    const isOwnerMatch = (entry: { userId?: string }) => {
+      if (!token) return !entry.userId || entry.userId === "anonymous";
+      return entry.userId === token;
+    };
+
     const mergeActiveBake = (list: BakeHistoryEntry[], activeRaw: string | null): BakeHistoryEntry[] => {
       if (!activeRaw) return list;
       try {
@@ -263,6 +274,7 @@ export function HistorySection() {
           if (newList.some((e) => e.id === active.id)) return;
           newList.unshift({
             id: active.id,
+            userId: active.userId ?? token ?? "anonymous",
             recipeId: active.recipeId ?? "",
             recipeName: active.recipeName,
             savedAt: active.startedAt,
@@ -287,20 +299,28 @@ export function HistorySection() {
         AsyncStorage.getItem(BAKE_HISTORY_KEY),
         AsyncStorage.getItem(ACTIVE_BAKE_KEY),
       ]);
-      if (feedStored) setHistory(JSON.parse(feedStored));
+      if (loadSequenceRef.current !== sequenceId) return;
+      if (feedStored) {
+        const parsedFeed = JSON.parse(feedStored) as HistoryEntry[];
+        setHistory(parsedFeed.filter(isOwnerMatch));
+      }
       const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
-      setBakeHistory(mergeActiveBake(bakeList, activeStored));
+      setBakeHistory(mergeActiveBake(bakeList.filter(isOwnerMatch), activeStored));
     } catch {}
 
     try {
       const deviceId = await getDeviceId();
-      const token = await getStoredToken().catch(() => null);
       const [apiFeed, apiBakes, activeStored] = await Promise.all([
         api.history.feed.list(deviceId, token ?? undefined),
         api.history.bakes.list(deviceId, token ?? undefined),
         AsyncStorage.getItem(ACTIVE_BAKE_KEY),
       ]);
-      const mapped = apiFeed.map((s) => s.data as unknown as HistoryEntry);
+      if (loadSequenceRef.current !== sequenceId) return;
+
+      const mapped = apiFeed.map((s) => ({
+        ...(s.data as unknown as HistoryEntry),
+        userId: token ?? (s.data as any)?.userId,
+      }));
 
       const [localFeedRaw, localBakeRaw, deletedFeedRaw, deletedBakeRaw] = await Promise.all([
         AsyncStorage.getItem(HISTORY_KEY),
@@ -308,11 +328,13 @@ export function HistorySection() {
         AsyncStorage.getItem(DELETED_FEED_IDS_KEY),
         AsyncStorage.getItem(DELETED_BAKE_IDS_KEY),
       ]);
+      if (loadSequenceRef.current !== sequenceId) return;
+
       const deletedFeedIds = new Set<string>(deletedFeedRaw ? JSON.parse(deletedFeedRaw) : []);
       const deletedBakeIds = new Set<string>(deletedBakeRaw ? JSON.parse(deletedBakeRaw) : []);
       const localFeed: HistoryEntry[] = localFeedRaw ? JSON.parse(localFeedRaw) : [];
       const supabaseFeedIds = new Set(mapped.map((e) => e.id));
-      const localOnlyFeed = localFeed.filter(e => !supabaseFeedIds.has(e.id) && !deletedFeedIds.has(e.id));
+      const localOnlyFeed = localFeed.filter(e => !supabaseFeedIds.has(e.id) && !deletedFeedIds.has(e.id) && isOwnerMatch(e));
       const mergedFeed = [...mapped.filter(e => !deletedFeedIds.has(e.id)), ...localOnlyFeed].sort((a, b) => (b.completedAt ?? b.savedAt) - (a.completedAt ?? a.savedAt));
 
       if (token || apiFeed.length > 0) {
@@ -322,6 +344,7 @@ export function HistorySection() {
 
       const apiMapped: BakeHistoryEntry[] = apiBakes.map((b) => ({
         id: b.id,
+        userId: token ?? undefined,
         recipeId: b.recipeId ?? "",
         recipeName: b.recipeName,
         savedAt: b.savedAt,
@@ -352,20 +375,31 @@ export function HistorySection() {
         return apiBake;
       });
 
-      const localOnlyBakes = localBakes.filter(b => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id));
+      const localOnlyBakes = localBakes.filter(b => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id) && isOwnerMatch(b));
       const finalBakes = [...mergedBakes.filter(b => !deletedBakeIds.has(b.id)), ...localOnlyBakes].sort((a, b) => (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt));
+
+      if (loadSequenceRef.current !== sequenceId) return;
 
       if (token || apiBakes.length > 0) {
         await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(finalBakes));
       }
       const [finalActiveStored] = await Promise.all([AsyncStorage.getItem(ACTIVE_BAKE_KEY)]);
+      if (loadSequenceRef.current !== sequenceId) return;
+
       setBakeHistory(mergeActiveBake(finalBakes, finalActiveStored));
       setLastSynced(Date.now());
     } catch {}
   }, []);
 
   useFocusEffect(useCallback(() => {
-    loadHistory();
+    getStoredToken().then((token) => {
+      if (activeTokenRef.current !== token) {
+        activeTokenRef.current = token;
+        setHistory([]);
+        setBakeHistory([]);
+      }
+      loadHistory();
+    }).catch(() => loadHistory());
     getStoredUser().then(setCurrentUser).catch(() => {});
     getDeviceId().then(setLocalDeviceId).catch(() => {});
   }, [loadHistory]));

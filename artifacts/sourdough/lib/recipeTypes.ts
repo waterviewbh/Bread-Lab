@@ -114,9 +114,18 @@ export interface RecipePhaseConfig {
   instructions: CheckableLine[];
 }
 
+// ─── Recipe Provenance (Database-Free Portable Lineage) ───────────────────────
+export interface RecipeProvenance {
+  originalAuthorName?: string;  // Preserved creator name (e.g. "Padme"). Undefined if unsupplied.
+  sharedByAuthorName?: string;  // Sharer name (e.g. "Luke"). Undefined if unsupplied.
+  sourceUrl?: string;           // Web source URL if acquired from web
+  importedAt?: number;          // Timestamp when imported into workspace
+}
+
 // ─── Saved recipe (persisted shape) ──────────────────────────────────────────
 export interface SavedRecipe {
   id: string;
+  userId?: string;              // Owner of this workspace copy
   name: string;
   overview?: string;            // to store short blog-like comments about a recipe
   createdAt: number;
@@ -125,12 +134,13 @@ export interface SavedRecipe {
   yieldValue?: string;
   totalFlourG?: number;
   hydrationPct?: number;
-  parentRecipeId?: string;
+  parentRecipeId?: string | null;
   versionLabel?: string;
   isArchived?: boolean;         // Soft archiving for intermediate iterations
   isUneditedIteration?: boolean;
   clonedFromBakeName?: string;
   diagnosticHypothesis?: string;
+  provenance?: RecipeProvenance; // Embedded self-contained lineage
 }
 
 // ─── Active bake phase (runner shape, extends builder config) ─────────────────
@@ -234,6 +244,7 @@ export interface BulkCheckInPredictionSnapshot {
 // ─── Active bake (in-progress state) ─────────────────────────────────────────
 export interface ActiveBake {
   id: string;
+  userId?: string;
   recipeId: string;
   recipeName: string;
   startedAt: number;
@@ -250,6 +261,7 @@ export interface ActiveBake {
 }
 
 export interface BakeHistoryItem extends Omit<ActiveBake, 'status'> {
+  userId?: string;
   savedAt: number;
   status: 'completed' | 'post_mortem';
 }

@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { saveAuth, getStoredToken, clearAuth, type AuthUser } from "@/lib/auth";
-import { clearAllAppData } from "@/lib/storageUtils";
+import { clearAllAppData, clearOperationalData, backupAnonymousWorkspace, restoreAnonymousWorkspace } from "@/lib/storageUtils";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
@@ -78,6 +78,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       }
 
       const currentToken = sessionUserId ?? storedToken;
+      const savedAccountA = currentUser && currentToken ? { token: currentToken, user: currentUser } : null;
 
       if (currentToken) {
         // 2. Pre-sync local pending records to Account A before switching
@@ -91,7 +92,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         }
       }
 
-      // 3. Authenticate Account B FIRST before signing out or clearing previous account data
+      // 3. Authenticate Account B FIRST before clearing operational data
       const isSignUp = mode === "name";
       const result = await api.auth.identify({
         firstName: firstName.trim(),
@@ -99,24 +100,61 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         isSignUp,
       });
 
-      // 4. Now that destination Account B is authenticated, safely sign out of Account A and clear local data
-      if (currentToken) {
-        const signoutRes = await api.auth.signout();
-        if (!signoutRes.signedOut) {
-          throw new Error("Failed to sign out of previous account.");
+      // 4. Switching from Account A -> Account B
+      if (currentToken && savedAccountA) {
+        let wipeSuccess = false;
+        try {
+          await clearOperationalData();
+          wipeSuccess = true;
+        } catch (wipeErr) {
+          console.error("Local operational wipe failed during account switch", wipeErr);
+          // EXPLICIT SESSION ROLLBACK
+          await api.auth.signout().catch(() => {});
+          try {
+            await api.auth.identify({
+              firstName: savedAccountA.user.firstName,
+              starterName: savedAccountA.user.starterName,
+            });
+            await saveAuth(savedAccountA.token, savedAccountA.user);
+          } catch {
+            // Fail-closed fallback: force unauthenticated reset if restoration fails
+            await clearAuth().catch(() => {});
+            onAuthChange(null);
+          }
+
+          // Verify final session postcondition
+          const postCheck = await api.auth.getSession().catch(() => null);
+          const postSessionUserId = postCheck?.data?.session?.user?.id ?? null;
+          const postStoredToken = await getStoredToken().catch(() => null);
+
+          if (postSessionUserId !== postStoredToken) {
+            await clearAuth().catch(() => {});
+            await api.auth.signout().catch(() => {});
+            onAuthChange(null);
+          }
+
+          throw new Error("Local workspace clear failed. Switch aborted and session reset for safety.");
         }
-        await clearAuth();
-        await clearAllAppData();
+
+        if (wipeSuccess) {
+          try {
+            await saveAuth(result.token, result.user);
+          } catch (saveErr) {
+            console.error("Credential persistence failed after local wipe", saveErr);
+            await clearAuth().catch(() => {});
+            await api.auth.signout().catch(() => {});
+            onAuthChange(null);
+            throw new Error("Credential persistence failed. Workspace reset to unauthenticated.");
+          }
+          onAuthChange(result.user);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          reset();
+          onClose();
+          return;
+        }
       }
 
-      // 5. Save Account B auth & update UI state
-      await saveAuth(result.token, result.user);
-      onAuthChange(result.user);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      reset();
-      onClose();
-
-      // 6. Only if switching from unauthenticated state (anonymous local data), migrate to B
+      // 5. Switching from Anonymous -> Account B
       if (!currentToken) {
         await setMigrationPending();
         startMigration();
@@ -125,8 +163,24 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
         const destFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
         if (destFailed > 0) {
-          throw new Error(`Destination migration completed with ${destFailed} sync failure(s). Please retry sync.`);
+          await api.auth.signout().catch(() => {});
+          throw new Error(`Destination migration completed with ${destFailed} sync failure(s). Anonymous workspace preserved intact.`);
         }
+
+        try {
+          await clearOperationalData();
+          await saveAuth(result.token, result.user);
+        } catch (saveErr) {
+          await clearAuth().catch(() => {});
+          await api.auth.signout().catch(() => {});
+          onAuthChange(null);
+          throw new Error("Credential persistence failed. Anonymous workspace preserved.");
+        }
+
+        onAuthChange(result.user);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        reset();
+        onClose();
       }
 
       await getDeviceId()

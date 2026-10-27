@@ -67,18 +67,24 @@ const CandidateReviewControllerRender: React.ForwardRefRenderFunction<CandidateR
       throw new Error(`Recipe commit validation failed:\n- ${validation.errors.join('\n- ')}`);
     }
 
-    // 2. Normalize
+    // 2. Normalize & Resolve Auth Context
     const deviceId = await getDeviceId().catch(() => '');
-    const userId = await getStoredToken().catch(() => null);
+    const user = await getStoredUser().catch(() => null);
+    const userId = user?.id ?? null;
+
     const normalizedPayload = normalizePortableRecipe(portableRecipe, {
       id: generateUuid(),
       deviceId,
       userId: userId ?? undefined,
     });
 
-    // 3. Persist LOCALLY FIRST (Local-first architecture)
+    const originalAuthorName = (portableRecipe as any).provenance?.originalAuthorName ?? (portableRecipe as any).authorName ?? undefined;
+    const sharedByAuthorName = (portableRecipe as any).provenance?.sharedByAuthorName ?? (user ? `${user.firstName}'s ${user.starterName}` : undefined);
+
+    // 3. Persist LOCALLY FIRST (Local-first architecture) — Independent Master in Recipient Workspace
     const newRecipe: SavedRecipe = {
       id: normalizedPayload.id,
+      userId: userId ?? "anonymous",
       name: normalizedPayload.name,
       overview: normalizedPayload.overview,
       createdAt: Date.now(),
@@ -90,9 +96,15 @@ const CandidateReviewControllerRender: React.ForwardRefRenderFunction<CandidateR
         ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || '', 'ing'),
         instructions: Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || '', 'ins'),
       })),
-      parentRecipeId: normalizedPayload.parent_recipe_id ?? undefined,
-      versionLabel: normalizedPayload.version_label ?? undefined,
-      isArchived: normalizedPayload.is_archived ?? false,
+      parentRecipeId: null, // Independent Master copy
+      versionLabel: "Master",
+      isArchived: false,
+      provenance: {
+        originalAuthorName,
+        sharedByAuthorName,
+        sourceUrl: (portableRecipe as any).sourceUrl ?? undefined,
+        importedAt: Date.now(),
+      },
     };
 
     // 3. Persist LOCALLY FIRST using storageMutex via appendRecipeLocal

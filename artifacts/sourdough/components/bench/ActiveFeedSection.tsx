@@ -238,9 +238,12 @@ export function ActiveFeedSection({
   const handleSavePeak = async (peak: PeakData) => {
     if (!session) return;
 
+    const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
+
     // Save to local history as a snapshot
     const completed = {
       ...session,
+      userId: (session as any).userId ?? userId ?? "anonymous",
       peak,
       completedAt: Date.now(),
       updatedAt: Date.now(),
@@ -267,7 +270,6 @@ export function ActiveFeedSection({
       setSession(null);
 
       try {
-        const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
         reportSyncStart();
         await api.history.feed.upsert({
           id: completed.id,

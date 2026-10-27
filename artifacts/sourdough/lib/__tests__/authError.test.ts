@@ -1,12 +1,24 @@
 // artifacts/sourdough/lib/__tests__/authError.test.ts
 import { api } from "../api";
 import { supabase } from "../supabase";
+import { saveAuth, clearAuth, getStoredToken, getStoredUser } from "../auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  getItem: jest.fn(),
+  setItem: jest.fn().mockResolvedValue(undefined),
+  removeItem: jest.fn().mockResolvedValue(undefined),
+  multiSet: jest.fn().mockResolvedValue(undefined),
+  multiRemove: jest.fn().mockResolvedValue(undefined),
+}));
 
 jest.mock("../supabase", () => ({
   supabase: {
     auth: {
       signInWithPassword: jest.fn(),
       signUp: jest.fn(),
+      signOut: jest.fn().mockResolvedValue({ error: null }),
+      getSession: jest.fn().mockResolvedValue({ data: { session: null }, error: null }),
     },
     from: jest.fn(),
   },
@@ -58,7 +70,6 @@ describe("Auth Error Handling & Domain Regression", () => {
 
   it("does NOT trigger implicit signup fallback when sign-in fails and isSignUp is false/omitted", async () => {
     const authMod: any = supabase!.auth;
-    // All 3 strategies fail with invalid login credentials
     authMod.signInWithPassword.mockResolvedValue({
       data: null,
       error: { message: "Invalid login credentials" },
@@ -105,7 +116,7 @@ describe("Auth Error Handling & Domain Regression", () => {
       error: { message: "Invalid login credentials" },
     });
     authMod.signUp.mockResolvedValue({
-      data: { user: { id: "new-uuid" }, session: null }, // no session
+      data: { user: { id: "new-uuid" }, session: null },
       error: null,
     });
 
@@ -135,5 +146,32 @@ describe("Auth Error Handling & Domain Regression", () => {
     await expect(
       api.auth.identify({ firstName: "Test", starterName: "Starter" })
     ).rejects.toThrow("Profile loading failed");
+  });
+
+  it("verifies saveAuth multiSet and purges partial key fragments if verification fails", async () => {
+    const userObj = { id: "valid-id", firstName: "Valid", starterName: "User" };
+
+    // Case 1: Successful multiSet and verification match
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key === "bread_lab_auth_token_v1") return Promise.resolve("valid-id");
+      if (key === "bread_lab_auth_user_v1") return Promise.resolve(JSON.stringify(userObj));
+      return Promise.resolve(null);
+    });
+
+    await saveAuth("valid-id", userObj);
+    expect(AsyncStorage.multiSet).toHaveBeenCalledWith([
+      ["bread_lab_auth_token_v1", "valid-id"],
+      ["bread_lab_auth_user_v1", JSON.stringify(userObj)],
+    ]);
+
+    // Case 2: Verification read back fails -> saveAuth throws error and purges keys via clearAuth
+    getItemMock.mockResolvedValue(null); // Read back returns null (simulating write failure)
+
+    await expect(saveAuth("failed-id", userObj)).rejects.toThrow(/Credential persistence failed verification/);
+    expect(AsyncStorage.multiRemove).toHaveBeenCalledWith([
+      "bread_lab_auth_token_v1",
+      "bread_lab_auth_user_v1",
+    ]);
   });
 });

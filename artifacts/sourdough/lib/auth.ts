@@ -33,15 +33,48 @@ export async function getStoredUser(): Promise<AuthUser | null> {
 }
 
 export async function saveAuth(token: string, user: AuthUser): Promise<void> {
-  await Promise.all([
-    AsyncStorage.setItem(TOKEN_KEY, token),
-    AsyncStorage.setItem(USER_KEY, JSON.stringify(user)),
-  ]);
+  const userJson = JSON.stringify(user);
+  let attempts = 0;
+  let verified = false;
+
+  while (attempts < 3 && !verified) {
+    attempts++;
+    try {
+      await AsyncStorage.multiSet([
+        [TOKEN_KEY, token],
+        [USER_KEY, userJson],
+      ]);
+
+      const [readToken, readUserRaw] = await Promise.all([
+        AsyncStorage.getItem(TOKEN_KEY),
+        AsyncStorage.getItem(USER_KEY),
+      ]);
+
+      if (readToken === token && readUserRaw === userJson) {
+        verified = true;
+      } else {
+        console.warn(`[saveAuth] Verification attempt ${attempts} failed, retrying...`);
+        if (attempts < 3) await new Promise((r) => setTimeout(r, 100 * attempts));
+      }
+    } catch (error) {
+      console.warn(`[saveAuth] multiSet attempt ${attempts} failed`, error);
+      if (attempts < 3) await new Promise((r) => setTimeout(r, 100 * attempts));
+    }
+  }
+
+  if (!verified) {
+    await clearAuth().catch(() => {});
+    throw new Error("Credential persistence failed verification. Session reset to unauthenticated.");
+  }
 }
 
 export async function clearAuth(): Promise<void> {
-  await Promise.all([
-    AsyncStorage.removeItem(TOKEN_KEY),
-    AsyncStorage.removeItem(USER_KEY),
-  ]);
+  try {
+    await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+  } catch {
+    await Promise.all([
+      AsyncStorage.removeItem(TOKEN_KEY),
+      AsyncStorage.removeItem(USER_KEY),
+    ]).catch(() => {});
+  }
 }
