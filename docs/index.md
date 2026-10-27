@@ -93,6 +93,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🔍 Research & Status](file:///E:/Bread-Lab/docs/research/)
 **Purpose**: Findings from investigations, current status of ongoing initiatives, and lessons learned.
+- [Issue #24: Migration Identity, Ownership Isolation & Data Preservation (2026-10-26)](file:///E:/Bread-Lab/docs/research/2026-10-26_issue_24_migration_and_identity_remediation.md) [OPEN ITEM]
 - [Issue #73: Pre-Implementation Architecture Inspection — Moving Candidates to Recipe Builder (2026-10-12)](file:///E:/Bread-Lab/docs/research/2026-10-12_issue_73_recipe_builder_candidates_inspection.md)
 - [Maestro Testing: Status and Lessons Learned](file:///E:/Bread-Lab/docs/research/maestro_testing_status.artifact.md) [OPEN ITEM]
 

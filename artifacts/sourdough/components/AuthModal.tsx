@@ -80,7 +80,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       const currentToken = sessionUserId ?? storedToken;
 
       if (currentToken) {
-        // 2. Pre-sync local pending records to Account A before sign-out
+        // 2. Pre-sync local pending records to Account A before switching
         startMigration();
         const preMigrationResult = await migrateLocalDataToAccount(currentToken);
         finishMigration(preMigrationResult);
@@ -89,30 +89,34 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         if (totalFailed > 0) {
           throw new Error("Local data preservation under current account failed. Switch aborted to protect your data.");
         }
+      }
 
-        // 3. Sign-out must succeed before workflow proceeds
+      // 3. Authenticate Account B FIRST before signing out or clearing previous account data
+      const isSignUp = mode === "name";
+      const result = await api.auth.identify({
+        firstName: firstName.trim(),
+        starterName: starterName.trim(),
+        isSignUp,
+      });
+
+      // 4. Now that destination Account B is authenticated, safely sign out of Account A and clear local data
+      if (currentToken) {
         const signoutRes = await api.auth.signout();
         if (!signoutRes.signedOut) {
           throw new Error("Failed to sign out of previous account.");
         }
         await clearAuth();
-
-        // 4. Clear and verify local operational records wipe before Account B data loading
         await clearAllAppData();
       }
 
-      // 5. Authenticate Account B (destination account)
-      const result = await api.auth.identify({
-        firstName: firstName.trim(),
-        starterName: starterName.trim(),
-      });
+      // 5. Save Account B auth & update UI state
       await saveAuth(result.token, result.user);
       onAuthChange(result.user);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
 
-      // 6. If switching from unauthenticated state (anonymous local data), migrate to B and validate destination results explicitly.
+      // 6. Only if switching from unauthenticated state (anonymous local data), migrate to B
       if (!currentToken) {
         await setMigrationPending();
         startMigration();
@@ -296,7 +300,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
                   ]}
                 >
                   <Text style={[s.modeTabText, { color: mode === "name" ? colors.foreground : colors.mutedForeground }]}>
-                    New / Existing
+                    New Account
                   </Text>
                 </Pressable>
                 <Pressable
@@ -307,7 +311,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
                   ]}
                 >
                   <Text style={[s.modeTabText, { color: mode === "find" ? colors.foreground : colors.mutedForeground }]}>
-                    Find Name
+                    Find Existing
                   </Text>
                 </Pressable>
               </View>

@@ -1,6 +1,6 @@
 // artifacts/sourdough/lib/__tests__/bulletproofImport.test.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { migrateLocalDataToAccount, clearMigrationPending } from "../migrate";
+import { migrateLocalDataToAccount, clearMigrationPending, formatErrorDiagnostic } from "../migrate";
 import { api, packBakeOutcome, unpackBakeOutcome, rowToApiBakeSession } from "../api";
 import { clearAuth, saveAuth, getStoredToken, getStoredUser } from "../auth";
 import { upsertRecipeRemote } from "../recipeStorage";
@@ -293,5 +293,72 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     expect(api.recipes.upsert).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: "rec-idempotent-999" })
     );
+  });
+
+  it("formats Postgrest error objects into readable diagnostics without credential leak", () => {
+    const postgrestError = {
+      message: "duplicate key value violates unique constraint",
+      code: "23505",
+      details: "Key (id)=(rec-123) already exists.",
+      hint: "Check primary key",
+    };
+    const formatted = formatErrorDiagnostic(postgrestError);
+    expect(formatted).toContain("duplicate key value violates unique constraint");
+    expect(formatted).toContain("Code: 23505");
+    expect(formatted).toContain("Details: Key (id)=(rec-123) already exists.");
+    expect(formatted).not.toContain("password");
+    expect(formatted).not.toContain("token");
+  });
+
+  it("filters out records belonging to a different user to preserve account isolation", async () => {
+    const localRecipes = [
+      { id: "rec-owner-A", name: "User A Recipe", userId: "user-A" },
+      { id: "rec-anon", name: "Anonymous Recipe" },
+    ];
+
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(localRecipes));
+      return Promise.resolve(null);
+    });
+
+    // Migrating for user-B: rec-owner-A should be filtered out, rec-anon should be migrated
+    const result = await migrateLocalDataToAccount("user-B");
+    expect(result.recipes.ok).toBe(1);
+
+    expect(api.recipes.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "rec-anon",
+        userId: "user-B",
+      })
+    );
+  });
+
+  it("preserves local records when migration fails and reports failed count", async () => {
+    const localRecipes = [{ id: "rec-fail", name: "Failing Recipe" }];
+
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(localRecipes));
+      return Promise.resolve(null);
+    });
+
+    (api.recipes.upsert as jest.Mock).mockRejectedValueOnce({
+      message: "Database connection lost",
+      code: "57P01",
+    });
+
+    const consoleSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await migrateLocalDataToAccount("failing-token");
+    expect(result.recipes.failed).toBe(1);
+    expect(result.recipes.ok).toBe(0);
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[Migration] Failed to sync recipe"),
+      expect.stringContaining("Database connection lost")
+    );
+
+    consoleSpy.mockRestore();
   });
 });

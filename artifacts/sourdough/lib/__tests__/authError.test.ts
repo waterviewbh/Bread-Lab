@@ -56,9 +56,23 @@ describe("Auth Error Handling & Domain Regression", () => {
     expect(supabase.auth.signUp).not.toHaveBeenCalled();
   });
 
-  it("triggers signup fallback on genuine invalid credentials", async () => {
+  it("does NOT trigger implicit signup fallback when sign-in fails and isSignUp is false/omitted", async () => {
     const authMod: any = supabase!.auth;
     // All 3 strategies fail with invalid login credentials
+    authMod.signInWithPassword.mockResolvedValue({
+      data: null,
+      error: { message: "Invalid login credentials" },
+    });
+
+    await expect(
+      api.auth.identify({ firstName: "Luke", starterName: "Baker" })
+    ).rejects.toThrow(/Account sign-in failed/);
+
+    expect(supabase.auth.signUp).not.toHaveBeenCalled();
+  });
+
+  it("triggers explicit signup when isSignUp: true is provided and sign-in fails", async () => {
+    const authMod: any = supabase!.auth;
     authMod.signInWithPassword.mockResolvedValue({
       data: null,
       error: { message: "Invalid login credentials" },
@@ -79,7 +93,7 @@ describe("Auth Error Handling & Domain Regression", () => {
       }),
     });
 
-    const result = await api.auth.identify({ firstName: "New", starterName: "Baker" });
+    const result = await api.auth.identify({ firstName: "New", starterName: "Baker", isSignUp: true });
     expect(result.token).toBe("new-uuid");
     expect(supabase.auth.signUp).toHaveBeenCalled();
   });
@@ -96,7 +110,7 @@ describe("Auth Error Handling & Domain Regression", () => {
     });
 
     await expect(
-      api.auth.identify({ firstName: "New", starterName: "Baker" })
+      api.auth.identify({ firstName: "New", starterName: "Baker", isSignUp: true })
     ).rejects.toThrow("authentication session could not be established");
   });
 

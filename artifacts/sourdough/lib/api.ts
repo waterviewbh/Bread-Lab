@@ -360,7 +360,7 @@ async function resolveAndVerifyOwner(bodyUserId?: string | null): Promise<string
 export const api = {
   auth: {
     getSession: () => supabase?.auth.getSession(),
-    identify: async (body: { firstName: string; starterName: string; }): Promise<ApiAuthResponse> => {
+    identify: async (body: { firstName: string; starterName: string; isSignUp?: boolean }): Promise<ApiAuthResponse> => {
       if (!supabase) throw new Error("Supabase not configured");
       const fn = body.firstName.trim();
       const sn = body.starterName.trim();
@@ -405,16 +405,10 @@ export const api = {
         console.log(`[Auth Debug] Strategy ${desc} failed:`, error?.message);
       }
 
-      // If all sign-ins failed, check if we should sign up
+      // If all sign-ins failed, check if explicit sign up was requested by the user
       if (!authData?.user) {
-        const isInvalidCredentials = lastError && (
-          lastError.message.includes("Invalid login credentials") ||
-          lastError.message.includes("Invalid grant") ||
-          lastError.message.includes("User not found")
-        );
-
-        if (isInvalidCredentials) {
-          console.log("[Auth Debug] All sign-in strategies failed with invalid credentials. Attempting Sign-up as new user...");
+        if (body.isSignUp) {
+          console.log("[Auth Debug] Sign-in failed and explicit isSignUp flag is set. Attempting Sign-up as new user...");
           const password = derivePassword(sanitizedSn);
           const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email, password, options: { data: { first_name: fn, starter_name: sn } },
@@ -429,7 +423,9 @@ export const api = {
           }
           authData = signUpData;
         } else {
-          throw lastError || new Error("Authentication failed");
+          const failureMsg = lastError?.message || "Invalid login credentials";
+          console.log(`[Auth Debug] Sign-in failed across all strategies (${failureMsg}). Implicit sign-up disabled.`);
+          throw new Error(`Account sign-in failed: ${failureMsg}. Check your first name and starter name, or select 'New Account' to register.`);
         }
       }
 

@@ -33,6 +33,7 @@ interface LocalBakeSession {
   startedAt: number;
   yieldValue?: string;
   notes?: string;
+  outcome?: any;
   estimatorState?: any;
   bulkCheckInHistory?: any[];
   phases: any[];
@@ -161,6 +162,29 @@ export async function hasPendingMigration(): Promise<boolean> {
   }
 }
 
+export function formatErrorDiagnostic(error: unknown): string {
+  if (!error) return "Unknown error";
+  if (typeof error === "string") return error;
+  if (typeof error === "object") {
+    const errObj = error as Record<string, unknown>;
+    const message = typeof errObj.message === "string" ? errObj.message : null;
+    const code = typeof errObj.code === "string" || typeof errObj.code === "number" ? `Code: ${errObj.code}` : null;
+    const details = typeof errObj.details === "string" && errObj.details.trim() !== "" ? `Details: ${errObj.details}` : null;
+    const hint = typeof errObj.hint === "string" && errObj.hint.trim() !== "" ? `Hint: ${errObj.hint}` : null;
+
+    const parts = [message, code, details, hint].filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join(" | ");
+    }
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
 /**
  * migrateLocalDataToAccount
  * Bulletproof Two-Pass Typed Import Engine with Durable Ledger & Relationship Remapping.
@@ -192,9 +216,21 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     readLocalObjectOrThrow<LocalFeedSession>(ACTIVE_FEED_KEY),
   ]);
 
+  // Ownership Isolation Guard: Filter out records explicitly owned by a different user ID
+  const isAnonymousOrOwned = (record: any) => {
+    const owner = record?.userId ?? record?.user_id;
+    return !owner || owner === token;
+  };
+
+  const recipesToMigrate = recipes.filter(isAnonymousOrOwned);
+  const bakeHistoryToMigrate = bakeHistory.filter(isAnonymousOrOwned);
+  const activeBakesToMigrate = activeBakes.filter(isAnonymousOrOwned);
+  const feedHistoryToMigrate = feedHistory.filter(isAnonymousOrOwned);
+  const activeFeedToMigrate = activeFeed && isAnonymousOrOwned(activeFeed) ? activeFeed : null;
+
   // Ensure active bakes without IDs get durable IDs assigned and persisted back to storage in original shape (array vs object)
   let activeBakesUpdated = false;
-  for (const bake of activeBakes) {
+  for (const bake of activeBakesToMigrate) {
     if (!bake || typeof bake !== "object") {
       throw new Error("Invalid active bake record: expected object");
     }
@@ -212,14 +248,14 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     }
   }
 
-  if (activeFeed) {
-    if (typeof activeFeed !== "object") {
+  if (activeFeedToMigrate) {
+    if (typeof activeFeedToMigrate !== "object") {
       throw new Error("Invalid active feed record: expected object");
     }
-    if (!activeFeed.id || typeof activeFeed.id !== "string" || activeFeed.id.trim() === "") {
-      activeFeed.id = generateSecureUUID();
+    if (!activeFeedToMigrate.id || typeof activeFeedToMigrate.id !== "string" || activeFeedToMigrate.id.trim() === "") {
+      activeFeedToMigrate.id = generateSecureUUID();
       try {
-        await AsyncStorage.setItem(ACTIVE_FEED_KEY, JSON.stringify(activeFeed));
+        await AsyncStorage.setItem(ACTIVE_FEED_KEY, JSON.stringify(activeFeedToMigrate));
       } catch (error) {
         throw new Error(`Failed to persist assigned active feed ID: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -253,7 +289,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   // -------------------------------------------------------------
   const typeMapping = new Map<string, string>(); // "type:localId" -> targetUuid
 
-  for (const recipe of recipes) {
+  for (const recipe of recipesToMigrate) {
     const key = `recipe:${recipe.id}`;
     if (!ledger[key]) {
       ledger[key] = recipe.id;
@@ -261,7 +297,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
-  for (const bake of bakeHistory) {
+  for (const bake of bakeHistoryToMigrate) {
     const key = `bake:${bake.id}`;
     if (!ledger[key]) {
       ledger[key] = bake.id;
@@ -269,7 +305,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
-  for (const bake of activeBakes) {
+  for (const bake of activeBakesToMigrate) {
     const key = `bake:${bake.id}`;
     if (!ledger[key]) {
       ledger[key] = bake.id;
@@ -277,7 +313,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
-  for (const feed of feedHistory) {
+  for (const feed of feedHistoryToMigrate) {
     const key = `feed:${feed.id}`;
     if (!ledger[key]) {
       ledger[key] = feed.id;
@@ -285,10 +321,10 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     typeMapping.set(key, ledger[key]);
   }
 
-  if (activeFeed) {
-    const key = `feed:${activeFeed.id}`;
+  if (activeFeedToMigrate) {
+    const key = `feed:${activeFeedToMigrate.id}`;
     if (!ledger[key]) {
-      ledger[key] = activeFeed.id;
+      ledger[key] = activeFeedToMigrate.id;
     }
     typeMapping.set(key, ledger[key]);
   }
@@ -307,7 +343,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   // 1. Upload Recipes (Dependency Root)
   let recipesOk = 0;
   let recipesFailed = 0;
-  for (const r of recipes) {
+  for (const r of recipesToMigrate) {
     const key = `recipe:${r.id}`;
     const targetId = ledger[key];
 
@@ -336,7 +372,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
       });
       recipesOk++;
     } catch (error) {
-      console.warn(`[Migration] Failed to sync recipe (local ID: ${r.id}):`, error instanceof Error ? error.message : String(error));
+      console.warn(`[Migration] Failed to sync recipe (local ID: ${r.id}):`, formatErrorDiagnostic(error));
       recipesFailed++;
     }
   }
@@ -345,8 +381,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   let bakesOk = 0;
   let bakesFailed = 0;
   const allBakes = [
-    ...bakeHistory.map(b => ({ ...b, inProgress: false })),
-    ...activeBakes.map(b => ({ ...b, inProgress: true }))
+    ...bakeHistoryToMigrate.map(b => ({ ...b, inProgress: false })),
+    ...activeBakesToMigrate.map(b => ({ ...b, inProgress: true }))
   ];
 
   for (const b of allBakes) {
@@ -392,7 +428,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
       });
       bakesOk++;
     } catch (error) {
-      console.warn(`[Migration] Failed to sync bake session (local ID: ${b.id}):`, error instanceof Error ? error.message : String(error));
+      console.warn(`[Migration] Failed to sync bake session (local ID: ${b.id}):`, formatErrorDiagnostic(error));
       bakesFailed++;
     }
   }
@@ -401,7 +437,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   let feedOk = 0;
   let feedFailed = 0;
 
-  for (const s of feedHistory) {
+  for (const s of feedHistoryToMigrate) {
     const key = `feed:${s.id}`;
     const targetId = ledger[key];
 
@@ -419,30 +455,30 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
       });
       feedOk++;
     } catch (error) {
-      console.warn(`[Migration] Failed to sync feed session (local ID: ${s.id}):`, error instanceof Error ? error.message : String(error));
+      console.warn(`[Migration] Failed to sync feed session (local ID: ${s.id}):`, formatErrorDiagnostic(error));
       feedFailed++;
     }
   }
 
-  if (activeFeed) {
-    const key = `feed:${activeFeed.id}`;
+  if (activeFeedToMigrate) {
+    const key = `feed:${activeFeedToMigrate.id}`;
     const targetId = ledger[key];
 
     try {
-      const { inProgress: _, ...feedData } = activeFeed as any;
+      const { inProgress: _, ...feedData } = activeFeedToMigrate as any;
       await api.history.feed.upsert({
         id: targetId,
         deviceId,
         userId: token,
-        savedAt: activeFeed.savedAt || Date.now(),
-        startedAt: (activeFeed as any).startedAt ?? null,
-        updatedAt: (activeFeed as any).updatedAt ?? null,
+        savedAt: activeFeedToMigrate.savedAt || Date.now(),
+        startedAt: (activeFeedToMigrate as any).startedAt ?? null,
+        updatedAt: (activeFeedToMigrate as any).updatedAt ?? null,
         inProgress: true,
         data: feedData,
       });
       feedOk++;
     } catch (error) {
-      console.warn(`[Migration] Failed to sync active feed session (local ID: ${activeFeed.id}):`, error instanceof Error ? error.message : String(error));
+      console.warn(`[Migration] Failed to sync active feed session (local ID: ${activeFeedToMigrate.id}):`, formatErrorDiagnostic(error));
       feedFailed++;
     }
   }
