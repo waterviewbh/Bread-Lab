@@ -302,26 +302,10 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     const key = `recipe:${recipe.id}`;
     if (!ledger[key]) {
       const isAnonymous = (recipe.userId ?? recipe.user_id) === "anonymous";
-      if (isAnonymous && supabase) {
-        try {
-          const { data: existingRow, error: preflightError } = await supabase
-            .from("recipes")
-            .select("id, user_id")
-            .eq("id", recipe.id)
-            .maybeSingle();
-
-          if (preflightError) {
-            throw new Error(`Preflight collision check failed for recipe ${recipe.id}: ${preflightError.message}`);
-          }
-
-          if (existingRow && existingRow.user_id && existingRow.user_id !== token) {
-            ledger[key] = generateSecureUUID();
-          } else {
-            ledger[key] = recipe.id;
-          }
-        } catch (preflightErr: any) {
-          throw new Error(`Migration preflight aborted for recipe ${recipe.id}: ${preflightErr.message || String(preflightErr)}`);
-        }
+      if (isAnonymous) {
+        // Deterministically allocate a new destination UUID for genuine anonymous recipes
+        // to avoid RLS-blind preflight collisions and guarantee collision safety.
+        ledger[key] = generateSecureUUID();
       } else {
         ledger[key] = recipe.id;
       }

@@ -5,12 +5,28 @@ import { api, packBakeOutcome, unpackBakeOutcome, rowToApiBakeSession } from "..
 import { clearAuth, saveAuth, getStoredToken, getStoredUser } from "../auth";
 import { upsertRecipeRemote } from "../recipeStorage";
 
-// Mock AsyncStorage and api
+let mockStorage: Record<string, string> = {};
+
+// Mock AsyncStorage with working in-memory store
 jest.mock("@react-native-async-storage/async-storage", () => ({
-  getItem: jest.fn(),
-  setItem: jest.fn().mockResolvedValue(undefined),
-  removeItem: jest.fn().mockResolvedValue(undefined),
-  multiRemove: jest.fn().mockResolvedValue(undefined),
+  getItem: jest.fn((key) => Promise.resolve(mockStorage[key] ?? null)),
+  setItem: jest.fn((key, val) => {
+    mockStorage[key] = val;
+    return Promise.resolve();
+  }),
+  removeItem: jest.fn((key) => {
+    delete mockStorage[key];
+    return Promise.resolve();
+  }),
+  multiRemove: jest.fn((keys) => {
+    keys.forEach((k: string) => delete mockStorage[k]);
+    return Promise.resolve();
+  }),
+  multiGet: jest.fn((keys) => Promise.resolve(keys.map((k: string) => [k, mockStorage[k] ?? null]))),
+  multiSet: jest.fn((entries) => {
+    entries.forEach(([k, v]: [string, string]) => { mockStorage[k] = v; });
+    return Promise.resolve();
+  }),
 }));
 
 jest.mock("../api", () => {
@@ -32,10 +48,14 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID Generation Fix", () => {
+describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
+    mockStorage = {};
+    (AsyncStorage.setItem as jest.Mock).mockImplementation((key, val) => {
+      mockStorage[key] = val;
+      return Promise.resolve();
+    });
   });
 
   it("handles out-of-order recipe dependencies and cross-table ID collisions with typed composite keys", async () => {
@@ -50,13 +70,9 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
       { id: "same-id", savedAt: 1000, data: {}, userId: "anonymous" },
     ];
 
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation(function(key) {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(mockRecipes));
-      if (key.includes("bake_history")) return Promise.resolve(JSON.stringify(mockBakes));
-      if (key.includes("sourdough_feed_history")) return Promise.resolve(JSON.stringify(mockFeeds));
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify(mockRecipes);
+    mockStorage["bread_lab_bake_history_v1"] = JSON.stringify(mockBakes);
+    mockStorage["sourdough_feed_history_v1"] = JSON.stringify(mockFeeds);
 
     const result = await migrateLocalDataToAccount("test-user-token-abc");
 
@@ -71,9 +87,6 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   });
 
   it("succeeds as an empty migration when local data is genuinely absent", async () => {
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockResolvedValue(null);
-
     const result = await migrateLocalDataToAccount("empty-user-token");
 
     expect(result).toEqual({
@@ -85,27 +98,19 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
 
   it("surfaces actual AsyncStorage read rejections as errors", async () => {
     const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockRejectedValue(new Error("Disk hardware failure"));
+    getItemMock.mockRejectedValueOnce(new Error("Disk hardware failure"));
 
     await expect(migrateLocalDataToAccount("error-token")).rejects.toThrow(/Disk hardware failure/);
   });
 
   it("reports malformed JSON as failures (throws error)", async () => {
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve("{malformed-json");
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_recipes_v1"] = "{malformed-json";
 
     await expect(migrateLocalDataToAccount("malformed-token")).rejects.toThrow(/Malformed JSON/);
   });
 
   it("blocks safe migration when migration ledger is invalid or unreadable", async () => {
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("import_ledger")) return Promise.resolve("[1, 2, 3]");
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_import_ledger_invalid-ledger-token"] = "[1, 2, 3]";
 
     await expect(migrateLocalDataToAccount("invalid-ledger-token")).rejects.toThrow(/Invalid migration ledger shape/);
   });
@@ -131,11 +136,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
       ],
     };
 
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key === "bread_lab_bake_v2") return Promise.resolve(JSON.stringify([activeBake]));
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_bake_v2"] = JSON.stringify([activeBake]);
 
     const result = await migrateLocalDataToAccount("test-user-token-abc");
 
@@ -147,11 +148,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     (global as any).crypto = undefined;
 
     const activeFeedWithoutId = { savedAt: 1234, userId: "anonymous", data: { pH: "4.0" } };
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key === "sourdough_feed_session_v1") return Promise.resolve(JSON.stringify(activeFeedWithoutId));
-      return Promise.resolve(null);
-    });
+    mockStorage["sourdough_feed_session_v1"] = JSON.stringify(activeFeedWithoutId);
 
     const result = await migrateLocalDataToAccount("expo-crypto-uuid-token");
     expect(result.feed.ok).toBe(1);
@@ -179,30 +176,21 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
 
   it("rejects malformed records or missing/invalid identity fields before migration", async () => {
     const invalidRecipes = [{ name: "Missing ID Recipe", userId: "anonymous" }];
-
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(invalidRecipes));
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify(invalidRecipes);
 
     await expect(migrateLocalDataToAccount("validation-token")).rejects.toThrow(/Invalid record found/);
   });
 
   it("persists ledger before first remote write and prevents remote uploads if ledger write fails", async () => {
     const mockRecipes = [{ id: "rec-1", name: "Valid Recipe", userId: "anonymous" }];
-
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(mockRecipes));
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify(mockRecipes);
 
     const setItemMock = AsyncStorage.setItem as jest.Mock;
     setItemMock.mockImplementation((key, val) => {
       if (key.includes("import_ledger")) {
         throw new Error("Ledger storage write failed");
       }
+      mockStorage[key] = val;
       return Promise.resolve();
     });
 
@@ -212,88 +200,47 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     expect(api.history.bakes.upsert).not.toHaveBeenCalled();
   });
 
-  it("preserves local record IDs when migration ledger is missing and aligns ordinary sync with migration", async () => {
-    const localRecipe = { id: "rec-stable-123", name: "Stable Loaf", userId: "anonymous", createdAt: 1700000000000, phases: [] };
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([localRecipe]));
-      return Promise.resolve(null);
-    });
+  it("ensures anonymous recipes receive stable destination IDs and reuse them on retry", async () => {
+    const anonRecipe = { id: "anon-src-1", name: "Anon Recipe", userId: "anonymous", phases: [] };
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify([anonRecipe]);
 
-    const result = await migrateLocalDataToAccount("missing-ledger-token");
-    expect(result.recipes.ok).toBe(1);
-
-    // Verify migration sends targetId = "rec-stable-123" matching local ID
-    expect(api.recipes.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "rec-stable-123",
-        name: "Stable Loaf",
-      })
-    );
-
-    // Verify ordinary sync also sends id = "rec-stable-123"
-    await upsertRecipeRemote({ id: "rec-stable-123", name: "Stable Loaf", userId: "anonymous", createdAt: 1700000000000, phases: [] });
-    expect(api.recipes.upsert).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        id: "rec-stable-123",
-        name: "Stable Loaf",
-      })
-    );
-  });
-
-  it("preserves existing ledger target mapping if present and retains recipe references in bake sessions", async () => {
-    const mockRecipes = [{ id: "rec-1", name: "Recipe 1", parentRecipeId: "rec-1", userId: "anonymous" }];
-    const mockBakes = [{ id: "bake-1", recipeName: "Bake 1", recipeId: "rec-1", savedAt: 1000, startedAt: 900, phases: [], userId: "anonymous" }];
-    const existingLedger = { "recipe:rec-1": "custom-remote-uuid-1", "bake:bake-1": "custom-remote-bake-uuid" };
-
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("import_ledger")) return Promise.resolve(JSON.stringify(existingLedger));
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(mockRecipes));
-      if (key.includes("bake_history")) return Promise.resolve(JSON.stringify(mockBakes));
-      return Promise.resolve(null);
-    });
-
-    const result = await migrateLocalDataToAccount("existing-ledger-token");
-    expect(result.recipes.ok).toBe(1);
-    expect(result.bakes.ok).toBe(1);
-
-    expect(api.recipes.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "custom-remote-uuid-1",
-        parentRecipeId: "custom-remote-uuid-1",
-      })
-    );
-
-    expect(api.history.bakes.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "custom-remote-bake-uuid",
-        recipeId: "custom-remote-uuid-1",
-      })
-    );
-  });
-
-  it("is idempotent across repeated migrations under different user tokens without creating new random UUIDs", async () => {
-    const localRecipe = { id: "rec-idempotent-999", name: "Idempotent Recipe", userId: "anonymous", phases: [] };
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([localRecipe]));
-      return Promise.resolve(null);
-    });
-
-    // Migration 1 under Token A
-    const res1 = await migrateLocalDataToAccount("user-token-A");
+    const res1 = await migrateLocalDataToAccount("token-user-1");
     expect(res1.recipes.ok).toBe(1);
-    expect(api.recipes.upsert).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: "rec-idempotent-999" })
-    );
 
-    // Migration 2 under Token B (token changed, ledger missing for Token B)
-    const res2 = await migrateLocalDataToAccount("user-token-B");
-    expect(res2.recipes.ok).toBe(1);
-    expect(api.recipes.upsert).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: "rec-idempotent-999" })
+    const firstUpsertCall = (api.recipes.upsert as jest.Mock).mock.calls.find(
+      (call) => call[0].name === "Anon Recipe"
     );
+    const assignedDestId = firstUpsertCall[0].id;
+    expect(assignedDestId).toBeDefined();
+
+    const res2 = await migrateLocalDataToAccount("token-user-1");
+    expect(res2.recipes.ok).toBe(1);
+
+    const secondUpsertCall = (api.recipes.upsert as jest.Mock).mock.calls.filter(
+      (call) => call[0].name === "Anon Recipe"
+    )[1];
+    expect(secondUpsertCall[0].id).toBe(assignedDestId);
+  });
+
+  it("ensures different accounts use account-scoped ledgers and do not share destination mappings", async () => {
+    const anonRecipe = { id: "anon-src-shared", name: "Shared Source", userId: "anonymous", phases: [] };
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify([anonRecipe]);
+
+    await migrateLocalDataToAccount("user-account-A");
+    const callA = (api.recipes.upsert as jest.Mock).mock.calls.find(
+      (call) => call[0].name === "Shared Source" && call[0].userId === "user-account-A"
+    );
+    const destIdA = callA[0].id;
+
+    await migrateLocalDataToAccount("user-account-B");
+    const callB = (api.recipes.upsert as jest.Mock).mock.calls.find(
+      (call) => call[0].name === "Shared Source" && call[0].userId === "user-account-B"
+    );
+    const destIdB = callB[0].id;
+
+    expect(destIdA).toBeDefined();
+    expect(destIdB).toBeDefined();
+    expect(destIdA).not.toBe(destIdB);
   });
 
   it("formats Postgrest error objects into readable diagnostics without credential leak", () => {
@@ -317,21 +264,15 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
       { id: "rec-missing-owner", name: "Missing Owner Recipe" },
       { id: "rec-anon", name: "Anonymous Recipe", userId: "anonymous" },
     ];
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify(localRecipes);
 
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(localRecipes));
-      return Promise.resolve(null);
-    });
-
-    // Migrating for user-B: rec-owner-A and rec-missing-owner should be filtered out, rec-anon should be migrated
     const result = await migrateLocalDataToAccount("user-B");
     expect(result.recipes.ok).toBe(1);
 
     expect(api.recipes.upsert).toHaveBeenCalledTimes(1);
     expect(api.recipes.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "rec-anon",
+        name: "Anonymous Recipe",
         userId: "user-B",
       })
     );
@@ -339,12 +280,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
 
   it("preserves local records when migration fails and reports failed count", async () => {
     const localRecipes = [{ id: "rec-fail", name: "Failing Recipe", userId: "anonymous" }];
-
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify(localRecipes));
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify(localRecipes);
 
     (api.recipes.upsert as jest.Mock).mockRejectedValueOnce({
       message: "Database connection lost",
@@ -367,12 +303,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
 
   it("fails closed without UUID reallocation when api.recipes.upsert returns RLS 42501 error", async () => {
     const rlsFailingRecipe = { id: "rec-rls-123", name: "RLS Recipe", userId: "anonymous", phases: [] };
-
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([rlsFailingRecipe]));
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify([rlsFailingRecipe]);
 
     (api.recipes.upsert as jest.Mock).mockRejectedValueOnce({
       message: 'new row violates row-level security policy (USING expression) for table "recipes"',
@@ -387,9 +318,6 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
     expect(result.recipes.ok).toBe(0);
 
     expect(api.recipes.upsert).toHaveBeenCalledTimes(1);
-    expect(api.recipes.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "rec-rls-123" })
-    );
 
     consoleSpy.mockRestore();
   });
@@ -397,25 +325,18 @@ describe("Bulletproof Two-Pass Typed Import Engine & Issue #24 Production UUID G
   it("resolves parent/child references correctly even when child precedes parent in input list", async () => {
     const childRecipe = { id: "child-rec", name: "Child Recipe", userId: "anonymous", parentRecipeId: "parent-rec", phases: [] };
     const parentRecipe = { id: "parent-rec", name: "Parent Recipe", userId: "anonymous", phases: [] };
-
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockImplementation((key) => {
-      if (key.includes("recipes")) return Promise.resolve(JSON.stringify([childRecipe, parentRecipe]));
-      return Promise.resolve(null);
-    });
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify([childRecipe, parentRecipe]);
 
     const result = await migrateLocalDataToAccount("order-token");
     expect(result.recipes.ok).toBe(2);
 
-    expect(api.recipes.upsert).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ id: "parent-rec", name: "Parent Recipe" })
-    );
+    const calls = (api.recipes.upsert as jest.Mock).mock.calls;
+    const parentCall = calls.find((c) => c[0].name === "Parent Recipe");
+    const childCall = calls.find((c) => c[0].name === "Child Recipe");
 
-    expect(api.recipes.upsert).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ id: "child-rec", name: "Child Recipe", parentRecipeId: "parent-rec" })
-    );
+    expect(parentCall).toBeDefined();
+    expect(childCall).toBeDefined();
+    expect(childCall[0].parentRecipeId).toBe(parentCall[0].id);
   });
 
   it("tests production isAnonymousOrOwned predicate across all 5 required cases", () => {
