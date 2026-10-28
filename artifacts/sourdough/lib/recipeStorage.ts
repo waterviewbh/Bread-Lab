@@ -60,9 +60,14 @@ export async function loadAll(): Promise<{
       AsyncStorage.getItem(BAKE_KEY),
     ]);
 
+    const token = await getStoredToken().catch(() => null);
     recipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray).filter(
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
-    );
+    ).filter(r => {
+      const owner = r.userId ?? (r as any).user_id;
+      if (!token) return owner === "anonymous" || !owner;
+      return owner === token;
+    });
 
     const parsedBakes = safeParse<any>(bakeStr, [], (v) => Array.isArray(v) || (v !== null && typeof v === 'object'));
     const rawBakes: ActiveBake[] = Array.isArray(parsedBakes) ? parsedBakes : (parsedBakes ? [parsedBakes] : []);

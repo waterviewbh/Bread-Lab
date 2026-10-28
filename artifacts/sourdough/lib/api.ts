@@ -513,6 +513,9 @@ export const api = {
     duplicate: async (id: string, newName: string, deviceId: string, userId?: string, makeIndependent?: boolean): Promise<ApiRecipe> => {
       const resolvedUserId = await resolveAndVerifyOwner(userId);
       if (!supabase) throw new Error("Supabase not configured");
+      if (!resolvedUserId) {
+        throw new Error("Authentication required: cloud recipe duplication requires an active user account.");
+      }
 
       const { data: source, error: fetchError } = await supabase
         .from("recipes")
