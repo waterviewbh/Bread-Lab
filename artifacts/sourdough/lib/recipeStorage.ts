@@ -65,7 +65,7 @@ export async function loadAll(): Promise<{
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
     ).filter(r => {
       const owner = r.userId ?? (r as any).user_id;
-      if (!token) return owner === "anonymous" || !owner;
+      if (!token) return owner === "anonymous";
       return owner === token;
     });
 

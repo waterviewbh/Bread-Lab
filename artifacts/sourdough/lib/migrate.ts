@@ -188,14 +188,25 @@ export function formatErrorDiagnostic(error: unknown): string {
 
 /**
  * Strict Ownership Guard: Require explicit "anonymous" tag OR matching authenticated user ID.
- * Unknown/missing ownership metadata (userId === undefined) is NOT eligible for migration.
+ * Unknown/missing ownership metadata (userId === undefined) or conflicting fields are NOT eligible for migration.
  */
 export function isAnonymousOrOwned(record: any, token: string): boolean {
   if (!record || typeof record !== "object") return false;
-  const owner = record.userId ?? record.user_id;
+  const uid = record.userId;
+  const u_id = record.user_id;
+
+  if (
+    uid !== undefined && uid !== null && String(uid).trim() !== "" &&
+    u_id !== undefined && u_id !== null && String(u_id).trim() !== "" &&
+    String(uid).trim() !== String(u_id).trim()
+  ) {
+    return false;
+  }
+
+  const owner = uid ?? u_id;
   if (owner === undefined || owner === null) return false;
   if (typeof owner !== "string" || owner.trim() === "") return false;
-  return owner === "anonymous" || owner === token;
+  return owner.trim() === "anonymous" || owner.trim() === token;
 }
 
 /**
