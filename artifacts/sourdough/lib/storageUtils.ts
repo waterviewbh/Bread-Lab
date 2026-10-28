@@ -1,10 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const ANONYMOUS_BACKUP_KEY = "bread_lab_anonymous_backup_v1";
 
-/**
- * All AsyncStorage keys used by the Bread Lab app.
- */
 export const APP_STORAGE_KEYS = {
   // Auth
   AUTH_TOKEN: "bread_lab_auth_token_v1",
@@ -101,51 +97,7 @@ export async function clearAllAppData(): Promise<void> {
   }
 }
 
-/**
- * Isolate anonymous local operational records in ANONYMOUS_BACKUP_KEY before clearing active workspace.
- */
-export async function backupAnonymousWorkspace(): Promise<boolean> {
-  try {
-    const pairs = await AsyncStorage.multiGet(OPERATIONAL_KEYS);
-    const backupMap: Record<string, string> = {};
-    let hasData = false;
 
-    for (const [key, val] of pairs) {
-      if (val !== null && val !== undefined) {
-        backupMap[key] = val;
-        hasData = true;
-      }
-    }
-
-    if (hasData) {
-      await AsyncStorage.setItem(ANONYMOUS_BACKUP_KEY, JSON.stringify(backupMap));
-    }
-    return hasData;
-  } catch (error) {
-    throw new Error(`Failed to backup anonymous workspace: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/**
- * Restore isolated anonymous operational records from ANONYMOUS_BACKUP_KEY.
- */
-export async function restoreAnonymousWorkspace(): Promise<void> {
-  try {
-    const raw = await AsyncStorage.getItem(ANONYMOUS_BACKUP_KEY);
-    if (!raw) return;
-
-    const backupMap = JSON.parse(raw) as Record<string, string>;
-    const pairs: [string, string][] = Object.entries(backupMap);
-
-    if (pairs.length > 0) {
-      await AsyncStorage.multiSet(pairs);
-    }
-    await AsyncStorage.removeItem(ANONYMOUS_BACKUP_KEY);
-  } catch (error) {
-    console.error("[StorageUtils] Failed to restore anonymous workspace", error);
-    throw new Error(`Failed to restore anonymous workspace: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
 
 /**
  * Defensive JSON parsing with type validation and shallow merging for objects.

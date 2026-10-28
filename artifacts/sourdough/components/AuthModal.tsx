@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { saveAuth, getStoredToken, clearAuth, type AuthUser } from "@/lib/auth";
-import { clearAllAppData, clearOperationalData, backupAnonymousWorkspace, restoreAnonymousWorkspace } from "@/lib/storageUtils";
+import { clearAllAppData, clearOperationalData, safeParse } from "@/lib/storageUtils";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
@@ -124,7 +124,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     setLoading(true);
     try {
       const { token, user } = transitionPendingData;
-      await backupAnonymousWorkspace();
       await clearOperationalData();
       await saveAuth(token, user);
 
@@ -135,9 +134,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     } catch (err: any) {
       const msg = err instanceof Error ? err.message : String(err);
       if (Platform.OS === 'web') {
-        window.alert(`Setup Failed: ${msg}`);
+        window.alert(`Purge/Setup Failed: ${msg}`);
       } else {
-        Alert.alert("Setup Failed", msg);
+        Alert.alert("Purge/Setup Failed", msg);
       }
     } finally {
       setLoading(false);
@@ -409,8 +408,11 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
               <Text style={[s.cardName, { color: colors.foreground, marginBottom: 8 }]}>
                 Offline Workspace Found
               </Text>
-              <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 20 }]}>
+              <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 12 }]}>
                 You have local recipes or bakes created offline on this device. Choose how you would like to proceed with {transitionPendingData.user.firstName}&apos;s account:
+              </Text>
+              <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 20, fontStyle: "italic" }]}>
+                Your anonymous recipes and data will be discarded and won’t be available in your account or on this device in the future.
               </Text>
 
               <View style={{ gap: 12 }}>

@@ -361,11 +361,4 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(isAnonymousOrOwned({ userId: "   " }, token)).toBe(false);
   });
 
-  it("makes backup and restoration failures observable to the caller through explicit errors", async () => {
-    const { restoreAnonymousWorkspace } = require("../storageUtils");
-    const getItemMock = AsyncStorage.getItem as jest.Mock;
-    getItemMock.mockRejectedValue(new Error("Storage read corruption"));
-
-    await expect(restoreAnonymousWorkspace()).rejects.toThrow(/Failed to restore anonymous workspace/);
-  });
 });
