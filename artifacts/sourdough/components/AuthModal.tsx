@@ -62,25 +62,36 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
   const checkHasAnonymousRecords = async (): Promise<boolean> => {
     try {
-      const [recipesRaw, bakesRaw, historyRaw] = await Promise.all([
-        AsyncStorage.getItem("bread_lab_recipes_v1"),
-        AsyncStorage.getItem("bread_lab_bake_history_v1"),
-        AsyncStorage.getItem("sourdough_feed_history_v1"),
+      const [recipesRaw, bakesRaw, historyRaw, activeBakeRaw, activeFeedRaw] = await Promise.all([
+        AsyncStorage.getItem("bread_lab_recipes_v1").catch(() => "__ERROR__"),
+        AsyncStorage.getItem("bread_lab_bake_history_v1").catch(() => "__ERROR__"),
+        AsyncStorage.getItem("sourdough_feed_history_v1").catch(() => "__ERROR__"),
+        AsyncStorage.getItem("bread_lab_bake_v2").catch(() => "__ERROR__"),
+        AsyncStorage.getItem("sourdough_feed_session_v1").catch(() => "__ERROR__"),
       ]);
 
-      const hasAnonRecipe = safeParse<any[]>(recipesRaw, [], Array.isArray).some(
-        (r) => r && (r.userId === "anonymous" || r.user_id === "anonymous")
-      );
-      const hasAnonBake = safeParse<any[]>(bakesRaw, [], Array.isArray).some(
-        (b) => b && (b.userId === "anonymous" || b.user_id === "anonymous")
-      );
-      const hasAnonFeed = safeParse<any[]>(historyRaw, [], Array.isArray).some(
-        (f) => f && (f.userId === "anonymous" || f.user_id === "anonymous")
-      );
+      if (recipesRaw === "__ERROR__" || bakesRaw === "__ERROR__" || historyRaw === "__ERROR__" || activeBakeRaw === "__ERROR__" || activeFeedRaw === "__ERROR__") {
+        return true;
+      }
 
-      return hasAnonRecipe || hasAnonBake || hasAnonFeed;
+      const hasAnon = (raw: string | null) => {
+        if (!raw) return false;
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed.some(item => item && (item.userId === "anonymous" || item.user_id === "anonymous" || !item.userId));
+          } else if (parsed && typeof parsed === "object") {
+            return (parsed.userId === "anonymous" || parsed.user_id === "anonymous" || !parsed.userId);
+          }
+        } catch {
+          return true;
+        }
+        return false;
+      };
+
+      return hasAnon(recipesRaw) || hasAnon(bakesRaw) || hasAnon(historyRaw) || hasAnon(activeBakeRaw) || hasAnon(activeFeedRaw);
     } catch {
-      return false;
+      return true;
     }
   };
 

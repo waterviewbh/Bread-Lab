@@ -61,12 +61,18 @@ export const OPERATIONAL_KEYS = [
  */
 export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
   try {
-    console.log("[StorageUtils] Purging anonymous operational data while preserving other users' local records...");
+    console.log("[StorageUtils] Purging anonymous operational data while preserving other users' and unknown ownership records...");
 
     const recipeRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES).catch(() => null);
     if (recipeRaw) {
       const recipes = safeParse<any[]>(recipeRaw, [], Array.isArray);
-      const retained = recipes.filter(r => r && r.userId && r.userId !== "anonymous" && r.userId !== currentUserId);
+      const retained = recipes.filter(r => {
+        if (!r) return false;
+        const owner = r.userId ?? r.user_id;
+        const isOtherUser = owner && owner !== "anonymous" && owner !== currentUserId;
+        const isUnknown = !owner || String(owner).trim() === "";
+        return isOtherUser || isUnknown;
+      });
       if (retained.length > 0) {
         await AsyncStorage.setItem(APP_STORAGE_KEYS.RECIPES, JSON.stringify(retained));
       } else {
@@ -77,7 +83,13 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
     const bakeHistRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY).catch(() => null);
     if (bakeHistRaw) {
       const bakes = safeParse<any[]>(bakeHistRaw, [], Array.isArray);
-      const retained = bakes.filter(b => b && b.userId && b.userId !== "anonymous" && b.userId !== currentUserId);
+      const retained = bakes.filter(b => {
+        if (!b) return false;
+        const owner = b.userId ?? b.user_id;
+        const isOtherUser = owner && owner !== "anonymous" && owner !== currentUserId;
+        const isUnknown = !owner || String(owner).trim() === "";
+        return isOtherUser || isUnknown;
+      });
       if (retained.length > 0) {
         await AsyncStorage.setItem(APP_STORAGE_KEYS.BAKE_HISTORY, JSON.stringify(retained));
       } else {
@@ -88,7 +100,13 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
     const feedHistRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY).catch(() => null);
     if (feedHistRaw) {
       const feeds = safeParse<any[]>(feedHistRaw, [], Array.isArray);
-      const retained = feeds.filter(f => f && f.userId && f.userId !== "anonymous" && f.userId !== currentUserId);
+      const retained = feeds.filter(f => {
+        if (!f) return false;
+        const owner = f.userId ?? f.user_id;
+        const isOtherUser = owner && owner !== "anonymous" && owner !== currentUserId;
+        const isUnknown = !owner || String(owner).trim() === "";
+        return isOtherUser || isUnknown;
+      });
       if (retained.length > 0) {
         await AsyncStorage.setItem(APP_STORAGE_KEYS.FEED_HISTORY, JSON.stringify(retained));
       } else {
@@ -96,9 +114,44 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
       }
     }
 
+    const activeBakeRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE).catch(() => null);
+    if (activeBakeRaw) {
+      try {
+        const parsed = JSON.parse(activeBakeRaw);
+        const bakesList = Array.isArray(parsed) ? parsed : [parsed];
+        const retainedBakes = bakesList.filter(b => {
+          if (!b) return false;
+          const owner = b.userId ?? b.user_id;
+          const isOtherUser = owner && owner !== "anonymous" && owner !== currentUserId;
+          const isUnknown = !owner || String(owner).trim() === "";
+          return isOtherUser || isUnknown;
+        });
+        if (retainedBakes.length > 0) {
+          await AsyncStorage.setItem(APP_STORAGE_KEYS.ACTIVE_BAKE, JSON.stringify(Array.isArray(parsed) ? retainedBakes : retainedBakes[0]));
+        } else {
+          await AsyncStorage.removeItem(APP_STORAGE_KEYS.ACTIVE_BAKE);
+        }
+      } catch {
+        // Preserve unparseable active bake state safely
+      }
+    }
+
+    const activeFeedRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED).catch(() => null);
+    if (activeFeedRaw) {
+      try {
+        const parsed = JSON.parse(activeFeedRaw);
+        const owner = parsed?.userId ?? parsed?.user_id;
+        const isOtherUser = owner && owner !== "anonymous" && owner !== currentUserId;
+        const isUnknown = !owner || String(owner).trim() === "";
+        if (!isOtherUser && !isUnknown) {
+          await AsyncStorage.removeItem(APP_STORAGE_KEYS.ACTIVE_FEED);
+        }
+      } catch {
+        // Preserve unparseable active feed state safely
+      }
+    }
+
     await AsyncStorage.multiRemove([
-      APP_STORAGE_KEYS.ACTIVE_BAKE,
-      APP_STORAGE_KEYS.ACTIVE_FEED,
       APP_STORAGE_KEYS.DELETED_RECIPE_IDS,
       APP_STORAGE_KEYS.DELETED_BAKE_IDS,
       APP_STORAGE_KEYS.DELETED_FEED_IDS,
