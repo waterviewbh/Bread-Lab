@@ -90,9 +90,9 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     const result = await migrateLocalDataToAccount("empty-user-token");
 
     expect(result).toEqual({
-      feed: { ok: 0, failed: 0 },
-      bakes: { ok: 0, failed: 0 },
-      recipes: { ok: 0, failed: 0 },
+      feed: { ok: 0, failed: 0, unresolved: 0 },
+      bakes: { ok: 0, failed: 0, unresolved: 0 },
+      recipes: { ok: 0, failed: 0, unresolved: 0 },
     });
   });
 

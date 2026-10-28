@@ -15,9 +15,9 @@ export const MIGRATION_PENDING_KEY = "bread_lab_migration_pending_v1";
 const LEDGER_KEY = (userId: string) => `bread_lab_import_ledger_${userId}`;
 
 export interface MigrationResult {
-  feed: { ok: number; failed: number };
-  bakes: { ok: number; failed: number };
-  recipes: { ok: number; failed: number };
+  feed: { ok: number; failed: number; unresolved: number };
+  bakes: { ok: number; failed: number; unresolved: number };
+  recipes: { ok: number; failed: number; unresolved: number };
 }
 
 interface LocalFeedSession {
@@ -518,14 +518,24 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     }
   }
 
+  const totalLocalRecipes = recipes.length;
+  const unresolvedRecipes = Math.max(0, totalLocalRecipes - recipesOk - recipesFailed);
+
+  const totalLocalBakes = bakeHistory.length + activeBakes.length;
+  const unresolvedBakes = Math.max(0, totalLocalBakes - bakesOk - bakesFailed);
+
+  const totalLocalFeeds = feedHistory.length + (activeFeed ? 1 : 0);
+  const unresolvedFeeds = Math.max(0, totalLocalFeeds - feedOk - feedFailed);
+
   const result: MigrationResult = {
-    feed: { ok: feedOk, failed: feedFailed },
-    bakes: { ok: bakesOk, failed: bakesFailed },
-    recipes: { ok: recipesOk, failed: recipesFailed },
+    feed: { ok: feedOk, failed: feedFailed, unresolved: unresolvedFeeds },
+    bakes: { ok: bakesOk, failed: bakesFailed, unresolved: unresolvedBakes },
+    recipes: { ok: recipesOk, failed: recipesFailed, unresolved: unresolvedRecipes },
   };
 
   const totalFailed = feedFailed + bakesFailed + recipesFailed;
-  if (totalFailed === 0) {
+  const totalUnresolved = unresolvedFeeds + unresolvedBakes + unresolvedRecipes;
+  if (totalFailed === 0 && totalUnresolved === 0) {
     await clearMigrationPending();
   }
 
