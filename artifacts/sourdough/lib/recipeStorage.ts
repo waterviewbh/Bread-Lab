@@ -137,6 +137,7 @@ export async function loadAll(): Promise<{
         const existingLocal = recipes.find(loc => loc.id === r.id);
         return {
           id: r.id,
+          userId: r.user_id ?? existingLocal?.userId ?? token ?? undefined,
           name: r.name,
           overview: r.overview ?? existingLocal?.overview ?? undefined,
           createdAt: new Date(r.createdAt).getTime(),

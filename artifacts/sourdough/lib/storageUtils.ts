@@ -57,22 +57,66 @@ export const OPERATIONAL_KEYS = [
 
 /**
  * Clear local operational data without removing authentication credential keys.
+ * Preserves records belonging to other authenticated users while purging anonymous operational records.
  */
-export async function clearOperationalData(): Promise<void> {
+export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
   try {
-    console.log("[StorageUtils] Clearing local operational keys...");
-    await AsyncStorage.multiRemove(OPERATIONAL_KEYS);
+    console.log("[StorageUtils] Purging anonymous operational data while preserving other users' local records...");
+
+    const recipeRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES).catch(() => null);
+    if (recipeRaw) {
+      const recipes = safeParse<any[]>(recipeRaw, [], Array.isArray);
+      const retained = recipes.filter(r => r && r.userId && r.userId !== "anonymous" && r.userId !== currentUserId);
+      if (retained.length > 0) {
+        await AsyncStorage.setItem(APP_STORAGE_KEYS.RECIPES, JSON.stringify(retained));
+      } else {
+        await AsyncStorage.removeItem(APP_STORAGE_KEYS.RECIPES);
+      }
+    }
+
+    const bakeHistRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY).catch(() => null);
+    if (bakeHistRaw) {
+      const bakes = safeParse<any[]>(bakeHistRaw, [], Array.isArray);
+      const retained = bakes.filter(b => b && b.userId && b.userId !== "anonymous" && b.userId !== currentUserId);
+      if (retained.length > 0) {
+        await AsyncStorage.setItem(APP_STORAGE_KEYS.BAKE_HISTORY, JSON.stringify(retained));
+      } else {
+        await AsyncStorage.removeItem(APP_STORAGE_KEYS.BAKE_HISTORY);
+      }
+    }
+
+    const feedHistRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY).catch(() => null);
+    if (feedHistRaw) {
+      const feeds = safeParse<any[]>(feedHistRaw, [], Array.isArray);
+      const retained = feeds.filter(f => f && f.userId && f.userId !== "anonymous" && f.userId !== currentUserId);
+      if (retained.length > 0) {
+        await AsyncStorage.setItem(APP_STORAGE_KEYS.FEED_HISTORY, JSON.stringify(retained));
+      } else {
+        await AsyncStorage.removeItem(APP_STORAGE_KEYS.FEED_HISTORY);
+      }
+    }
+
+    await AsyncStorage.multiRemove([
+      APP_STORAGE_KEYS.ACTIVE_BAKE,
+      APP_STORAGE_KEYS.ACTIVE_FEED,
+      APP_STORAGE_KEYS.DELETED_RECIPE_IDS,
+      APP_STORAGE_KEYS.DELETED_BAKE_IDS,
+      APP_STORAGE_KEYS.DELETED_FEED_IDS,
+      APP_STORAGE_KEYS.MIGRATION_PENDING,
+    ]);
   } catch (error) {
     console.error("[StorageUtils] Failed to clear operational data", error);
     throw new Error(`Failed to clear local operational data: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // Verification pass
-  for (const key of OPERATIONAL_KEYS) {
-    const val = await AsyncStorage.getItem(key);
-    if (val !== null && val !== undefined) {
-      throw new Error(`Operational wipe verification failed: key ${key} remains present.`);
-    }
+  const [activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
+    AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
+    AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
+    AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING),
+  ]);
+  if (activeBakeCheck !== null || activeFeedCheck !== null || migPendingCheck !== null) {
+    throw new Error("Operational wipe verification failed: active operational state remains present.");
   }
 }
 
