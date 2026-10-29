@@ -162,14 +162,46 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
     throw new Error(`Failed to clear local operational data: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  // Verification pass
+  // Verification pass: Verify that anonymous or target user operational state is absent,
+  // while permitting deliberately retained foreign or unknown ownership records to remain.
   const [activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
     AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
     AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
     AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING),
   ]);
-  if (activeBakeCheck !== null || activeFeedCheck !== null || migPendingCheck !== null) {
-    throw new Error("Operational wipe verification failed: active operational state remains present.");
+
+  if (migPendingCheck !== null) {
+    throw new Error("Operational wipe verification failed: migration pending marker remains present.");
+  }
+
+  if (activeBakeCheck !== null) {
+    try {
+      const parsed = JSON.parse(activeBakeCheck);
+      const bakesList = Array.isArray(parsed) ? parsed : [parsed];
+      const hasUnintendedBake = bakesList.some(b => {
+        if (!b) return false;
+        const owner = b.userId ?? b.user_id;
+        return !owner || owner === "anonymous" || owner === currentUserId;
+      });
+      if (hasUnintendedBake) {
+        throw new Error("Operational wipe verification failed: anonymous or target user active bake remains present.");
+      }
+    } catch (e: any) {
+      if (e.message?.includes("Operational wipe verification failed")) throw e;
+    }
+  }
+
+  if (activeFeedCheck !== null) {
+    try {
+      const parsed = JSON.parse(activeFeedCheck);
+      const owner = parsed?.userId ?? parsed?.user_id;
+      const hasUnintendedFeed = !owner || owner === "anonymous" || owner === currentUserId;
+      if (hasUnintendedFeed) {
+        throw new Error("Operational wipe verification failed: anonymous or target user active feed remains present.");
+      }
+    } catch (e: any) {
+      if (e.message?.includes("Operational wipe verification failed")) throw e;
+    }
   }
 }
 

@@ -361,4 +361,25 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(isAnonymousOrOwned({ userId: "   " }, token)).toBe(false);
   });
 
+  it("clears operational data for current user / anonymous while retaining foreign and unknown ownership records without failing verification", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    mockStorage["bread_lab_bake_v2"] = JSON.stringify({
+      id: "foreign-active-bake",
+      userId: "foreign-user",
+      recipeName: "Foreign Bake",
+    });
+
+    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    expect(mockStorage["bread_lab_bake_v2"]).toBeDefined();
+
+    mockStorage["bread_lab_bake_v2"] = JSON.stringify({
+      id: "my-active-bake",
+      userId: "user-clearing",
+      recipeName: "My Bake",
+    });
+
+    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    expect(mockStorage["bread_lab_bake_v2"]).toBeUndefined();
+  });
 });
