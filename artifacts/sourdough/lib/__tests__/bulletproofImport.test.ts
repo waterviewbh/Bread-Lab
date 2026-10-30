@@ -451,4 +451,32 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
     expect(mockStorage["bread_lab_bake_v2"]).toBeUndefined();
   });
+
+  it("demonstrates clearOperationalData resolves successfully and retains malformed active bake and feed JSON", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    mockStorage["bread_lab_bake_v2"] = "{malformed-bake";
+    mockStorage["sourdough_feed_session_v1"] = "{malformed-feed";
+
+    await expect(clearOperationalData("incoming-user")).resolves.toBeUndefined();
+    expect(mockStorage["bread_lab_bake_v2"]).toBe("{malformed-bake");
+    expect(mockStorage["sourdough_feed_session_v1"]).toBe("{malformed-feed");
+  });
+
+  it("demonstrates clearOperationalData resolves successfully and retains active bake and feed records with unknown or missing ownership", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    mockStorage["bread_lab_bake_v2"] = JSON.stringify({
+      id: "unknown-owner-bake",
+      recipeName: "Unknown Owner Bake",
+    });
+    mockStorage["sourdough_feed_session_v1"] = JSON.stringify({
+      id: "unknown-owner-feed",
+      starterName: "Unknown Owner Feed",
+    });
+
+    await expect(clearOperationalData("incoming-user")).resolves.toBeUndefined();
+    expect(mockStorage["bread_lab_bake_v2"]).toBeDefined();
+    expect(mockStorage["sourdough_feed_session_v1"]).toBeDefined();
+  });
 });
