@@ -181,7 +181,7 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
       const hasUnintendedBake = bakesList.some(b => {
         if (!b) return false;
         const owner = b.userId ?? b.user_id;
-        return !owner || owner === "anonymous" || owner === currentUserId;
+        return owner === "anonymous" || owner === currentUserId;
       });
       if (hasUnintendedBake) {
         throw new Error("Operational wipe verification failed: anonymous or target user active bake remains present.");
@@ -195,7 +195,7 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
     try {
       const parsed = JSON.parse(activeFeedCheck);
       const owner = parsed?.userId ?? parsed?.user_id;
-      const hasUnintendedFeed = !owner || owner === "anonymous" || owner === currentUserId;
+      const hasUnintendedFeed = owner === "anonymous" || owner === currentUserId;
       if (hasUnintendedFeed) {
         throw new Error("Operational wipe verification failed: anonymous or target user active feed remains present.");
       }

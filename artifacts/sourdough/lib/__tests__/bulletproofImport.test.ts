@@ -56,6 +56,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       mockStorage[key] = val;
       return Promise.resolve();
     });
+    (AsyncStorage.getItem as jest.Mock).mockImplementation((key) => Promise.resolve(mockStorage[key] ?? null));
   });
 
   it("handles out-of-order recipe dependencies and cross-table ID collisions with typed composite keys", async () => {
@@ -377,6 +378,74 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       id: "my-active-bake",
       userId: "user-clearing",
       recipeName: "My Bake",
+    });
+
+    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    expect(mockStorage["bread_lab_bake_v2"]).toBeUndefined();
+  });
+
+  it("retains active bakes with unknown/missing ownership without failing verification", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    mockStorage["bread_lab_bake_v2"] = JSON.stringify({
+      id: "unknown-owner-bake",
+      recipeName: "Unknown Owner Bake",
+    });
+
+    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    expect(mockStorage["bread_lab_bake_v2"]).toBeDefined();
+  });
+
+  it("handles active feed ownership: removes anonymous feed, retains foreign and unknown feed data", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    mockStorage["sourdough_feed_session_v1"] = JSON.stringify({
+      id: "foreign-feed",
+      userId: "other-user",
+    });
+    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    expect(mockStorage["sourdough_feed_session_v1"]).toBeDefined();
+
+    mockStorage["sourdough_feed_session_v1"] = JSON.stringify({
+      id: "anon-feed",
+      userId: "anonymous",
+    });
+    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    expect(mockStorage["sourdough_feed_session_v1"]).toBeUndefined();
+  });
+
+  it("rejects cleanup verification when migration-pending marker remains present", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key === "bread_lab_migration_pending_v1") return Promise.resolve("1");
+      return Promise.resolve(mockStorage[key] ?? null);
+    });
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(
+      /migration pending marker remains present/
+    );
+  });
+
+  it("preserves malformed active bake and feed JSON safely without crashing", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    mockStorage["bread_lab_bake_v2"] = "{malformed-active-bake";
+    mockStorage["sourdough_feed_session_v1"] = "{malformed-active-feed";
+
+    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    expect(mockStorage["bread_lab_bake_v2"]).toBe("{malformed-active-bake");
+    expect(mockStorage["sourdough_feed_session_v1"]).toBe("{malformed-active-feed");
+  });
+
+  it("explicitly removes anonymous-owned active bakes", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    mockStorage["bread_lab_bake_v2"] = JSON.stringify({
+      id: "anon-bake",
+      userId: "anonymous",
+      recipeName: "Anon Bake",
     });
 
     await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();

@@ -136,7 +136,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     setLoading(true);
     try {
       const { token, user } = transitionPendingData;
-      await clearOperationalData();
+      await clearOperationalData(token);
       await saveAuth(token, user);
 
       onAuthChange(user);

@@ -54,6 +54,7 @@ export type ApiRecipePhase = {
 export type ApiRecipe = {
   id: string;
   deviceId: string;
+  userId?: string;
   name: string;
   overview?: string;
   phases: ApiRecipePhase[];
@@ -201,6 +202,7 @@ function rowToApiRecipe(r: RecipeRow): ApiRecipe {
   return {
     id: r.id,
     deviceId: r.device_id,
+    userId: r.user_id ?? undefined,
     name: r.name,
     overview: r.overview ?? undefined,
     phases: richPhases ?? r.phases ?? [],
