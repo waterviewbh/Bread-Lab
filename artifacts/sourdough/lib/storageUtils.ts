@@ -60,6 +60,48 @@ export const OPERATIONAL_KEYS = [
  * Preserves records belonging to other authenticated users while purging anonymous operational records.
  */
 export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
+  // Pre-mutation verification pass (Dry-Run Safety Check): Ensure no malformed or ownerless active records exist
+  // before performing any mutations to local storage, guaranteeing atomicity and preventing partial modifications.
+  const [activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
+    AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE).catch(() => null),
+    AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED).catch(() => null),
+    AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING).catch(() => null),
+  ]);
+
+  if (migPendingCheck !== null) {
+    throw new Error("Operational wipe verification failed: migration pending marker remains present.");
+  }
+
+  if (activeBakeCheck !== null) {
+    try {
+      const parsed = JSON.parse(activeBakeCheck);
+      const bakesList = Array.isArray(parsed) ? parsed : [parsed];
+      for (const b of bakesList) {
+        if (!b) continue;
+        const owner = b.userId ?? b.user_id;
+        if (!owner || String(owner).trim() === "") {
+          throw new Error("Operational wipe verification failed: active bake record has unknown or missing ownership metadata.");
+        }
+      }
+    } catch (e: any) {
+      if (e.message?.includes("Operational wipe verification failed")) throw e;
+      throw new Error(`Operational wipe verification failed: active bake record is malformed and cannot be verified.`);
+    }
+  }
+
+  if (activeFeedCheck !== null) {
+    try {
+      const parsed = JSON.parse(activeFeedCheck);
+      const owner = parsed?.userId ?? parsed?.user_id;
+      if (!owner || String(owner).trim() === "") {
+        throw new Error("Operational wipe verification failed: active feed record has unknown or missing ownership metadata.");
+      }
+    } catch (e: any) {
+      if (e.message?.includes("Operational wipe verification failed")) throw e;
+      throw new Error(`Operational wipe verification failed: active feed record is malformed and cannot be verified.`);
+    }
+  }
+
   try {
     console.log("[StorageUtils] Purging anonymous operational data while preserving other users' and unknown ownership records...");
 
@@ -160,54 +202,6 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
   } catch (error) {
     console.error("[StorageUtils] Failed to clear operational data", error);
     throw new Error(`Failed to clear local operational data: ${error instanceof Error ? error.message : String(error)}`);
-  }
-
-  // Verification pass: Verify that anonymous or target user operational state is absent,
-  // while permitting deliberately retained foreign or unknown ownership records to remain.
-  const [activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
-    AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
-    AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
-    AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING),
-  ]);
-
-  if (migPendingCheck !== null) {
-    throw new Error("Operational wipe verification failed: migration pending marker remains present.");
-  }
-
-  if (activeBakeCheck !== null) {
-    try {
-      const parsed = JSON.parse(activeBakeCheck);
-      const bakesList = Array.isArray(parsed) ? parsed : [parsed];
-      const hasUnintendedBake = bakesList.some(b => {
-        if (!b) return false;
-        const owner = b.userId ?? b.user_id;
-        if (!owner || String(owner).trim() === "") return true;
-        return owner === "anonymous" || owner === currentUserId;
-      });
-      if (hasUnintendedBake) {
-        throw new Error("Operational wipe verification failed: anonymous, target user, or ownerless active bake remains present.");
-      }
-    } catch (e: any) {
-      if (e.message?.includes("Operational wipe verification failed")) throw e;
-      throw new Error(`Operational wipe verification failed: active bake record is malformed and cannot be verified.`);
-    }
-  }
-
-  if (activeFeedCheck !== null) {
-    try {
-      const parsed = JSON.parse(activeFeedCheck);
-      const owner = parsed?.userId ?? parsed?.user_id;
-      if (!owner || String(owner).trim() === "") {
-        throw new Error("Operational wipe verification failed: active feed record has unknown or missing ownership metadata.");
-      }
-      const hasUnintendedFeed = owner === "anonymous" || owner === currentUserId;
-      if (hasUnintendedFeed) {
-        throw new Error("Operational wipe verification failed: anonymous or target user active feed remains present.");
-      }
-    } catch (e: any) {
-      if (e.message?.includes("Operational wipe verification failed")) throw e;
-      throw new Error(`Operational wipe verification failed: active feed record is malformed and cannot be verified.`);
-    }
   }
 }
 
