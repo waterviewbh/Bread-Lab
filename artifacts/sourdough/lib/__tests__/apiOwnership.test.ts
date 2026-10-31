@@ -333,4 +333,39 @@ describe("API Ownership & Signout Real Implementation", () => {
     expect(mockDeleteOr).toHaveBeenCalledWith("user_id.eq.user-B");
     expect(mockDeleteOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
   });
+
+  it("Workstream B: Missing owner with active session throws explicit error and does not silently infer owner", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-1" } } },
+      error: null,
+    });
+
+    await expect(
+      api.recipes.upsert({ id: "r-1", name: "Missing Owner", userId: null })
+    ).rejects.toThrow(/Authentication required/);
+  });
+
+  it("Workstream B: Explicit valid owner matches session and succeeds", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-1" } } },
+      error: null,
+    });
+
+    const res = await api.recipes.upsert({ id: "r-1", name: "Valid Owner", userId: "user-1" });
+    expect(res).toBeDefined();
+  });
+
+  it("Workstream B: Conflicting owner between body and session throws mismatch error", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-1" } } },
+      error: null,
+    });
+
+    await expect(
+      api.recipes.upsert({ id: "r-1", name: "Conflict", userId: "user-2" })
+    ).rejects.toThrow(/Owner\/Session mismatch/);
+  });
 });

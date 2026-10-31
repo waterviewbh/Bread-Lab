@@ -345,7 +345,11 @@ async function resolveAndVerifyOwner(bodyUserId?: string | null): Promise<string
   }
 
   const sessionUserId = session?.user?.id ?? null;
-  const targetUserId = bodyUserId ?? null;
+  const targetUserId = bodyUserId?.trim() ?? null;
+
+  if (sessionUserId && !targetUserId) {
+    throw new Error("Authentication required: operation has an active session but omitted explicit user ownership. Owner inference from stale session is prohibited.");
+  }
 
   if (targetUserId) {
     if (!sessionUserId) {

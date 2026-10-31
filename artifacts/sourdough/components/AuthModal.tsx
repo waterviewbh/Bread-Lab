@@ -54,7 +54,7 @@ export async function executeFailClosedRecovery(
     localClear = false;
   }
 
-  if (localClear) {
+  if (remoteSignout && localClear) {
     onAuthChangeFn(null);
   }
 
