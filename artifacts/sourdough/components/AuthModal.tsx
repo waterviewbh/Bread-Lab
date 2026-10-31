@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { saveAuth, getStoredToken, clearAuth, type AuthUser } from "@/lib/auth";
-import { clearAllAppData, clearOperationalData, safeParse } from "@/lib/storageUtils";
+import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
@@ -198,12 +198,16 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         finishMigration(preMigrationResult);
 
         const totalFailed = preMigrationResult.feed.failed + preMigrationResult.bakes.failed + preMigrationResult.recipes.failed;
-        if (totalFailed > 0) {
-          throw new Error("Local data preservation under current account failed. Switch aborted to protect your data.");
+        const totalUnresolved = preMigrationResult.feed.unresolved + preMigrationResult.bakes.unresolved + preMigrationResult.recipes.unresolved;
+        if (totalFailed > 0 || totalUnresolved > 0) {
+          throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Current workspace preserved.`);
         }
       }
 
-      // 3. Authenticate Account B FIRST before clearing operational data
+      // 3. Non-mutating pre-validation pass before authenticating B
+      await validateOperationalData(currentToken);
+
+      // 4. Authenticate Account B FIRST before clearing operational data
       const isSignUp = mode === "name";
       const result = await api.auth.identify({
         firstName: firstName.trim(),
@@ -211,40 +215,19 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         isSignUp,
       });
 
-      // 4. Switching from Account A -> Account B
+      // 5. Switching from Account A -> Account B
       if (currentToken && savedAccountA) {
         let wipeSuccess = false;
         try {
-          await clearOperationalData();
+          await clearOperationalData(currentToken);
           wipeSuccess = true;
         } catch (wipeErr) {
           console.error("Local operational wipe failed during account switch", wipeErr);
-          // EXPLICIT SESSION ROLLBACK
+          // Fail-closed recovery: Sign out of B and reset state to unauthenticated
           await api.auth.signout().catch(() => {});
-          try {
-            await api.auth.identify({
-              firstName: savedAccountA.user.firstName,
-              starterName: savedAccountA.user.starterName,
-            });
-            await saveAuth(savedAccountA.token, savedAccountA.user);
-          } catch {
-            // Fail-closed fallback: force unauthenticated reset if restoration fails
-            await clearAuth().catch(() => {});
-            onAuthChange(null);
-          }
-
-          // Verify final session postcondition
-          const postCheck = await api.auth.getSession().catch(() => null);
-          const postSessionUserId = postCheck?.data?.session?.user?.id ?? null;
-          const postStoredToken = await getStoredToken().catch(() => null);
-
-          if (postSessionUserId !== postStoredToken) {
-            await clearAuth().catch(() => {});
-            await api.auth.signout().catch(() => {});
-            onAuthChange(null);
-          }
-
-          throw new Error("Local workspace clear failed. Switch aborted and session reset for safety.");
+          await clearAuth().catch(() => {});
+          onAuthChange(null);
+          throw new Error("Local workspace clear failed. Session reset for safety.");
         }
 
         if (wipeSuccess) {
@@ -252,8 +235,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
             await saveAuth(result.token, result.user);
           } catch (saveErr) {
             console.error("Credential persistence failed after local wipe", saveErr);
-            await clearAuth().catch(() => {});
             await api.auth.signout().catch(() => {});
+            await clearAuth().catch(() => {});
             onAuthChange(null);
             throw new Error("Credential persistence failed. Workspace reset to unauthenticated.");
           }
@@ -339,8 +322,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         if (currentToken) {
           const migrationResult = await migrateLocalDataToAccount(currentToken);
           const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
-          if (totalFailed > 0) {
-            throw new Error("Cannot sign out: local data sync incomplete. Please check your connection.");
+          const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
+          if (totalFailed > 0 || totalUnresolved > 0) {
+            throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
           }
         }
 

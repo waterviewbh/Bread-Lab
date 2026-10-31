@@ -69,13 +69,10 @@ function validateArrayStorageKey(raw: string | null, keyLabel: string): void {
 }
 
 /**
- * Clear local operational data without removing authentication credential keys.
- * Preserves records belonging to other authenticated users while purging anonymous operational records.
- * Note on Atomicity: Pre-validation guarantees that validation errors occur 0% into mutation.
- * However, because AsyncStorage operations are sequential independent calls rather than a multi-key ACID transaction,
- * a failure during the mutation sequence may leave partial changes applied.
+ * Genuinely non-mutating operation that validates relevant operational storage reads,
+ * JSON shapes, migration pending markers, and ownership conditions without modifying or removing any storage keys.
  */
-export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
+export async function validateOperationalData(currentUserId?: string | null): Promise<void> {
   let recipeRaw: string | null = null;
   let bakeHistRaw: string | null = null;
   let feedHistRaw: string | null = null;
@@ -106,7 +103,6 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");
   }
 
-  // Consolidated array shape and JSON syntax validation for collection keys (Requirement 1 & 2)
   validateArrayStorageKey(recipeRaw, "recipe record");
   validateArrayStorageKey(bakeHistRaw, "bake history");
   validateArrayStorageKey(feedHistRaw, "feed history");
@@ -142,6 +138,35 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
       if (e.message?.includes("Operational wipe verification failed")) throw e;
       throw new Error(`Operational wipe verification failed: active feed record is malformed and cannot be verified.`);
     }
+  }
+}
+
+/**
+ * Clear local operational data without removing authentication credential keys.
+ * Preserves records belonging to other authenticated users while purging anonymous operational records.
+ * Note on Atomicity: Pre-validation guarantees that validation errors occur 0% into mutation.
+ * However, because AsyncStorage operations are sequential independent calls rather than a multi-key ACID transaction,
+ * a failure during the mutation sequence may leave partial changes applied.
+ */
+export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
+  await validateOperationalData(currentUserId);
+
+  let recipeRaw: string | null = null;
+  let bakeHistRaw: string | null = null;
+  let feedHistRaw: string | null = null;
+  let activeBakeCheck: string | null = null;
+  let activeFeedCheck: string | null = null;
+
+  try {
+    [recipeRaw, bakeHistRaw, feedHistRaw, activeBakeCheck, activeFeedCheck] = await Promise.all([
+      AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
+    ]);
+  } catch (error: any) {
+    throw new Error(`Failed to read local operational data during cleanup: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   try {
