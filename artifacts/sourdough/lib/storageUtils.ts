@@ -647,6 +647,17 @@ export class AsyncMutex {
 
 export const storageMutex = new AsyncMutex();
 
+let workspaceGeneration = 0;
+
+export function getWorkspaceGeneration(): number {
+  return workspaceGeneration;
+}
+
+export function advanceWorkspaceGeneration(): number {
+  workspaceGeneration++;
+  return workspaceGeneration;
+}
+
 /**
  * Resolves an owner-scoped storage key based on base key and owner ID.
  * Fails closed on missing or invalid owner ID (anonymous must be explicitly passed as "anonymous").

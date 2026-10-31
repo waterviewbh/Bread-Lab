@@ -1,9 +1,9 @@
 // artifacts/sourdough/lib/__tests__/ownerScopedStorage.test.ts
-import { getOwnerStorageKey, APP_STORAGE_KEYS, quarantineOperationalData, QUARANTINE_KEY } from "../storageUtils";
+import { getOwnerStorageKey, APP_STORAGE_KEYS, quarantineOperationalData, QUARANTINE_KEY, advanceWorkspaceGeneration } from "../storageUtils";
 import { loadAll, writeRecipesLocal, appendRecipeLocal, addToRecipeTombstone, getRecipeTombstone } from "../recipeStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-describe("Issue #24: loadAll Lifecycle Safety & Invariants (Tests A-E)", () => {
+describe("Issue #24: loadAll Lifecycle Safety & Invariants (Tests A-F)", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     jest.restoreAllMocks();
@@ -28,12 +28,13 @@ describe("Issue #24: loadAll Lifecycle Safety & Invariants (Tests A-E)", () => {
 
     // Switch active identity to user-B while remote fetch is pending
     authMock.mockResolvedValue("user-B");
+    advanceWorkspaceGeneration();
 
     resolveRemote([
       { id: "rec-A", userId: "user-A", name: "Recipe A", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }] }
     ]);
 
-    await expect(loadPromise).rejects.toThrow(/Workspace identity changed|aborting stale/);
+    await expect(loadPromise).rejects.toThrow(/Workspace owner changed|Workspace generation changed/);
 
     const keyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
     expect(await AsyncStorage.getItem(keyB)).toBeNull();
@@ -50,24 +51,22 @@ describe("Issue #24: loadAll Lifecycle Safety & Invariants (Tests A-E)", () => {
       { id: "rec-A", userId: "user-A", name: "Recipe A", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }] }
     ]);
 
-    // Use test seam to pause after successful validation but before persistence
     let resumePause: () => void = () => {};
     const pausePromise = new Promise<void>((r) => {
       resumePause = r;
     });
 
     (global as any).__pausePrePersist = async () => {
-      // Switch identity to user-B during the deterministic pause
       authMock.mockResolvedValue("user-B");
+      advanceWorkspaceGeneration();
       await pausePromise;
     };
 
     const loadPromise = loadAll();
     resumePause();
 
-    await expect(loadPromise).rejects.toThrow(/Workspace identity changed/);
+    await expect(loadPromise).rejects.toThrow(/Workspace owner changed|Workspace generation changed/);
 
-    // Verify nothing written to user-B namespace
     const keyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
     expect(await AsyncStorage.getItem(keyB)).toBeNull();
   });
@@ -88,7 +87,6 @@ describe("Issue #24: loadAll Lifecycle Safety & Invariants (Tests A-E)", () => {
 
     const loadPromise = loadAll();
 
-    // Cause credential read to reject during subsequent check
     authMock.mockRejectedValue(new Error("Disk read error"));
 
     resolveRemote([
@@ -125,5 +123,34 @@ describe("Issue #24: loadAll Lifecycle Safety & Invariants (Tests A-E)", () => {
     };
 
     await expect(appendRecipeLocal(foreignRecipe)).rejects.toThrow(/Write ownership validation failed/);
+  });
+
+  it("Test F — Workspace changes after an earlier persistence step prevents subsequent lifecycle writes", async () => {
+    const authModule = require("../auth");
+    const authMock = jest.spyOn(authModule, "getStoredToken");
+
+    authMock.mockResolvedValue("user-A");
+
+    const apiModule = require("../api");
+    jest.spyOn(apiModule.api.recipes, "list").mockResolvedValue([
+      { id: "rec-A", userId: "user-A", name: "Recipe A", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }] }
+    ]);
+
+    // Intercept AsyncStorage.setItem to trigger workspace change after recipes are persisted
+    let recipeSetCount = 0;
+    const originalSetItem = AsyncStorage.setItem;
+    (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+      if (key.includes("recipes")) {
+        recipeSetCount++;
+        if (recipeSetCount === 1) {
+          // Switch workspace right after recipes persistence
+          authMock.mockResolvedValue("user-B");
+          advanceWorkspaceGeneration();
+        }
+      }
+      return originalSetItem(key, value);
+    });
+
+    await expect(loadAll()).rejects.toThrow(/Workspace owner changed|Workspace generation changed/);
   });
 });

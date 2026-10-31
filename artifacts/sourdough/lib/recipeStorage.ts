@@ -13,7 +13,7 @@ import {
   DELETED_RECIPE_IDS_KEY,
 } from "@/lib/recipeTypes";
 import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, detectYeastType, sortRecipePhases } from "@/lib/recipeUtils";
-import { safeParse, storageMutex, getOwnerStorageKey } from "@/lib/storageUtils";
+import { safeParse, storageMutex, getOwnerStorageKey, getWorkspaceGeneration } from "@/lib/storageUtils";
 
 async function resolveOwner(): Promise<string> {
   let token: string | null = null;
@@ -29,6 +29,21 @@ async function resolveOwner(): Promise<string> {
     throw new Error("Owner resolution failed closed: stored token is malformed or empty.");
   }
   return token.trim();
+}
+
+export interface WorkspaceOperationContext {
+  owner: string;
+  generation: number;
+}
+
+async function assertWorkspaceOperationCurrent(context: WorkspaceOperationContext): Promise<void> {
+  if (context.generation !== getWorkspaceGeneration()) {
+    throw new Error("Workspace generation changed during loadAll(); aborting stale operation.");
+  }
+  const currentOwner = await resolveOwner();
+  if (currentOwner !== context.owner) {
+    throw new Error("Workspace owner changed during loadAll(); aborting stale operation.");
+  }
 }
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────
@@ -77,16 +92,23 @@ export async function loadAll(): Promise<{
   let localBakesFound = false;
 
   const owner = await resolveOwner();
+  const generation = getWorkspaceGeneration();
+  const context: WorkspaceOperationContext = { owner, generation };
+
   const token = owner === "anonymous" ? null : owner;
   const recipesKey = getOwnerStorageKey(RECIPES_KEY, owner);
   const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
   const bakeHistoryKey = getOwnerStorageKey(BAKE_HISTORY_KEY, owner);
+
+  await assertWorkspaceOperationCurrent(context);
 
   try {
     const [recipeStr, bakeStr] = await Promise.all([
       AsyncStorage.getItem(recipesKey),
       AsyncStorage.getItem(bakeKey),
     ]);
+
+    await assertWorkspaceOperationCurrent(context);
 
     recipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray).filter(
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
@@ -152,9 +174,12 @@ export async function loadAll(): Promise<{
     });
 
     localBakesFound = bakes.length > 0;
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.message?.includes("Workspace") || e?.message?.includes("Owner resolution")) throw e;
     console.error("[recipeStorage] loadAll local failed", e);
   }
+
+  await assertWorkspaceOperationCurrent(context);
 
   try {
     const deviceId = await getDeviceId();
@@ -164,11 +189,7 @@ export async function loadAll(): Promise<{
       getRecipeTombstone(),
     ]);
 
-    // Verify workspace identity hasn't changed during remote fetch
-    const currentOwner = await resolveOwner();
-    if (currentOwner !== owner) {
-      throw new Error("Workspace identity changed during loadAll() execution; aborting stale operation.");
-    }
+    await assertWorkspaceOperationCurrent(context);
 
     const mapped: SavedRecipe[] = (apiRecipes || [])
       .filter((r) => !deletedRecipeIds.includes(r.id))
@@ -197,24 +218,23 @@ export async function loadAll(): Promise<{
         };
       });
 
-    const prePersistOwner = await resolveOwner();
-    if (prePersistOwner !== owner) {
-      throw new Error("Workspace identity changed prior to persistence; aborting stale write.");
-    }
+    await assertWorkspaceOperationCurrent(context);
 
     if (typeof (global as any).__pausePrePersist === "function") {
       await (global as any).__pausePrePersist();
     }
 
-    const postPauseOwner = await resolveOwner();
-    if (postPauseOwner !== owner) {
-      throw new Error("Workspace identity changed during pre-persistence pause; aborting stale write.");
-    }
+    await assertWorkspaceOperationCurrent(context);
 
     if (token || (apiRecipes && apiRecipes.length > 0)) {
       recipes = mapped;
-      await storageMutex.run(() => AsyncStorage.setItem(recipesKey, JSON.stringify(mapped)));
+      await storageMutex.run(async () => {
+        await assertWorkspaceOperationCurrent(context);
+        await AsyncStorage.setItem(recipesKey, JSON.stringify(mapped));
+      });
     }
+
+    await assertWorkspaceOperationCurrent(context);
 
     if (!localBakesFound && activeBake) {
       const apiBake: ActiveBake = {
@@ -257,14 +277,17 @@ export async function loadAll(): Promise<{
       }
 
       bakes = [apiBake];
-      await storageMutex.run(() => AsyncStorage.setItem(bakeKey, JSON.stringify(bakes)));
+      await storageMutex.run(async () => {
+        await assertWorkspaceOperationCurrent(context);
+        await AsyncStorage.setItem(bakeKey, JSON.stringify(bakes));
+      });
     }
   } catch (e: any) {
-    if (e?.message?.includes("Workspace identity changed") || e?.message?.includes("Owner resolution failed closed")) {
-      throw e;
-    }
+    if (e?.message?.includes("Workspace") || e?.message?.includes("Owner resolution")) throw e;
     console.error("[recipeStorage] loadAll remote failed", e);
   }
+
+  await assertWorkspaceOperationCurrent(context);
 
   // Defensive self-healing: ensure bakes containing completed diagnostic outcomes or already existing in history are automatically cleaned from active lists
   try {
@@ -275,11 +298,19 @@ export async function loadAll(): Promise<{
     const activeBakesCleaned = bakes.filter(b => b && !b.outcome?.overallScore && !historyIds.has(b.id));
     if (activeBakesCleaned.length !== bakes.length) {
       bakes = activeBakesCleaned;
-      await storageMutex.run(() => AsyncStorage.setItem(bakeKey, JSON.stringify(bakes))).catch(() => {});
+      await storageMutex.run(async () => {
+        await assertWorkspaceOperationCurrent(context);
+        await AsyncStorage.setItem(bakeKey, JSON.stringify(bakes));
+      }).catch((err) => {
+        if (err?.message?.includes("Workspace")) throw err;
+      });
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message?.includes("Workspace")) throw err;
     console.error("[recipeStorage] self-healing filtering failed", err);
   }
+
+  await assertWorkspaceOperationCurrent(context);
 
   return { recipes, bakes, bake: bakes[0] || null };
 }
