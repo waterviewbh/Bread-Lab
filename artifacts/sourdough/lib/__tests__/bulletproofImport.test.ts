@@ -592,6 +592,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
 
       (AsyncStorage.setItem as jest.Mock).mockClear();
       (AsyncStorage.removeItem as jest.Mock).mockClear();
+      (AsyncStorage.multiSet as jest.Mock).mockClear();
       (AsyncStorage.multiRemove as jest.Mock).mockClear();
 
       await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
@@ -602,6 +603,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
 
       expect(AsyncStorage.setItem).not.toHaveBeenCalled();
       expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+      expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
       expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
     });
   });
@@ -637,6 +639,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
 
     (AsyncStorage.setItem as jest.Mock).mockClear();
     (AsyncStorage.removeItem as jest.Mock).mockClear();
+    (AsyncStorage.multiSet as jest.Mock).mockClear();
     (AsyncStorage.multiRemove as jest.Mock).mockClear();
 
     await expect(clearOperationalData("user-clearing")).rejects.toThrow();
@@ -647,6 +650,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
 
     expect(AsyncStorage.setItem).not.toHaveBeenCalled();
     expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
     expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
   });
 
