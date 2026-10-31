@@ -100,6 +100,28 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     }
   };
 
+  const executeFailClosedRecovery = async (): Promise<{ remoteSignout: boolean; localClear: boolean }> => {
+    let remoteSignout = false;
+    let localClear = false;
+
+    try {
+      const res = await api.auth.signout();
+      remoteSignout = !!res?.signedOut;
+    } catch {
+      remoteSignout = false;
+    }
+
+    try {
+      await clearAuth();
+      localClear = true;
+    } catch {
+      localClear = false;
+    }
+
+    onAuthChange(null);
+    return { remoteSignout, localClear };
+  };
+
   const handleChoiceImport = async () => {
     if (!transitionPendingData) return;
     setLoading(true);
@@ -125,10 +147,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       reset();
       onClose();
     } catch (err: any) {
-      await api.auth.signout().catch(() => {});
-      await clearAuth().catch(() => {});
-      onAuthChange(null);
-      const msg = err instanceof Error ? err.message : String(err);
+      const recovery = await executeFailClosedRecovery();
+      const statusDetails = [
+        recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
+        recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
+      ].join(" ");
+      const msg = `${err instanceof Error ? err.message : String(err)} (${statusDetails})`;
       if (Platform.OS === 'web') {
         window.alert(`Import Failed: ${msg}`);
       } else {
@@ -152,10 +176,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       reset();
       onClose();
     } catch (err: any) {
-      await api.auth.signout().catch(() => {});
-      await clearAuth().catch(() => {});
-      onAuthChange(null);
-      const msg = err instanceof Error ? err.message : String(err);
+      const recovery = await executeFailClosedRecovery();
+      const statusDetails = [
+        recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
+        recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
+      ].join(" ");
+      const msg = `${err instanceof Error ? err.message : String(err)} (${statusDetails})`;
       if (Platform.OS === 'web') {
         window.alert(`Purge/Setup Failed: ${msg}`);
       } else {
@@ -234,11 +260,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           wipeSuccess = true;
         } catch (wipeErr) {
           console.error("Local operational wipe failed during account switch", wipeErr);
-          // Fail-closed recovery: Sign out of B and reset state to unauthenticated
-          await api.auth.signout().catch(() => {});
-          await clearAuth().catch(() => {});
-          onAuthChange(null);
-          throw new Error("Local workspace clear failed. Session reset for safety.");
+          const recovery = await executeFailClosedRecovery();
+          const statusDetails = [
+            recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
+            recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
+          ].join(" ");
+          throw new Error(`Local workspace clear failed. ${statusDetails} Session reset for safety.`);
         }
 
         if (wipeSuccess) {
@@ -246,10 +273,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
             await saveAuth(result.token, result.user);
           } catch (saveErr) {
             console.error("Credential persistence failed after local wipe", saveErr);
-            await api.auth.signout().catch(() => {});
-            await clearAuth().catch(() => {});
-            onAuthChange(null);
-            throw new Error("Credential persistence failed. Workspace reset to unauthenticated.");
+            const recovery = await executeFailClosedRecovery();
+            const statusDetails = [
+              recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
+              recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
+            ].join(" ");
+            throw new Error(`Credential persistence failed. ${statusDetails} Workspace reset to unauthenticated.`);
           }
           onAuthChange(result.user);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -286,10 +315,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
             onClose();
             return;
           } catch (anonErr) {
-            await api.auth.signout().catch(() => {});
-            await clearAuth().catch(() => {});
-            onAuthChange(null);
-            throw anonErr;
+            const recovery = await executeFailClosedRecovery();
+            const statusDetails = [
+              recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
+              recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
+            ].join(" ");
+            throw new Error(`Anonymous transition failed: ${anonErr instanceof Error ? anonErr.message : String(anonErr)}. ${statusDetails}`);
           }
         }
       }

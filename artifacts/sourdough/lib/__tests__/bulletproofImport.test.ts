@@ -686,4 +686,22 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     // Confirm resulting storage state reflects demonstrated partial mutation
     expect(mockStorage["bread_lab_recipes_v1"]).toBeDefined();
   });
+
+  it("validateOperationalData rejects invalid or unreadable storage with zero mutations", async () => {
+    const { validateOperationalData } = require("../storageUtils");
+
+    mockStorage["bread_lab_recipes_v1"] = "invalid-json-string";
+
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (AsyncStorage.removeItem as jest.Mock).mockClear();
+    (AsyncStorage.multiSet as jest.Mock).mockClear();
+    (AsyncStorage.multiRemove as jest.Mock).mockClear();
+
+    await expect(validateOperationalData("some-user")).rejects.toThrow();
+
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+  });
 });
