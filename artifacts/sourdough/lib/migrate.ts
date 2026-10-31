@@ -540,14 +540,15 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
 
   console.log(`[BL-DIAG-ASYNC] [Migration] SUMMARY RECONCILIATION: recipes(ok=${recipesOk}, failed=${recipesFailed}), bakes(ok=${bakesOk}, failed=${bakesFailed}), feeds(ok=${feedOk}, failed=${feedFailed})`);
 
-  const totalLocalRecipes = recipes.length;
-  const unresolvedRecipes = Math.max(0, totalLocalRecipes - recipesOk - recipesFailed);
+  const unresolvedRecipes = Math.max(0, recipesToMigrate.length - recipesOk - recipesFailed);
+  const unresolvedBakes = Math.max(0, (bakeHistoryToMigrate.length + activeBakesToMigrate.length) - bakesOk - bakesFailed);
+  const unresolvedFeeds = Math.max(0, (feedHistoryToMigrate.length + (activeFeedToMigrate ? 1 : 0)) - feedOk - feedFailed);
 
-  const totalLocalBakes = bakeHistory.length + activeBakes.length;
-  const unresolvedBakes = Math.max(0, totalLocalBakes - bakesOk - bakesFailed);
+  const excludedRecipes = Math.max(0, recipes.length - recipesToMigrate.length);
+  const excludedBakes = Math.max(0, (bakeHistory.length + activeBakes.length) - (bakeHistoryToMigrate.length + activeBakesToMigrate.length));
+  const excludedFeeds = Math.max(0, (feedHistory.length + (activeFeed ? 1 : 0)) - (feedHistoryToMigrate.length + (activeFeedToMigrate ? 1 : 0)));
 
-  const totalLocalFeeds = feedHistory.length + (activeFeed ? 1 : 0);
-  const unresolvedFeeds = Math.max(0, totalLocalFeeds - feedOk - feedFailed);
+  console.log(`[BL-DIAG-ASYNC] [Migration] ACCOUNTING BREAKDOWN: recipes(ok=${recipesOk}, failed=${recipesFailed}, excluded=${excludedRecipes}, unresolved=${unresolvedRecipes}), bakes(ok=${bakesOk}, failed=${bakesFailed}, excluded=${excludedBakes}, unresolved=${unresolvedBakes}), feeds(ok=${feedOk}, failed=${feedFailed}, excluded=${excludedFeeds}, unresolved=${unresolvedFeeds})`);
 
   const result: MigrationResult = {
     feed: { ok: feedOk, failed: feedFailed, unresolved: unresolvedFeeds },
