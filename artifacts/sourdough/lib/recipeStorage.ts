@@ -16,8 +16,18 @@ import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, 
 import { safeParse, storageMutex, getOwnerStorageKey } from "@/lib/storageUtils";
 
 async function resolveOwner(): Promise<string> {
-  const token = await getStoredToken().catch(() => null);
-  if (!token || token.trim() === "") return "anonymous";
+  let token: string | null = null;
+  try {
+    token = await getStoredToken();
+  } catch (e: any) {
+    throw new Error(`Owner resolution failed closed due to credential read error: ${e?.message ?? String(e)}`);
+  }
+  if (token === null) {
+    return "anonymous";
+  }
+  if (typeof token !== "string" || token.trim() === "") {
+    throw new Error("Owner resolution failed closed: stored token is malformed or empty.");
+  }
   return token.trim();
 }
 
@@ -253,29 +263,36 @@ export async function loadAll(): Promise<{
 }
 
 export async function writeRecipesLocal(recipes: SavedRecipe[]): Promise<void> {
-  const token = await getStoredToken().catch(() => null);
-  const owner = token && token.trim() !== "" ? token.trim() : "anonymous";
+  const owner = await resolveOwner();
   const recipesKey = getOwnerStorageKey(RECIPES_KEY, owner);
 
   const validRecipes = recipes
     .filter(
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
     )
+    .filter(r => {
+      const recordOwner = r.userId ?? owner;
+      return recordOwner === owner; // Fail closed: reject foreign records
+    })
     .map(r => ({
       ...r,
-      userId: r.userId ?? owner
+      userId: owner
     }));
   return storageMutex.run(() => AsyncStorage.setItem(recipesKey, JSON.stringify(validRecipes)));
 }
 
 export async function appendRecipeLocal(newRecipe: SavedRecipe): Promise<SavedRecipe[]> {
-  const token = await getStoredToken().catch(() => null);
-  const owner = token && token.trim() !== "" ? token.trim() : "anonymous";
+  const owner = await resolveOwner();
   const recipesKey = getOwnerStorageKey(RECIPES_KEY, owner);
+
+  const recordOwner = newRecipe.userId ?? owner;
+  if (recordOwner !== owner) {
+    throw new Error(`Write ownership validation failed: record belongs to foreign owner ${recordOwner}, active workspace is ${owner}.`);
+  }
 
   const stampedRecipe = {
     ...newRecipe,
-    userId: newRecipe.userId ?? owner
+    userId: owner
   };
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(recipesKey);
@@ -289,13 +306,17 @@ export async function appendRecipeLocal(newRecipe: SavedRecipe): Promise<SavedRe
 }
 
 export async function writeBakeLocal(bake: ActiveBake): Promise<void> {
-  const token = await getStoredToken().catch(() => null);
-  const owner = token && token.trim() !== "" ? token.trim() : "anonymous";
+  const owner = await resolveOwner();
   const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
+
+  const recordOwner = bake.userId ?? owner;
+  if (recordOwner !== owner) {
+    throw new Error(`Write ownership validation failed: bake belongs to foreign owner ${recordOwner}, active workspace is ${owner}.`);
+  }
 
   const stampedBake = {
     ...bake,
-    userId: bake.userId ?? owner
+    userId: owner
   };
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(bakeKey).catch(() => null);
@@ -313,14 +334,19 @@ export async function writeBakeLocal(bake: ActiveBake): Promise<void> {
 }
 
 export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
-  const token = await getStoredToken().catch(() => null);
-  const owner = token && token.trim() !== "" ? token.trim() : "anonymous";
+  const owner = await resolveOwner();
   const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
 
-  const stampedBakes = bakes.map(b => ({
-    ...b,
-    userId: b.userId ?? owner
-  }));
+  const stampedBakes = bakes.map(b => {
+    const recordOwner = b.userId ?? owner;
+    if (recordOwner !== owner) {
+      throw new Error(`Write ownership validation failed: bake belongs to foreign owner ${recordOwner}, active workspace is ${owner}.`);
+    }
+    return {
+      ...b,
+      userId: owner
+    };
+  });
   return storageMutex.run(() => AsyncStorage.setItem(bakeKey, JSON.stringify(stampedBakes)));
 }
 
