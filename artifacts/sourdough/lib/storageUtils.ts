@@ -62,11 +62,19 @@ export const OPERATIONAL_KEYS = [
 export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
   // Pre-mutation verification pass (Dry-Run Safety Check): Ensure no malformed or ownerless active records exist
   // before performing any mutations to local storage, guaranteeing atomicity and preventing partial modifications.
-  const [activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
-    AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE).catch(() => null),
-    AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED).catch(() => null),
-    AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING).catch(() => null),
-  ]);
+  let activeBakeCheck: string | null = null;
+  let activeFeedCheck: string | null = null;
+  let migPendingCheck: string | null = null;
+
+  try {
+    [activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
+      AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING),
+    ]);
+  } catch (error: any) {
+    throw new Error(`Operational wipe verification failed due to storage read error: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   if (migPendingCheck !== null) {
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");

@@ -493,4 +493,75 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     await expect(clearOperationalData("incoming-user")).rejects.toThrow(/ownership|verification failed/);
     expect(mockStorage["sourdough_feed_session_v1"]).toBeDefined();
   });
+
+  it("treats rejected storage read on active bake as validation failure and aborts without mutation", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key === "bread_lab_bake_v2") return Promise.reject(new Error("Active bake read failed"));
+      return Promise.resolve(mockStorage[key] ?? null);
+    });
+
+    mockStorage["bread_lab_bake_v2"] = JSON.stringify({ id: "bake-1", userId: "anonymous" });
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/storage read error|Active bake read failed/);
+    expect(mockStorage["bread_lab_bake_v2"]).toBeDefined();
+  });
+
+  it("treats rejected storage read on active feed as validation failure and aborts without mutation", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key === "sourdough_feed_session_v1") return Promise.reject(new Error("Active feed read failed"));
+      return Promise.resolve(mockStorage[key] ?? null);
+    });
+
+    mockStorage["sourdough_feed_session_v1"] = JSON.stringify({ id: "feed-1", userId: "anonymous" });
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/storage read error|Active feed read failed/);
+    expect(mockStorage["sourdough_feed_session_v1"]).toBeDefined();
+  });
+
+  it("treats rejected storage read on migration pending as validation failure and aborts without mutation", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+    const getItemMock = AsyncStorage.getItem as jest.Mock;
+    getItemMock.mockImplementation((key) => {
+      if (key === "bread_lab_migration_pending_v1") return Promise.reject(new Error("Migration pending read failed"));
+      return Promise.resolve(mockStorage[key] ?? null);
+    });
+
+    mockStorage["bread_lab_migration_pending_v1"] = "1";
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/storage read error|Migration pending read failed/);
+    expect(mockStorage["bread_lab_migration_pending_v1"]).toBe("1");
+  });
+
+  it("preserves entire operational workspace and performs zero mutations when pre-validation fails", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    const seedData = {
+      "bread_lab_recipes_v1": JSON.stringify([{ id: "r1", name: "Recipe 1", userId: "anonymous" }]),
+      "bread_lab_bake_history_v1": JSON.stringify([{ id: "bh1", recipeName: "Bake 1", userId: "anonymous" }]),
+      "sourdough_feed_history_v1": JSON.stringify([{ id: "fh1", userId: "anonymous" }]),
+      "bread_lab_bake_v2": "{malformed-active-bake",
+      "sourdough_feed_session_v1": JSON.stringify({ id: "af1", userId: "anonymous" }),
+      "bread_lab_deleted_recipe_ids_v1": JSON.stringify(["del-1"]),
+    };
+
+    mockStorage = { ...seedData };
+
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (AsyncStorage.removeItem as jest.Mock).mockClear();
+    (AsyncStorage.multiRemove as jest.Mock).mockClear();
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/malformed/);
+
+    for (const [key, val] of Object.entries(seedData)) {
+      expect(mockStorage[key]).toBe(val);
+    }
+
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+  });
 });
