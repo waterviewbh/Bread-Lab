@@ -259,11 +259,31 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   const recipes = mergeRecords(scopedRecipes, legacyRecipes);
   const bakeHistory = mergeRecords(scopedBakeHistory, legacyBakeHistory);
 
-  const mergeBakes = (scoped: LocalBakeSession[], legacy: LocalBakeSession[]): { bakes: LocalBakeSession[]; isArray: boolean } => {
-    const mergedList = mergeRecords(scoped, legacy);
+  const tagBakes = (bakes: LocalBakeSession[], sourceKey: string) => {
+    return bakes.map(b => ({
+      ...b,
+      __sourceKey: sourceKey
+    }));
+  };
+
+  const taggedScopedBakes = tagBakes(scopedActiveBakeResult.bakes, ownerScopedActiveBakeKey);
+  const taggedLegacyBakes = tagBakes(legacyActiveBakeResult.bakes, ACTIVE_BAKE_KEY);
+
+  const mergeTaggedBakes = (scoped: any[], legacy: any[]): { bakes: any[]; isArray: boolean } => {
+    const map = new Map<string, any>();
+    for (const b of legacy) {
+      if (b && typeof b.id === "string" && b.id.trim() !== "") map.set(b.id, b);
+      else map.set(`__legacy_idless_${Math.random()}`, b);
+    }
+    for (const b of scoped) {
+      if (b && typeof b.id === "string" && b.id.trim() !== "") map.set(b.id, b);
+      else map.set(`__scoped_idless_${Math.random()}`, b);
+    }
+    const mergedList = Array.from(map.values());
     return { bakes: mergedList, isArray: scopedActiveBakeResult.isArray && legacyActiveBakeResult.isArray };
   };
-  const bakeResult = mergeBakes(scopedActiveBakeResult.bakes, legacyActiveBakeResult.bakes);
+
+  const bakeResult = mergeTaggedBakes(taggedScopedBakes, taggedLegacyBakes);
   const activeBakes = bakeResult.bakes;
 
   const isAnonymousOrOwnedGuard = (record: any) => isAnonymousOrOwned(record, token);
@@ -287,9 +307,20 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   }
   if (activeBakesUpdated) {
     try {
-      const dataToStore = bakeResult.isArray ? activeBakes : activeBakes[0];
-      const persistKey = scopedActiveBakeResult.bakes.length > 0 ? ownerScopedActiveBakeKey : ACTIVE_BAKE_KEY;
-      await AsyncStorage.setItem(persistKey, JSON.stringify(dataToStore));
+      const groups = new Map<string, any[]>();
+      for (const bake of activeBakes) {
+        const srcKey = bake.__sourceKey || ACTIVE_BAKE_KEY;
+        const cleanBake = { ...bake };
+        delete cleanBake.__sourceKey;
+        if (!groups.has(srcKey)) groups.set(srcKey, []);
+        groups.get(srcKey)!.push(cleanBake);
+      }
+
+      for (const [key, bakesGroup] of groups.entries()) {
+        const isArrayShape = key === ownerScopedActiveBakeKey ? scopedActiveBakeResult.isArray : legacyActiveBakeResult.isArray;
+        const dataToStore = isArrayShape ? bakesGroup : bakesGroup[0];
+        await AsyncStorage.setItem(key, JSON.stringify(dataToStore));
+      }
     } catch (error) {
       throw new Error(`Failed to persist assigned active bake ID: ${error instanceof Error ? error.message : String(error)}`);
     }
