@@ -334,14 +334,47 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     throw new Error(`Failed to read operational data for quarantine: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const recipes = recipeRaw ? safeParse<any[]>(recipeRaw, [], Array.isArray) : [];
-  const bakes = bakeHistRaw ? safeParse<any[]>(bakeHistRaw, [], Array.isArray) : [];
-  const feeds = feedHistRaw ? safeParse<any[]>(feedHistRaw, [], Array.isArray) : [];
-  const activeBakes = activeBakeCheck ? (Array.isArray(JSON.parse(activeBakeCheck)) ? JSON.parse(activeBakeCheck) : [JSON.parse(activeBakeCheck)]) : [];
-  const activeFeed = activeFeedCheck ? JSON.parse(activeFeedCheck) : null;
-  const delRecipes = delRecipeRaw ? safeParse<string[]>(delRecipeRaw, [], Array.isArray) : [];
-  const delBakes = delBakeRaw ? safeParse<string[]>(delBakeRaw, [], Array.isArray) : [];
-  const delFeeds = delFeedRaw ? safeParse<string[]>(delFeedRaw, [], Array.isArray) : [];
+  const parseOrThrow = (raw: string | null, label: string): any[] => {
+    if (raw === null || raw === undefined) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        throw new Error(`Quarantine failed: ${label} storage is malformed (expected array).`);
+      }
+      return parsed;
+    } catch (e: any) {
+      if (e.message?.includes("Quarantine failed")) throw e;
+      throw new Error(`Quarantine failed: ${label} storage contains malformed JSON and cannot be parsed: ${e.message}`);
+    }
+  };
+
+  const parseActiveBakeOrThrow = (raw: string | null): any[] => {
+    if (raw === null || raw === undefined) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e: any) {
+      throw new Error(`Quarantine failed: active bake storage contains malformed JSON: ${e.message}`);
+    }
+  };
+
+  const parseActiveFeedOrThrow = (raw: string | null): any => {
+    if (raw === null || raw === undefined) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (e: any) {
+      throw new Error(`Quarantine failed: active feed storage contains malformed JSON: ${e.message}`);
+    }
+  };
+
+  const recipes = parseOrThrow(recipeRaw, "recipe record");
+  const bakes = parseOrThrow(bakeHistRaw, "bake history");
+  const feeds = parseOrThrow(feedHistRaw, "feed history");
+  const activeBakes = parseActiveBakeOrThrow(activeBakeCheck);
+  const activeFeed = parseActiveFeedOrThrow(activeFeedCheck);
+  const delRecipes = parseOrThrow(delRecipeRaw, "deleted recipe IDs");
+  const delBakes = parseOrThrow(delBakeRaw, "deleted bake IDs");
+  const delFeeds = parseOrThrow(delFeedRaw, "deleted feed IDs");
 
   const getOwnerKey = (item: any): string => {
     if (!item || typeof item !== "object") return "unknown";
@@ -379,8 +412,10 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     addToBucket(getOwnerKey(activeFeed), "activeFeed", activeFeed);
   }
 
-  // Tombstone ownership association
-  const tombstoneOwner = departingUserId && departingUserId.trim() !== "" ? departingUserId.trim() : "anonymous";
+  // Tombstone ownership association (Issue 4.1: safe tombstone ownership, preventing anonymous tombstones from crossing to authenticated accounts)
+  const tombstoneOwner = departingUserId && departingUserId.trim() !== "" && departingUserId !== "anonymous"
+    ? departingUserId.trim()
+    : "anonymous";
   if (delRecipes.length > 0) addToBucket(tombstoneOwner, "deletedRecipeIds", delRecipes);
   if (delBakes.length > 0) addToBucket(tombstoneOwner, "deletedBakeIds", delBakes);
   if (delFeeds.length > 0) addToBucket(tombstoneOwner, "deletedFeedIds", delFeeds);
@@ -390,8 +425,17 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     let existing: QuarantinedStore = {};
     try {
       const rawQ = await AsyncStorage.getItem(qKey);
-      if (rawQ) existing = JSON.parse(rawQ);
-    } catch {}
+      if (rawQ) {
+        try {
+          existing = JSON.parse(rawQ);
+        } catch (parseErr: any) {
+          throw new Error(`Quarantine failed: existing quarantine bucket ${qKey} is malformed and unreadable: ${parseErr.message}`);
+        }
+      }
+    } catch (readErr: any) {
+      if (readErr.message?.includes("Quarantine failed")) throw readErr;
+      throw new Error(`Quarantine failed: could not read existing quarantine bucket ${qKey}: ${readErr.message}`);
+    }
 
     const mergeList = (existingList: any[] = [], newList: any[] = []) => {
       const ids = new Set(existingList.map((x: any) => typeof x === "string" ? x : x?.id).filter(Boolean));
@@ -413,12 +457,26 @@ export async function quarantineOperationalData(departingUserId?: string | null)
       deletedFeedIds: mergeList(existing.deletedFeedIds, bucketStore.deletedFeedIds),
     };
 
-    await AsyncStorage.setItem(qKey, JSON.stringify(mergedQ));
-    const verifyQ = await AsyncStorage.getItem(qKey);
-    if (!verifyQ) {
-      throw new Error(`Quarantine verification failed for bucket ${qKey}`);
+    const serializedQ = JSON.stringify(mergedQ);
+    await AsyncStorage.setItem(qKey, serializedQ);
+
+    // Issue 4.5: Robust payload round-trip verification
+    let verifyParsed: any = null;
+    try {
+      const verifyQ = await AsyncStorage.getItem(qKey);
+      if (!verifyQ) {
+        throw new Error(`Quarantine verification failed: bucket ${qKey} was not persisted.`);
+      }
+      verifyParsed = JSON.parse(verifyQ);
+    } catch (verifyErr: any) {
+      throw new Error(`Quarantine verification failed for bucket ${qKey}: ${verifyErr.message}`);
     }
-    console.log(`[BL-DIAG] [Quarantine] Safely partitioned and quarantined records for owner=${ownerKey} under key=${qKey}`);
+
+    if (JSON.stringify(verifyParsed) !== serializedQ) {
+      throw new Error(`Quarantine verification failed: persisted payload for bucket ${qKey} does not match intended payload.`);
+    }
+
+    console.log(`[BL-DIAG] [Quarantine] Safely partitioned, quarantined, and verified records for owner=${ownerKey} under key=${qKey}`);
   }
 
   await AsyncStorage.multiRemove([

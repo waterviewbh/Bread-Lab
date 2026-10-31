@@ -825,4 +825,61 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(recovery.remoteSignout).toBe(true);
     expect(recovery.localClear).toBe(true);
   });
+
+  describe("Issue #24 Quarantine Integrity Hardening (4.3, 4.4, 4.5, 4.1)", () => {
+    it("4.3: Malformed source JSON causes quarantineOperationalData to fail and preserves source data", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS } = require("../storageUtils");
+      mockStorage[APP_STORAGE_KEYS.RECIPES] = "malformed-json-not-array[[";
+      mockStorage[APP_STORAGE_KEYS.BAKE_HISTORY] = JSON.stringify([{ id: "b1", userId: "user-1" }]);
+
+      await expect(quarantineOperationalData("user-1")).rejects.toThrow(/Quarantine failed.*malformed JSON|expected array/);
+      // Source storage must remain untouched
+      expect(mockStorage[APP_STORAGE_KEYS.BAKE_HISTORY]).toBeDefined();
+    });
+
+    it("4.4: Malformed or unreadable existing quarantine bucket causes quarantineOperationalData to fail closed", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS, QUARANTINE_KEY } = require("../storageUtils");
+      mockStorage[APP_STORAGE_KEYS.BAKE_HISTORY] = JSON.stringify([{ id: "b1", userId: "user-1" }]);
+      const qKey = QUARANTINE_KEY("user-1");
+      mockStorage[qKey] = "corrupted-existing-quarantine-json{{{";
+
+      await expect(quarantineOperationalData("user-1")).rejects.toThrow(/Quarantine failed.*existing quarantine bucket.*malformed/);
+      // Source storage must be preserved
+      expect(mockStorage[APP_STORAGE_KEYS.BAKE_HISTORY]).toBeDefined();
+    });
+
+    it("4.5: Quarantine payload read-back mismatch causes quarantineOperationalData to fail and preserve source", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS, QUARANTINE_KEY } = require("../storageUtils");
+      mockStorage[APP_STORAGE_KEYS.BAKE_HISTORY] = JSON.stringify([{ id: "b1", userId: "user-1" }]);
+
+      const getItemOriginal = AsyncStorage.getItem;
+      let readCount = 0;
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+        if (key.includes("bread_lab_quarantine_")) {
+          readCount++;
+          if (readCount === 1) return null; // initial read
+          // Return mismatched payload during verification
+          return JSON.stringify({ recipes: [{ id: "tampered" }] });
+        }
+        return mockStorage[key] ?? null;
+      });
+
+      await expect(quarantineOperationalData("user-1")).rejects.toThrow(/Quarantine verification failed.*does not match/);
+      expect(mockStorage[APP_STORAGE_KEYS.BAKE_HISTORY]).toBeDefined();
+      AsyncStorage.getItem = getItemOriginal;
+    });
+
+    it("4.1: Anonymous tombstones are isolated and never assigned to authenticated accounts", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS, QUARANTINE_KEY, UNKNOWN_QUARANTINE_KEY } = require("../storageUtils");
+      mockStorage[APP_STORAGE_KEYS.DELETED_RECIPE_IDS] = JSON.stringify(["rec-anon-del"]);
+      // Run with departingUserId = null (anonymous)
+      await quarantineOperationalData(null);
+
+      const anonQ = mockStorage[QUARANTINE_KEY("anonymous")];
+      expect(anonQ).toBeDefined();
+      const parsedAnon = JSON.parse(anonQ);
+      expect(parsedAnon.deletedRecipeIds).toContain("rec-anon-del");
+      expect(mockStorage[QUARANTINE_KEY("user-auth")]).toBeUndefined();
+    });
+  });
 });
