@@ -303,6 +303,9 @@ interface QuarantinedStore {
   feedHistory?: any[];
   activeBakes?: any[];
   activeFeed?: any;
+  deletedRecipeIds?: string[];
+  deletedBakeIds?: string[];
+  deletedFeedIds?: string[];
 }
 
 export async function quarantineOperationalData(departingUserId?: string | null): Promise<void> {
@@ -312,91 +315,82 @@ export async function quarantineOperationalData(departingUserId?: string | null)
   let feedHistRaw: string | null = null;
   let activeBakeCheck: string | null = null;
   let activeFeedCheck: string | null = null;
+  let delRecipeRaw: string | null = null;
+  let delBakeRaw: string | null = null;
+  let delFeedRaw: string | null = null;
 
   try {
-    [recipeRaw, bakeHistRaw, feedHistRaw, activeBakeCheck, activeFeedCheck] = await Promise.all([
+    [recipeRaw, bakeHistRaw, feedHistRaw, activeBakeCheck, activeFeedCheck, delRecipeRaw, delBakeRaw, delFeedRaw] = await Promise.all([
       AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES),
       AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY),
       AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY),
       AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
       AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_RECIPE_IDS),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_BAKE_IDS),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_FEED_IDS),
     ]);
   } catch (error: any) {
     throw new Error(`Failed to read operational data for quarantine: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const moveToQuarantine = async (items: any[], category: keyof QuarantinedStore) => {
-    if (!items || items.length === 0) return;
-    const groups = new Map<string, any[]>();
-    for (const item of items) {
-      if (!item) continue;
-      const owner = item.userId ?? item.user_id;
-      const key = (!owner || String(owner).trim() === "") ? "unknown" : String(owner).trim();
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(item);
-    }
+  const ownerTarget = departingUserId && departingUserId.trim() !== "" ? departingUserId.trim() : "anonymous";
+  const qKey = ownerTarget === "anonymous" ? UNKNOWN_QUARANTINE_KEY : QUARANTINE_KEY(ownerTarget);
 
-    for (const [ownerKey, groupItems] of groups.entries()) {
-      const qKey = ownerKey === "unknown" ? UNKNOWN_QUARANTINE_KEY : QUARANTINE_KEY(ownerKey);
-      let existing: QuarantinedStore = {};
-      try {
-        const rawQ = await AsyncStorage.getItem(qKey);
-        if (rawQ) existing = JSON.parse(rawQ);
-      } catch {}
+  let existing: QuarantinedStore = {};
+  try {
+    const rawQ = await AsyncStorage.getItem(qKey);
+    if (rawQ) existing = JSON.parse(rawQ);
+  } catch {}
 
-      const listKey = category;
-      const currentList = (existing[listKey] as any[]) || [];
-      const existingIds = new Set(currentList.map((x: any) => x?.id).filter(Boolean));
-      const mergedList = [...currentList, ...groupItems.filter(x => !x?.id || !existingIds.has(x.id))];
-      const updatedQ = { ...existing, [listKey]: mergedList };
-
-      await AsyncStorage.setItem(qKey, JSON.stringify(updatedQ));
-      const verifyQ = await AsyncStorage.getItem(qKey);
-      if (!verifyQ) {
-        throw new Error(`Quarantine verification failed for bucket ${qKey}`);
-      }
-      console.log(`[BL-DIAG] [Quarantine] Safely quarantined ${groupItems.length} record(s) under key=${qKey}`);
-    }
+  const mergeList = (existingList: any[] = [], newList: any[] = []) => {
+    const ids = new Set(existingList.map((x: any) => typeof x === "string" ? x : x?.id).filter(Boolean));
+    const added = newList.filter(x => {
+      const id = typeof x === "string" ? x : x?.id;
+      return !id || !ids.has(id);
+    });
+    return [...existingList, ...added];
   };
 
-  if (recipeRaw) {
-    const recipes = safeParse<any[]>(recipeRaw, [], Array.isArray);
-    await moveToQuarantine(recipes, "recipes");
-    await AsyncStorage.removeItem(APP_STORAGE_KEYS.RECIPES);
+  const recipes = recipeRaw ? safeParse<any[]>(recipeRaw, [], Array.isArray) : [];
+  const bakeHistory = bakeHistRaw ? safeParse<any[]>(bakeHistRaw, [], Array.isArray) : [];
+  const feedHistory = feedHistRaw ? safeParse<any[]>(feedHistRaw, [], Array.isArray) : [];
+  const activeBakes = activeBakeCheck ? (Array.isArray(JSON.parse(activeBakeCheck)) ? JSON.parse(activeBakeCheck) : [JSON.parse(activeBakeCheck)]) : [];
+  const activeFeed = activeFeedCheck ? JSON.parse(activeFeedCheck) : null;
+  const delRecipes = delRecipeRaw ? safeParse<string[]>(delRecipeRaw, [], Array.isArray) : [];
+  const delBakes = delBakeRaw ? safeParse<string[]>(delBakeRaw, [], Array.isArray) : [];
+  const delFeeds = delFeedRaw ? safeParse<string[]>(delFeedRaw, [], Array.isArray) : [];
+
+  const updatedQ: QuarantinedStore = {
+    recipes: mergeList(existing.recipes, recipes),
+    bakeHistory: mergeList(existing.bakeHistory, bakeHistory),
+    feedHistory: mergeList(existing.feedHistory, feedHistory),
+    activeBakes: mergeList(existing.activeBakes, activeBakes),
+    activeFeed: activeFeed ?? existing.activeFeed,
+    deletedRecipeIds: mergeList(existing.deletedRecipeIds, delRecipes),
+    deletedBakeIds: mergeList(existing.deletedBakeIds, delBakes),
+    deletedFeedIds: mergeList(existing.deletedFeedIds, delFeeds),
+  };
+
+  await AsyncStorage.setItem(qKey, JSON.stringify(updatedQ));
+  const verifyQ = await AsyncStorage.getItem(qKey);
+  if (!verifyQ) {
+    throw new Error(`Quarantine verification failed for bucket ${qKey}`);
   }
 
-  if (bakeHistRaw) {
-    const bakes = safeParse<any[]>(bakeHistRaw, [], Array.isArray);
-    await moveToQuarantine(bakes, "bakeHistory");
-    await AsyncStorage.removeItem(APP_STORAGE_KEYS.BAKE_HISTORY);
-  }
+  // Remove source operational keys
+  await AsyncStorage.multiRemove([
+    APP_STORAGE_KEYS.RECIPES,
+    APP_STORAGE_KEYS.BAKE_HISTORY,
+    APP_STORAGE_KEYS.FEED_HISTORY,
+    APP_STORAGE_KEYS.ACTIVE_BAKE,
+    APP_STORAGE_KEYS.ACTIVE_FEED,
+    APP_STORAGE_KEYS.DELETED_RECIPE_IDS,
+    APP_STORAGE_KEYS.DELETED_BAKE_IDS,
+    APP_STORAGE_KEYS.DELETED_FEED_IDS,
+  ]);
 
-  if (feedHistRaw) {
-    const feeds = safeParse<any[]>(feedHistRaw, [], Array.isArray);
-    await moveToQuarantine(feeds, "feedHistory");
-    await AsyncStorage.removeItem(APP_STORAGE_KEYS.FEED_HISTORY);
-  }
-
-  if (activeBakeCheck) {
-    try {
-      const parsed = JSON.parse(activeBakeCheck);
-      const bakesList = Array.isArray(parsed) ? parsed : [parsed];
-      await moveToQuarantine(bakesList, "activeBakes");
-      await AsyncStorage.removeItem(APP_STORAGE_KEYS.ACTIVE_BAKE);
-    } catch {}
-  }
-
-  if (activeFeedCheck) {
-    try {
-      const parsed = JSON.parse(activeFeedCheck);
-      if (parsed) {
-        await moveToQuarantine([parsed], "activeFeed");
-        await AsyncStorage.removeItem(APP_STORAGE_KEYS.ACTIVE_FEED);
-      }
-    } catch {}
-  }
-
-  console.log(`[BL-DIAG] [Quarantine] quarantineOperationalData completed successfully.`);
+  console.log(`[BL-DIAG] [Quarantine] quarantineOperationalData completed successfully for owner=${ownerTarget}`);
 }
 
 export async function restoreOperationalData(incomingUserId: string): Promise<void> {
@@ -407,42 +401,40 @@ export async function restoreOperationalData(incomingUserId: string): Promise<vo
     if (!rawQ) return;
     const storedQ: QuarantinedStore = JSON.parse(rawQ);
 
-    if (storedQ.recipes && storedQ.recipes.length > 0) {
-      const existingRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES);
+    const restoreListKey = async (storageKey: string, storedList?: any[]) => {
+      if (!storedList || storedList.length === 0) return;
+      const existingRaw = await AsyncStorage.getItem(storageKey);
       const existing = safeParse<any[]>(existingRaw, [], Array.isArray);
-      const existingIds = new Set(existing.map(x => x?.id).filter(Boolean));
-      const toRestore = storedQ.recipes.filter(x => !x?.id || !existingIds.has(x.id));
+      const existingIds = new Set(existing.map((x: any) => typeof x === "string" ? x : x?.id).filter(Boolean));
+      const toRestore = storedList.filter(x => {
+        const id = typeof x === "string" ? x : x?.id;
+        return !id || !existingIds.has(id);
+      });
       if (toRestore.length > 0) {
         const merged = [...existing, ...toRestore];
-        await AsyncStorage.setItem(APP_STORAGE_KEYS.RECIPES, JSON.stringify(merged));
+        await AsyncStorage.setItem(storageKey, JSON.stringify(merged));
       }
-    }
+    };
 
-    if (storedQ.bakeHistory && storedQ.bakeHistory.length > 0) {
-      const existingRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY);
-      const existing = safeParse<any[]>(existingRaw, [], Array.isArray);
-      const existingIds = new Set(existing.map(x => x?.id).filter(Boolean));
-      const toRestore = storedQ.bakeHistory.filter(x => !x?.id || !existingIds.has(x.id));
-      if (toRestore.length > 0) {
-        const merged = [...existing, ...toRestore];
-        await AsyncStorage.setItem(APP_STORAGE_KEYS.BAKE_HISTORY, JSON.stringify(merged));
-      }
-    }
+    await restoreListKey(APP_STORAGE_KEYS.RECIPES, storedQ.recipes);
+    await restoreListKey(APP_STORAGE_KEYS.BAKE_HISTORY, storedQ.bakeHistory);
+    await restoreListKey(APP_STORAGE_KEYS.FEED_HISTORY, storedQ.feedHistory);
+    await restoreListKey(APP_STORAGE_KEYS.ACTIVE_BAKE, storedQ.activeBakes);
+    await restoreListKey(APP_STORAGE_KEYS.DELETED_RECIPE_IDS, storedQ.deletedRecipeIds);
+    await restoreListKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS, storedQ.deletedBakeIds);
+    await restoreListKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, storedQ.deletedFeedIds);
 
-    if (storedQ.feedHistory && storedQ.feedHistory.length > 0) {
-      const existingRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY);
-      const existing = safeParse<any[]>(existingRaw, [], Array.isArray);
-      const existingIds = new Set(existing.map(x => x?.id).filter(Boolean));
-      const toRestore = storedQ.feedHistory.filter(x => !x?.id || !existingIds.has(x.id));
-      if (toRestore.length > 0) {
-        const merged = [...existing, ...toRestore];
-        await AsyncStorage.setItem(APP_STORAGE_KEYS.FEED_HISTORY, JSON.stringify(merged));
+    if (storedQ.activeFeed) {
+      const activeFeedRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED);
+      if (!activeFeedRaw) {
+        await AsyncStorage.setItem(APP_STORAGE_KEYS.ACTIVE_FEED, JSON.stringify(storedQ.activeFeed));
       }
     }
 
     console.log(`[BL-DIAG] [Quarantine] restoreOperationalData completed for incomingUserId: ${incomingUserId}`);
   } catch (err) {
     console.error(`[BL-DIAG] [Quarantine] restoreOperationalData failed:`, err);
+    throw err;
   }
 }
 

@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { saveAuth, getStoredToken, clearAuth, type AuthUser } from "@/lib/auth";
-import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
+import { clearAllAppData, clearOperationalData, validateOperationalData, quarantineOperationalData, restoreOperationalData, safeParse } from "@/lib/storageUtils";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
@@ -154,7 +154,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         throw new Error(`Import paused (${totalFailed} failure(s), ${totalUnresolved} unresolved). Local workspace retained with pre-sync state.`);
       }
 
-      await clearOperationalData(token);
+      await quarantineOperationalData(null);
+      await restoreOperationalData(token);
       await saveAuth(token, user);
 
       onAuthChange(user);
@@ -183,7 +184,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     setLoading(true);
     try {
       const { token, user } = transitionPendingData;
-      await clearOperationalData(token);
+      await quarantineOperationalData(null);
+      await restoreOperationalData(token);
       await saveAuth(token, user);
 
       onAuthChange(user);
@@ -284,23 +286,24 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       if (currentToken && savedAccountA) {
         let wipeSuccess = false;
         try {
-          await clearOperationalData(currentToken);
+          await quarantineOperationalData(currentToken);
+          await restoreOperationalData(result.token);
           wipeSuccess = true;
         } catch (wipeErr) {
-          console.error("Local operational wipe failed during account switch", wipeErr);
+          console.error("Local operational quarantine failed during account switch", wipeErr);
           const recovery = await executeFailClosedRecovery(onAuthChange);
           const statusDetails = [
             recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
             recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
           ].join(" ");
-          throw new Error(`Local workspace clear failed. ${statusDetails} Session reset for safety.`);
+          throw new Error(`Local workspace quarantine failed. ${statusDetails} Session reset for safety.`);
         }
 
         if (wipeSuccess) {
           try {
             await saveAuth(result.token, result.user);
           } catch (saveErr) {
-            console.error("Credential persistence failed after local wipe", saveErr);
+            console.error("Credential persistence failed after local quarantine", saveErr);
             const recovery = await executeFailClosedRecovery(onAuthChange);
             const statusDetails = [
               recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
@@ -334,7 +337,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
               throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Local workspace retained with pre-sync state.`);
             }
 
-            await clearOperationalData(result.token);
+            await quarantineOperationalData(null);
+            await restoreOperationalData(result.token);
             await saveAuth(result.token, result.user);
             onAuthChange(result.user);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -402,6 +406,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
           if (totalFailed > 0 || totalUnresolved > 0) {
             throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
           }
+          await quarantineOperationalData(currentToken);
         }
 
         const signoutRes = await api.auth.signout();
