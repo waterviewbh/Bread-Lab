@@ -1,4 +1,4 @@
-// artifacts/sourdough/lib/migrate.ts
+import { getOwnerStorageKey } from "./storageUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import { api } from "./api";
@@ -230,15 +230,41 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   const bakeHistoryValidator = (b: any) => b && typeof b === "object" && typeof b.id === "string" && b.id.trim() !== "";
   const feedHistoryValidator = (f: any) => f && typeof f === "object" && typeof f.id === "string" && f.id.trim() !== "";
 
-  const bakeResult = await readActiveBakesOrThrow(ACTIVE_BAKE_KEY);
-  const activeBakes = bakeResult.bakes;
+  const ownerScopedRecipesKey = getOwnerStorageKey(RECIPES_KEY, token);
+  const ownerScopedActiveBakeKey = getOwnerStorageKey(ACTIVE_BAKE_KEY, token);
+  const ownerScopedBakeHistoryKey = getOwnerStorageKey(BAKE_HISTORY_KEY, token);
 
-  const [recipes, bakeHistory, feedHistory, activeFeed] = await Promise.all([
+  const [scopedRecipes, legacyRecipes, scopedActiveBakeResult, legacyActiveBakeResult, scopedBakeHistory, legacyBakeHistory, feedHistory, activeFeed] = await Promise.all([
+    readLocalArrayOrThrow<LocalRecipe>(ownerScopedRecipesKey, recipeValidator),
     readLocalArrayOrThrow<LocalRecipe>(RECIPES_KEY, recipeValidator),
+    readActiveBakesOrThrow(ownerScopedActiveBakeKey),
+    readActiveBakesOrThrow(ACTIVE_BAKE_KEY),
+    readLocalArrayOrThrow<LocalBakeSession>(ownerScopedBakeHistoryKey, bakeHistoryValidator),
     readLocalArrayOrThrow<LocalBakeSession>(BAKE_HISTORY_KEY, bakeHistoryValidator),
     readLocalArrayOrThrow<LocalFeedSession>(HISTORY_KEY, feedHistoryValidator),
     readLocalObjectOrThrow<LocalFeedSession>(ACTIVE_FEED_KEY),
   ]);
+
+  const mergeRecords = <T extends { id: string }>(scoped: T[], legacy: T[]): T[] => {
+    const map = new Map<string, T>();
+    for (const r of legacy) {
+      if (r && typeof r.id === "string") map.set(r.id, r);
+    }
+    for (const r of scoped) {
+      if (r && typeof r.id === "string") map.set(r.id, r);
+    }
+    return Array.from(map.values());
+  };
+
+  const recipes = mergeRecords(scopedRecipes, legacyRecipes);
+  const bakeHistory = mergeRecords(scopedBakeHistory, legacyBakeHistory);
+
+  const mergeBakes = (scoped: LocalBakeSession[], legacy: LocalBakeSession[]): { bakes: LocalBakeSession[]; isArray: boolean } => {
+    const mergedList = mergeRecords(scoped, legacy);
+    return { bakes: mergedList, isArray: scopedActiveBakeResult.isArray && legacyActiveBakeResult.isArray };
+  };
+  const bakeResult = mergeBakes(scopedActiveBakeResult.bakes, legacyActiveBakeResult.bakes);
+  const activeBakes = bakeResult.bakes;
 
   const isAnonymousOrOwnedGuard = (record: any) => isAnonymousOrOwned(record, token);
 
