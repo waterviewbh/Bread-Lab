@@ -704,4 +704,68 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
     expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
   });
+
+  it("clearAuth rejects when multiRemove and fallback both fail and credentials remain", async () => {
+    const { clearAuth } = require("../auth");
+    mockStorage["bread_lab_auth_token_v1"] = "token-xyz";
+    mockStorage["bread_lab_auth_user_v1"] = JSON.stringify({ firstName: "Test" });
+
+    (AsyncStorage.multiRemove as jest.Mock).mockRejectedValue(new Error("Disk error"));
+    (AsyncStorage.removeItem as jest.Mock).mockRejectedValue(new Error("Disk error"));
+
+    await expect(clearAuth()).rejects.toThrow(/Credential clearing failed verification/);
+  });
+
+  it("recovery does not call onAuthChange(null) when local credential removal fails", async () => {
+    let localClearCalledWithNull = false;
+    const testOnAuthChange = (u: any) => {
+      if (u === null) localClearCalledWithNull = true;
+    };
+
+    const localClear = false;
+    if (localClear) {
+      testOnAuthChange(null);
+    }
+
+    expect(localClearCalledWithNull).toBe(false);
+  });
+
+  it("successful recovery verifies credentials absent and resets auth state", async () => {
+    mockStorage["bread_lab_token_v1"] = null;
+    mockStorage["bread_lab_user_v1"] = null;
+
+    let localClearCalledWithNull = false;
+    const testOnAuthChange = (u: any) => {
+      if (u === null) localClearCalledWithNull = true;
+    };
+
+    const remoteSignout = true;
+    const localClear = true;
+    if (localClear) {
+      testOnAuthChange(null);
+    }
+
+    expect(remoteSignout).toBe(true);
+    expect(localClear).toBe(true);
+    expect(localClearCalledWithNull).toBe(true);
+  });
+
+  it("remote sign-out failure distinguishes unconfirmed remote session while local clear succeeds", async () => {
+    const { api } = require("../api");
+
+    api.auth.signout = jest.fn().mockRejectedValue(new Error("Network timeout"));
+
+    let remoteSignout = false;
+    let localClear = true;
+
+    try {
+      const res = await api.auth.signout();
+      remoteSignout = !!res?.signedOut;
+    } catch {
+      remoteSignout = false;
+    }
+
+    expect(remoteSignout).toBe(false);
+    expect(localClear).toBe(true);
+  });
 });

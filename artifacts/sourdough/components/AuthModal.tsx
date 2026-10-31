@@ -118,7 +118,11 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       localClear = false;
     }
 
-    onAuthChange(null);
+    // Only reset in-memory identity if local credentials were verified absent!
+    if (localClear) {
+      onAuthChange(null);
+    }
+
     return { remoteSignout, localClear };
   };
 
@@ -195,8 +199,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     setLoading(true);
     try {
       const recovery = await executeFailClosedRecovery();
-      if (!recovery.remoteSignout) {
-        const warningMsg = "Remote session termination unconfirmed during cancellation.";
+      if (!recovery.remoteSignout || !recovery.localClear) {
+        const details = [
+          !recovery.remoteSignout ? "Remote session termination unconfirmed." : "",
+          !recovery.localClear ? "Local credential removal failed." : ""
+        ].filter(Boolean).join(" ");
+        const warningMsg = `Cancellation cleanup incomplete: ${details}`;
         if (Platform.OS === 'web') {
           window.alert(warningMsg);
         } else {
