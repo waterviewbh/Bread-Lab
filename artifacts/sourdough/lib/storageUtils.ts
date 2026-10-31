@@ -181,13 +181,15 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
       const hasUnintendedBake = bakesList.some(b => {
         if (!b) return false;
         const owner = b.userId ?? b.user_id;
+        if (!owner || String(owner).trim() === "") return true;
         return owner === "anonymous" || owner === currentUserId;
       });
       if (hasUnintendedBake) {
-        throw new Error("Operational wipe verification failed: anonymous or target user active bake remains present.");
+        throw new Error("Operational wipe verification failed: anonymous, target user, or ownerless active bake remains present.");
       }
     } catch (e: any) {
       if (e.message?.includes("Operational wipe verification failed")) throw e;
+      throw new Error(`Operational wipe verification failed: active bake record is malformed and cannot be verified.`);
     }
   }
 
@@ -195,12 +197,16 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
     try {
       const parsed = JSON.parse(activeFeedCheck);
       const owner = parsed?.userId ?? parsed?.user_id;
+      if (!owner || String(owner).trim() === "") {
+        throw new Error("Operational wipe verification failed: active feed record has unknown or missing ownership metadata.");
+      }
       const hasUnintendedFeed = owner === "anonymous" || owner === currentUserId;
       if (hasUnintendedFeed) {
         throw new Error("Operational wipe verification failed: anonymous or target user active feed remains present.");
       }
     } catch (e: any) {
       if (e.message?.includes("Operational wipe verification failed")) throw e;
+      throw new Error(`Operational wipe verification failed: active feed record is malformed and cannot be verified.`);
     }
   }
 }
