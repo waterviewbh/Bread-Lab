@@ -869,16 +869,16 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       AsyncStorage.getItem = getItemOriginal;
     });
 
-    it("4.1: Anonymous tombstones are isolated and never assigned to authenticated accounts", async () => {
-      const { quarantineOperationalData, APP_STORAGE_KEYS, QUARANTINE_KEY, UNKNOWN_QUARANTINE_KEY } = require("../storageUtils");
-      mockStorage[APP_STORAGE_KEYS.DELETED_RECIPE_IDS] = JSON.stringify(["rec-anon-del"]);
-      // Run with departingUserId = null (anonymous)
+    it("4.1: Ambiguous flat tombstones are isolated to unknown quarantine and kept inert", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS, UNKNOWN_QUARANTINE_KEY, QUARANTINE_KEY } = require("../storageUtils");
+      mockStorage[APP_STORAGE_KEYS.DELETED_RECIPE_IDS] = JSON.stringify(["rec-ambig-del"]);
       await quarantineOperationalData(null);
 
-      const anonQ = mockStorage[QUARANTINE_KEY("anonymous")];
-      expect(anonQ).toBeDefined();
-      const parsedAnon = JSON.parse(anonQ);
-      expect(parsedAnon.deletedRecipeIds).toContain("rec-anon-del");
+      const unknownQ = mockStorage[UNKNOWN_QUARANTINE_KEY];
+      expect(unknownQ).toBeDefined();
+      const parsedUnknown = JSON.parse(unknownQ);
+      expect(parsedUnknown.deletedRecipeIds).toContain("rec-ambig-del");
+      expect(mockStorage[QUARANTINE_KEY("anonymous")]).toBeUndefined();
       expect(mockStorage[QUARANTINE_KEY("user-auth")]).toBeUndefined();
     });
 

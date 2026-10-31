@@ -13,34 +13,46 @@ import {
   DELETED_RECIPE_IDS_KEY,
 } from "@/lib/recipeTypes";
 import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, detectYeastType, sortRecipePhases } from "@/lib/recipeUtils";
-import { safeParse, storageMutex } from "@/lib/storageUtils";
+import { safeParse, storageMutex, getOwnerStorageKey } from "@/lib/storageUtils";
+
+async function resolveOwner(): Promise<string> {
+  const token = await getStoredToken().catch(() => null);
+  if (!token || token.trim() === "") return "anonymous";
+  return token.trim();
+}
 
 // ─── Tombstone helpers ────────────────────────────────────────────────────────
 export async function addToRecipeTombstone(id: string): Promise<void> {
   return storageMutex.run(async () => {
-    const raw = await AsyncStorage.getItem(DELETED_RECIPE_IDS_KEY).catch(() => null);
+    const owner = await resolveOwner();
+    const tombstoneKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, owner);
+    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
     const set = safeParse<string[]>(raw, [], Array.isArray);
     if (!set.includes(id)) {
       set.push(id);
-      await AsyncStorage.setItem(DELETED_RECIPE_IDS_KEY, JSON.stringify(set));
+      await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set));
     }
   });
 }
 
 export async function removeFromRecipeTombstone(id: string): Promise<void> {
   return storageMutex.run(async () => {
-    const raw = await AsyncStorage.getItem(DELETED_RECIPE_IDS_KEY).catch(() => null);
+    const owner = await resolveOwner();
+    const tombstoneKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, owner);
+    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
     if (!raw) return;
     const set = safeParse<string[]>(raw, [], Array.isArray);
     await AsyncStorage.setItem(
-      DELETED_RECIPE_IDS_KEY,
+      tombstoneKey,
       JSON.stringify(set.filter((x) => x !== id))
     );
   });
 }
 
 export async function getRecipeTombstone(): Promise<string[]> {
-  const raw = await AsyncStorage.getItem(DELETED_RECIPE_IDS_KEY).catch(() => null);
+  const owner = await resolveOwner();
+  const tombstoneKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, owner);
+  const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
   return safeParse<string[]>(raw, [], Array.isArray);
 }
 
@@ -54,19 +66,24 @@ export async function loadAll(): Promise<{
   let bakes: ActiveBake[] = [];
   let localBakesFound = false;
 
+  const owner = await resolveOwner();
+  const recipesKey = getOwnerStorageKey(RECIPES_KEY, owner);
+  const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
+  const bakeHistoryKey = getOwnerStorageKey(BAKE_HISTORY_KEY, owner);
+
   try {
     const [recipeStr, bakeStr] = await Promise.all([
-      AsyncStorage.getItem(RECIPES_KEY),
-      AsyncStorage.getItem(BAKE_KEY),
+      AsyncStorage.getItem(recipesKey),
+      AsyncStorage.getItem(bakeKey),
     ]);
 
     const token = await getStoredToken().catch(() => null);
     recipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray).filter(
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
     ).filter(r => {
-      const owner = r.userId ?? (r as any).user_id;
-      if (!token) return owner === "anonymous";
-      return owner === token;
+      const ownerVal = r.userId ?? (r as any).user_id;
+      if (!token) return ownerVal === "anonymous";
+      return ownerVal === token;
     });
 
     const parsedBakes = safeParse<any>(bakeStr, [], (v) => Array.isArray(v) || (v !== null && typeof v === 'object'));
@@ -74,9 +91,9 @@ export async function loadAll(): Promise<{
 
     const filteredBakes = rawBakes.filter(b => {
       if (!b) return false;
-      const owner = (b as any).userId ?? (b as any).user_id;
-      if (!token) return owner === "anonymous";
-      return owner === token;
+      const ownerVal = (b as any).userId ?? (b as any).user_id;
+      if (!token) return ownerVal === "anonymous";
+      return ownerVal === token;
     });
 
     // Unified migration and initialization
@@ -167,7 +184,7 @@ export async function loadAll(): Promise<{
 
     if (token || (apiRecipes && apiRecipes.length > 0)) {
       recipes = mapped;
-      await storageMutex.run(() => AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(mapped)));
+      await storageMutex.run(() => AsyncStorage.setItem(recipesKey, JSON.stringify(mapped)));
     }
 
     if (!localBakesFound && activeBake) {
@@ -211,7 +228,7 @@ export async function loadAll(): Promise<{
       }
 
       bakes = [apiBake];
-      await storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes)));
+      await storageMutex.run(() => AsyncStorage.setItem(bakeKey, JSON.stringify(bakes)));
     }
   } catch (e) {
     console.error("[recipeStorage] loadAll remote failed", e);
@@ -219,14 +236,14 @@ export async function loadAll(): Promise<{
 
   // Defensive self-healing: ensure bakes containing completed diagnostic outcomes or already existing in history are automatically cleaned from active lists
   try {
-    const rawHistory = await AsyncStorage.getItem(BAKE_HISTORY_KEY).catch(() => null);
+    const rawHistory = await AsyncStorage.getItem(bakeHistoryKey).catch(() => null);
     const historyList = safeParse<ActiveBake[]>(rawHistory, [], Array.isArray);
     const historyIds = new Set(historyList.map(h => h?.id).filter(Boolean));
 
     const activeBakesCleaned = bakes.filter(b => b && !b.outcome?.overallScore && !historyIds.has(b.id));
     if (activeBakesCleaned.length !== bakes.length) {
       bakes = activeBakesCleaned;
-      await storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes))).catch(() => {});
+      await storageMutex.run(() => AsyncStorage.setItem(bakeKey, JSON.stringify(bakes))).catch(() => {});
     }
   } catch (err) {
     console.error("[recipeStorage] self-healing filtering failed", err);
@@ -237,42 +254,51 @@ export async function loadAll(): Promise<{
 
 export async function writeRecipesLocal(recipes: SavedRecipe[]): Promise<void> {
   const token = await getStoredToken().catch(() => null);
+  const owner = token && token.trim() !== "" ? token.trim() : "anonymous";
+  const recipesKey = getOwnerStorageKey(RECIPES_KEY, owner);
+
   const validRecipes = recipes
     .filter(
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
     )
     .map(r => ({
       ...r,
-      userId: r.userId ?? token ?? "anonymous"
+      userId: r.userId ?? owner
     }));
-  return storageMutex.run(() => AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(validRecipes)));
+  return storageMutex.run(() => AsyncStorage.setItem(recipesKey, JSON.stringify(validRecipes)));
 }
 
 export async function appendRecipeLocal(newRecipe: SavedRecipe): Promise<SavedRecipe[]> {
   const token = await getStoredToken().catch(() => null);
+  const owner = token && token.trim() !== "" ? token.trim() : "anonymous";
+  const recipesKey = getOwnerStorageKey(RECIPES_KEY, owner);
+
   const stampedRecipe = {
     ...newRecipe,
-    userId: newRecipe.userId ?? token ?? "anonymous"
+    userId: newRecipe.userId ?? owner
   };
   return storageMutex.run(async () => {
-    const raw = await AsyncStorage.getItem(RECIPES_KEY);
+    const raw = await AsyncStorage.getItem(recipesKey);
     const existing = safeParse<SavedRecipe[]>(raw, [], Array.isArray).filter(
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
     );
     const updated = [stampedRecipe, ...existing];
-    await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(recipesKey, JSON.stringify(updated));
     return updated;
   });
 }
 
 export async function writeBakeLocal(bake: ActiveBake): Promise<void> {
   const token = await getStoredToken().catch(() => null);
+  const owner = token && token.trim() !== "" ? token.trim() : "anonymous";
+  const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
+
   const stampedBake = {
     ...bake,
-    userId: bake.userId ?? token ?? "anonymous"
+    userId: bake.userId ?? owner
   };
   return storageMutex.run(async () => {
-    const raw = await AsyncStorage.getItem(BAKE_KEY).catch(() => null);
+    const raw = await AsyncStorage.getItem(bakeKey).catch(() => null);
     let bakes = safeParse<ActiveBake[]>(raw, [], Array.isArray);
 
     const idx = bakes.findIndex((b) => b.id === stampedBake.id);
@@ -282,17 +308,20 @@ export async function writeBakeLocal(bake: ActiveBake): Promise<void> {
       if (bakes.length < 2) bakes.push(stampedBake);
       else bakes[0] = stampedBake;
     }
-    await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(bakes));
+    await AsyncStorage.setItem(bakeKey, JSON.stringify(bakes));
   });
 }
 
 export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
   const token = await getStoredToken().catch(() => null);
+  const owner = token && token.trim() !== "" ? token.trim() : "anonymous";
+  const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
+
   const stampedBakes = bakes.map(b => ({
     ...b,
-    userId: b.userId ?? token ?? "anonymous"
+    userId: b.userId ?? owner
   }));
-  return storageMutex.run(() => AsyncStorage.setItem(BAKE_KEY, JSON.stringify(stampedBakes)));
+  return storageMutex.run(() => AsyncStorage.setItem(bakeKey, JSON.stringify(stampedBakes)));
 }
 
 export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
@@ -367,22 +396,23 @@ export async function archiveBakeWithDiagnostics(
   }
 ): Promise<void> {
   const savedAt = Date.now();
-  const token = await getStoredToken().catch(() => null);
+  const owner = await resolveOwner();
+  const bakeHistoryKey = getOwnerStorageKey(BAKE_HISTORY_KEY, owner);
 
   await storageMutex.run(async () => {
     try {
-      const stored = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
+      const stored = await AsyncStorage.getItem(bakeHistoryKey);
       const existing = safeParse<ActiveBake[]>(stored, [], Array.isArray);
 
       const historyItem = {
         ...bake,
-        userId: bake.userId ?? token ?? "anonymous",
+        userId: bake.userId ?? owner,
         savedAt,
         status: (bake.status === 'post_mortem' ? 'post_mortem' : 'completed') as any,
       };
 
       existing.unshift(historyItem);
-      await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(existing.slice(0, 500)));
+      await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(existing.slice(0, 500)));
     } catch (e) {
       console.error("[recipeStorage] Archive failed local", e);
     }
@@ -394,7 +424,7 @@ export async function archiveBakeWithDiagnostics(
   api.history.bakes.upsert({
     id: bake.id,
     deviceId,
-    userId: bake.userId ?? token ?? undefined,
+    userId: bake.userId ?? owner ?? undefined,
     recipeId: bake.recipeId,
     recipeName: bake.recipeName,
     yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
@@ -414,7 +444,10 @@ export async function archiveBakeWithDiagnostics(
 export async function archiveIntermediateIterations(masterId: string): Promise<void> {
   return storageMutex.run(async () => {
     try {
-      const recipeStr = await AsyncStorage.getItem(RECIPES_KEY);
+      const owner = await resolveOwner();
+      const recipesKey = getOwnerStorageKey(RECIPES_KEY, owner);
+
+      const recipeStr = await AsyncStorage.getItem(recipesKey);
       const allRecipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray);
 
       const master = allRecipes.find(r => r.id === masterId);
@@ -434,7 +467,7 @@ export async function archiveIntermediateIterations(masterId: string): Promise<v
         return r;
       });
 
-      await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(updatedRecipes));
+      await AsyncStorage.setItem(recipesKey, JSON.stringify(updatedRecipes));
 
       const deviceId = await getDeviceId();
       const token = await getStoredToken().catch(() => null);
@@ -460,10 +493,13 @@ export async function updateBakeOutcomeInHistory(
     bakeId: string,
     outcome: BakeOutcome
 ): Promise<void> {
-    const token = await getStoredToken().catch(() => null);
+    const owner = await resolveOwner();
+    const bakeHistoryKey = getOwnerStorageKey(BAKE_HISTORY_KEY, owner);
+    const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
+
     return storageMutex.run(async () => {
         try {
-            const storedHistory = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
+            const storedHistory = await AsyncStorage.getItem(bakeHistoryKey);
             let history = safeParse<ActiveBake[]>(storedHistory, [], Array.isArray);
             const index = history.findIndex(h => h.id === bakeId);
 
@@ -472,40 +508,40 @@ export async function updateBakeOutcomeInHistory(
             if (index !== -1) {
                 updatedBake = {
                     ...history[index],
-                    userId: history[index].userId ?? token ?? "anonymous",
+                    userId: history[index].userId ?? owner,
                     outcome: outcome
                 };
                 history[index] = updatedBake;
-                await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(history));
+                await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(history));
 
                 // Also defensively remove from active bakes if a zombie duplicate resides there
-                const storedActive = await AsyncStorage.getItem(BAKE_KEY).catch(() => null);
+                const storedActive = await AsyncStorage.getItem(bakeKey).catch(() => null);
                 if (storedActive) {
                     let activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
                     const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
                     if (activeIndex !== -1) {
                         activeBakes.splice(activeIndex, 1);
-                        await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(activeBakes));
+                        await AsyncStorage.setItem(bakeKey, JSON.stringify(activeBakes));
                     }
                 }
             } else {
-                const storedActive = await AsyncStorage.getItem(BAKE_KEY);
+                const storedActive = await AsyncStorage.getItem(bakeKey);
                 if (storedActive) {
                     let activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
                     const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
                     if (activeIndex !== -1) {
                         updatedBake = {
                             ...activeBakes[activeIndex],
-                            userId: activeBakes[activeIndex].userId ?? token ?? "anonymous",
+                            userId: activeBakes[activeIndex].userId ?? owner,
                             outcome: outcome,
                             status: 'completed',
                             completedAt: activeBakes[activeIndex].completedAt || Date.now()
                         };
                         activeBakes.splice(activeIndex, 1);
-                        await AsyncStorage.setItem(BAKE_KEY, JSON.stringify(activeBakes));
+                        await AsyncStorage.setItem(bakeKey, JSON.stringify(activeBakes));
 
                         history.unshift(updatedBake);
-                        await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(history.slice(0, 500)));
+                        await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(history.slice(0, 500)));
                     }
                 }
             }
@@ -518,7 +554,7 @@ export async function updateBakeOutcomeInHistory(
                         await api.history.bakes.upsert({
                             ...updatedBake,
                             deviceId,
-                            userId: updatedBake.userId ?? token ?? undefined,
+                            userId: updatedBake.userId ?? owner ?? undefined,
                             yield_value: updatedBake.yieldValue ? parseInt(updatedBake.yieldValue, 10) : 0,
                             savedAt: Date.now(),
                             inProgress: false

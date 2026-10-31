@@ -441,10 +441,8 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     addToBucket(getOwnerKey(activeFeed), "activeFeed", activeFeed);
   }
 
-  // Tombstone ownership association (Issue 4.1: safe tombstone ownership, preventing anonymous tombstones from crossing to authenticated accounts)
-  const tombstoneOwner = departingUserId && departingUserId.trim() !== "" && departingUserId !== "anonymous"
-    ? departingUserId.trim()
-    : "anonymous";
+  // Tombstone ownership association (nu-1: flat tombstones lack per-entry ownership; route to unknown/inert quarantine)
+  const tombstoneOwner = "unknown";
   if (delRecipes.length > 0) addToBucket(tombstoneOwner, "deletedRecipeIds", delRecipes);
   if (delBakes.length > 0) addToBucket(tombstoneOwner, "deletedBakeIds", delBakes);
   if (delFeeds.length > 0) addToBucket(tombstoneOwner, "deletedFeedIds", delFeeds);
@@ -651,10 +649,16 @@ export const storageMutex = new AsyncMutex();
 
 /**
  * Resolves an owner-scoped storage key based on base key and owner ID.
- * Distinct namespaces for anonymous ("anonymous") versus authenticated users.
+ * Fails closed on missing or invalid owner ID (anonymous must be explicitly passed as "anonymous").
  */
 export function getOwnerStorageKey(baseKey: string, ownerId?: string | null): string {
-  const cleanOwner = ownerId && typeof ownerId === "string" && ownerId.trim() !== "" ? ownerId.trim() : "anonymous";
+  if (!ownerId || typeof ownerId !== "string" || ownerId.trim() === "") {
+    throw new Error(`Owner-scoped storage resolution failed: missing or invalid owner ID for base key ${baseKey}.`);
+  }
+  const cleanOwner = ownerId.trim();
+  if (cleanOwner.includes("..") || cleanOwner.includes("/") || cleanOwner.includes("\\")) {
+    throw new Error(`Owner-scoped storage resolution failed: owner ID contains invalid characters: ${cleanOwner}`);
+  }
   if (baseKey.endsWith(`_${cleanOwner}`)) return baseKey;
   return `${baseKey}_${cleanOwner}`;
 }

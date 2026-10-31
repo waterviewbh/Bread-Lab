@@ -1,40 +1,63 @@
 // artifacts/sourdough/lib/__tests__/ownerScopedStorage.test.ts
-import { getOwnerStorageKey, APP_STORAGE_KEYS, quarantineOperationalData, restoreOperationalData, QUARANTINE_KEY } from "../storageUtils";
+import { getOwnerStorageKey, APP_STORAGE_KEYS, quarantineOperationalData, QUARANTINE_KEY } from "../storageUtils";
+import { loadAll, writeRecipesLocal, appendRecipeLocal, addToRecipeTombstone, getRecipeTombstone } from "../recipeStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-describe("Stage 1: Owner-Scoped Storage Boundary & Invariants", () => {
+describe("Stage 1 nu-1: Owner-Scoped Storage Boundary & Production Integration", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+    jest.restoreAllMocks();
   });
 
-  it("1. Two authenticated owners resolve distinct operational keys", () => {
+  it("1. getOwnerStorageKey fails closed on missing, null, or empty owner IDs", () => {
+    expect(() => getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, null)).toThrow(/missing or invalid owner ID/);
+    expect(() => getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, undefined)).toThrow(/missing or invalid owner ID/);
+    expect(() => getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "")).toThrow(/missing or invalid owner ID/);
+    expect(() => getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "   ")).toThrow(/missing or invalid owner ID/);
+  });
+
+  it("2. Distinct owners (Account A vs Account B vs Anonymous) resolve separate operational storage keys", () => {
     const keyA = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
     const keyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
+    const keyAnon = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "anonymous");
+
     expect(keyA).not.toBe(keyB);
+    expect(keyA).not.toBe(keyAnon);
+    expect(keyB).not.toBe(keyAnon);
     expect(keyA).toContain("user-A");
     expect(keyB).toContain("user-B");
-  });
-
-  it("2. Anonymous and authenticated workspaces resolve distinct keys", () => {
-    const keyAnon = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, null);
-    const keyAuth = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-123");
-    expect(keyAnon).not.toBe(keyAuth);
     expect(keyAnon).toContain("anonymous");
-    expect(keyAuth).toContain("user-123");
   });
 
-  it("3 & 4. Signed-out loading excludes ownerless records and authenticated records", async () => {
-    const { loadAll } = require("../recipeStorage");
-    await AsyncStorage.setItem(APP_STORAGE_KEYS.RECIPES, JSON.stringify([
-      { id: "r1", name: "Anon Recipe", userId: "anonymous", phases: [{ key: "p1", name: "Mix" }] },
-      { id: "r2", name: "Ownerless Recipe", userId: "", phases: [{ key: "p1", name: "Mix" }] },
-      { id: "r3", name: "Auth Recipe", userId: "user-123", phases: [{ key: "p1", name: "Mix" }] },
-    ]));
+  it("3. Actual production recipe reads and writes use correct owner-scoped namespaces", async () => {
+    // Mock token for user-A
+    jest.spyOn(require("../auth"), "getStoredToken").mockResolvedValue("user-A");
 
+    await writeRecipesLocal([
+      { id: "recipe-A", name: "Recipe A", userId: "user-A", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }], yieldValue: "1", createdAt: Date.now() }
+    ]);
+
+    const keyA = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
+    const keyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
+
+    const rawA = await AsyncStorage.getItem(keyA);
+    const rawB = await AsyncStorage.getItem(keyB);
+
+    expect(rawA).toBeDefined();
+    expect(rawA).toContain("recipe-A");
+    expect(rawB).toBeNull(); // Namespace B remains completely isolated and empty
+  });
+
+  it("4. Signed-out loading includes only explicitly anonymous records", async () => {
     jest.spyOn(require("../auth"), "getStoredToken").mockResolvedValue(null);
 
+    const anonKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "anonymous");
+    await AsyncStorage.setItem(anonKey, JSON.stringify([
+      { id: "r-anon", name: "Anon Loaf", userId: "anonymous", phases: [{ key: "p1", name: "Mix" }] }
+    ]));
+
     const { recipes } = await loadAll();
-    expect(recipes.map(r => r.id)).toEqual(["r1"]);
+    expect(recipes.map(r => r.id)).toEqual(["r-anon"]);
   });
 
   it("5. Missing or conflicting ownership fails closed in validation", async () => {
@@ -42,50 +65,53 @@ describe("Stage 1: Owner-Scoped Storage Boundary & Invariants", () => {
     await AsyncStorage.setItem(APP_STORAGE_KEYS.ACTIVE_BAKE, JSON.stringify({
       id: "b1",
       userId: "",
-      recipeName: "Bad Bake",
+      recipeName: "Invalid Owner",
       phases: []
     }));
 
     await expect(validateOperationalData(null)).rejects.toThrow(/missing ownership metadata|unknown/);
   });
 
-  it("6. Tombstones are isolated by owner", async () => {
-    await AsyncStorage.setItem(APP_STORAGE_KEYS.DELETED_RECIPE_IDS, JSON.stringify(["rec-1"]));
-    await quarantineOperationalData("user-A");
+  it("6. Tombstones with ambiguous ownership remain inert and cannot affect workspaces", async () => {
+    await AsyncStorage.setItem(APP_STORAGE_KEYS.DELETED_RECIPE_IDS, JSON.stringify(["rec-ambiguous"]));
+    await quarantineOperationalData(null);
 
-    const qKeyA = QUARANTINE_KEY("user-A");
-    const storedQ = JSON.parse((await AsyncStorage.getItem(qKeyA)) || "{}");
-    expect(storedQ.deletedRecipeIds).toContain("rec-1");
-    expect(AsyncStorage.getItem(QUARANTINE_KEY("user-B"))).resolves.toBeNull();
+    const unknownQKey = QUARANTINE_KEY("unknown");
+    const unknownQ = JSON.parse((await AsyncStorage.getItem(unknownQKey)) || "{}");
+    expect(unknownQ.deletedRecipeIds).toContain("rec-ambiguous");
+
+    // Authenticated and anonymous namespaces are unaffected
+    const anonTombstones = await getRecipeTombstone();
+    expect(anonTombstones).not.toContain("rec-ambiguous");
   });
 
-  it("7. A write initiated under Account A cannot be redirected into Account B's namespace", async () => {
-    const keyA = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
-    const keyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
+  it("7 & 8. Real storage operations cannot cross workspaces during identity switch and stale async updates are bound to scope", async () => {
+    const authMock = jest.spyOn(require("../auth"), "getStoredToken");
 
-    await AsyncStorage.setItem(keyA, JSON.stringify([{ id: "rA", userId: "user-A", name: "Recipe A", phases: [] }]));
+    // Write under user-A
+    authMock.mockResolvedValue("user-A");
+    await appendRecipeLocal({
+      id: "r-A",
+      userId: "user-A",
+      name: "User A Recipe",
+      createdAt: Date.now(),
+      phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }],
+      yieldValue: "1"
+    });
 
-    const keyBContent = await AsyncStorage.getItem(keyB);
-    expect(keyBContent).toBeNull();
+    // Switch identity to user-B
+    authMock.mockResolvedValue("user-B");
+    const { recipes: recipesB } = await loadAll();
+    expect(recipesB.length).toBe(0); // User B sees 0 recipes from User A's namespace
   });
 
-  it("8. Asynchronous completion tied to stale identity does not repopulate new workspace", async () => {
-    const opKeyA = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
-    const opKeyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
-
-    await AsyncStorage.setItem(opKeyA, JSON.stringify([{ id: "rA", userId: "user-A", name: "A", phases: [] }]));
-    const dataB = await AsyncStorage.getItem(opKeyB);
-    expect(dataB).toBeNull();
-  });
-
-  it("9. Normal anonymous recipe creation, editing, and iteration work without auth", async () => {
-    const { appendRecipeLocal } = require("../recipeStorage");
+  it("9. Normal anonymous recipe creation, editing, and iteration remain functional", async () => {
     jest.spyOn(require("../auth"), "getStoredToken").mockResolvedValue(null);
 
     const newRecipe = {
-      id: "anon-new",
+      id: "anon-work",
       userId: "anonymous",
-      name: "Local Sourdough",
+      name: "Anonymous Loaf",
       createdAt: Date.now(),
       phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }],
       yieldValue: "1"
@@ -94,13 +120,5 @@ describe("Stage 1: Owner-Scoped Storage Boundary & Invariants", () => {
     const updated = await appendRecipeLocal(newRecipe);
     expect(updated.length).toBe(1);
     expect(updated[0].userId).toBe("anonymous");
-  });
-
-  it("10. Existing recipe provenance and lifecycle remains intact", async () => {
-    const { loadAll } = require("../recipeStorage");
-    jest.spyOn(require("../auth"), "getStoredToken").mockResolvedValue(null);
-    const result = await loadAll();
-    expect(result).toBeDefined();
-    expect(result.recipes).toBeDefined();
   });
 });
