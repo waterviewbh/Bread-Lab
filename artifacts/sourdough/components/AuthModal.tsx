@@ -136,7 +136,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
       if (totalFailed > 0 || totalUnresolved > 0) {
         await api.auth.signout().catch(() => {});
-        throw new Error(`Import completed with ${totalFailed} failure(s) and ${totalUnresolved} unresolved record(s). Source workspace preserved intact.`);
+        throw new Error(`Import completed with ${totalFailed} failure(s) and ${totalUnresolved} unresolved record(s). Local workspace retained with pre-sync state.`);
       }
 
       await clearOperationalData(token);
@@ -237,7 +237,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         const totalFailed = preMigrationResult.feed.failed + preMigrationResult.bakes.failed + preMigrationResult.recipes.failed;
         const totalUnresolved = preMigrationResult.feed.unresolved + preMigrationResult.bakes.unresolved + preMigrationResult.recipes.unresolved;
         if (totalFailed > 0 || totalUnresolved > 0) {
-          throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Current workspace preserved.`);
+          throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Local workspace retained with pre-sync state.`);
         }
       }
 
@@ -304,7 +304,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
 
             if (totalFailed > 0 || totalUnresolved > 0) {
               await api.auth.signout().catch(() => {});
-              throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Anonymous workspace preserved.`);
+              throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Local workspace retained with pre-sync state.`);
             }
 
             await clearOperationalData(result.token);
