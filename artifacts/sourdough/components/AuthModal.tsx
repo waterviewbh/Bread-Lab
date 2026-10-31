@@ -33,6 +33,33 @@ interface Props {
   onAuthChange: (user: AuthUser | null) => void;
 }
 
+export async function executeFailClosedRecovery(
+  onAuthChangeFn: (user: AuthUser | null) => void = () => {}
+): Promise<{ remoteSignout: boolean; localClear: boolean }> {
+  let remoteSignout = false;
+  let localClear = false;
+
+  try {
+    const res = await api.auth.signout();
+    remoteSignout = !!res?.signedOut;
+  } catch {
+    remoteSignout = false;
+  }
+
+  try {
+    await clearAuth();
+    localClear = true;
+  } catch {
+    localClear = false;
+  }
+
+  if (localClear) {
+    onAuthChangeFn(null);
+  }
+
+  return { remoteSignout, localClear };
+}
+
 export default function AuthModal({ visible, currentUser, onClose, onAuthChange }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -100,31 +127,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     }
   };
 
-  const executeFailClosedRecovery = async (): Promise<{ remoteSignout: boolean; localClear: boolean }> => {
-    let remoteSignout = false;
-    let localClear = false;
 
-    try {
-      const res = await api.auth.signout();
-      remoteSignout = !!res?.signedOut;
-    } catch {
-      remoteSignout = false;
-    }
-
-    try {
-      await clearAuth();
-      localClear = true;
-    } catch {
-      localClear = false;
-    }
-
-    // Only reset in-memory identity if local credentials were verified absent!
-    if (localClear) {
-      onAuthChange(null);
-    }
-
-    return { remoteSignout, localClear };
-  };
 
   const handleChoiceImport = async () => {
     if (!transitionPendingData) return;
@@ -150,7 +153,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       reset();
       onClose();
     } catch (err: any) {
-      const recovery = await executeFailClosedRecovery();
+      const recovery = await executeFailClosedRecovery(onAuthChange);
       const statusDetails = [
         recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
         recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
@@ -179,7 +182,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       reset();
       onClose();
     } catch (err: any) {
-      const recovery = await executeFailClosedRecovery();
+      const recovery = await executeFailClosedRecovery(onAuthChange);
       const statusDetails = [
         recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
         recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
@@ -198,7 +201,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
   const handleChoiceCancel = async () => {
     setLoading(true);
     try {
-      const recovery = await executeFailClosedRecovery();
+      const recovery = await executeFailClosedRecovery(onAuthChange);
       if (!recovery.remoteSignout || !recovery.localClear) {
         const details = [
           !recovery.remoteSignout ? "Remote session termination unconfirmed." : "",
@@ -276,7 +279,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           wipeSuccess = true;
         } catch (wipeErr) {
           console.error("Local operational wipe failed during account switch", wipeErr);
-          const recovery = await executeFailClosedRecovery();
+          const recovery = await executeFailClosedRecovery(onAuthChange);
           const statusDetails = [
             recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
             recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
@@ -289,7 +292,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
             await saveAuth(result.token, result.user);
           } catch (saveErr) {
             console.error("Credential persistence failed after local wipe", saveErr);
-            const recovery = await executeFailClosedRecovery();
+            const recovery = await executeFailClosedRecovery(onAuthChange);
             const statusDetails = [
               recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
               recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
@@ -330,7 +333,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
             onClose();
             return;
           } catch (anonErr) {
-            const recovery = await executeFailClosedRecovery();
+            const recovery = await executeFailClosedRecovery(onAuthChange);
             const statusDetails = [
               recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
               recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
