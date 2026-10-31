@@ -653,9 +653,11 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
   it("demonstrates partial mutation persistence when a later mutation fails after an earlier mutation succeeds", async () => {
     const { clearOperationalData } = require("../storageUtils");
 
-    mockStorage["bread_lab_recipes_v1"] = JSON.stringify([
-      { id: "r1", name: "Foreign Recipe 1", userId: "foreign-user" }
-    ]);
+    const initialRecipes = [
+      { id: "r1", name: "Anon Recipe 1", userId: "anonymous" },
+      { id: "r2", name: "Foreign Recipe 2", userId: "foreign-user" }
+    ];
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify(initialRecipes);
     mockStorage["bread_lab_bake_history_v1"] = JSON.stringify([
       { id: "bh1", recipeName: "Foreign Bake 1", userId: "foreign-user" }
     ]);
@@ -671,7 +673,13 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
 
     await expect(clearOperationalData("user-clearing")).rejects.toThrow(/Failed to clear local operational data|Storage write failure/);
 
-    // Earlier mutation (RECIPES) successfully occurred before BAKE_HISTORY failed
+    const expectedFilteredRecipes = JSON.stringify([{ id: "r2", name: "Foreign Recipe 2", userId: "foreign-user" }]);
+    // Assert that AsyncStorage.setItem was called for bread_lab_recipes_v1 with filtered value
+    expect(setItemMock).toHaveBeenCalledWith("bread_lab_recipes_v1", expectedFilteredRecipes);
+    // Assert that stored recipe value actually changed from initial value before later write failed
+    expect(mockStorage["bread_lab_recipes_v1"]).toBe(expectedFilteredRecipes);
+    expect(mockStorage["bread_lab_recipes_v1"]).not.toBe(JSON.stringify(initialRecipes));
+    // Confirm resulting storage state reflects demonstrated partial mutation
     expect(mockStorage["bread_lab_recipes_v1"]).toBeDefined();
   });
 });
