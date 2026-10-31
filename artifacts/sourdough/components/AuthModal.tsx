@@ -204,12 +204,13 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           !recovery.remoteSignout ? "Remote session termination unconfirmed." : "",
           !recovery.localClear ? "Local credential removal failed." : ""
         ].filter(Boolean).join(" ");
-        const warningMsg = `Cancellation cleanup incomplete: ${details}`;
+        const warningMsg = `Cancellation cleanup incomplete: ${details}. Please retry.`;
         if (Platform.OS === 'web') {
           window.alert(warningMsg);
         } else {
           Alert.alert("Cancellation Warning", warningMsg);
         }
+        return;
       }
       setTransitionPendingData(null);
       reset();
