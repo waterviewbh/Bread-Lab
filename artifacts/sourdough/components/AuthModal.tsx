@@ -120,6 +120,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       reset();
       onClose();
     } catch (err: any) {
+      await api.auth.signout().catch(() => {});
+      await clearAuth().catch(() => {});
+      onAuthChange(null);
       const msg = err instanceof Error ? err.message : String(err);
       if (Platform.OS === 'web') {
         window.alert(`Import Failed: ${msg}`);
@@ -144,6 +147,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       reset();
       onClose();
     } catch (err: any) {
+      await api.auth.signout().catch(() => {});
+      await clearAuth().catch(() => {});
+      onAuthChange(null);
       const msg = err instanceof Error ? err.message : String(err);
       if (Platform.OS === 'web') {
         window.alert(`Purge/Setup Failed: ${msg}`);
@@ -256,23 +262,30 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
           setTransitionPendingData({ token: result.token, user: result.user });
           return;
         } else {
-          // No anonymous local records to migrate, verify migration result
-          const migrationResult = await migrateLocalDataToAccount(result.token);
-          const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
-          const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
+          try {
+            // No anonymous local records to migrate, verify migration result
+            const migrationResult = await migrateLocalDataToAccount(result.token);
+            const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
+            const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
 
-          if (totalFailed > 0 || totalUnresolved > 0) {
+            if (totalFailed > 0 || totalUnresolved > 0) {
+              await api.auth.signout().catch(() => {});
+              throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Anonymous workspace preserved.`);
+            }
+
+            await clearOperationalData(result.token);
+            await saveAuth(result.token, result.user);
+            onAuthChange(result.user);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            reset();
+            onClose();
+            return;
+          } catch (anonErr) {
             await api.auth.signout().catch(() => {});
-            throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Anonymous workspace preserved.`);
+            await clearAuth().catch(() => {});
+            onAuthChange(null);
+            throw anonErr;
           }
-
-          await clearOperationalData(result.token);
-          await saveAuth(result.token, result.user);
-          onAuthChange(result.user);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          reset();
-          onClose();
-          return;
         }
       }
 

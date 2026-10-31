@@ -42,9 +42,10 @@ const ACTIVE_BAKE_KEY = "bread_lab_bake_v2";
 const DELETED_FEED_IDS_KEY = "bread_lab_deleted_feed_ids_v1";
 const DELETED_BAKE_IDS_KEY = "bread_lab_deleted_bake_ids_v1";
 
-export function isOwnerMatch(entry: { userId?: string }, token: string | null): boolean {
-  if (!token) return entry?.userId === "anonymous" || !entry?.userId;
-  return entry?.userId === token;
+export function isOwnerMatch(entry: { userId?: string; user_id?: string }, token: string | null): boolean {
+  const owner = entry?.userId ?? entry?.user_id;
+  if (!token) return owner === "anonymous";
+  return owner === token;
 }
 
 async function loadTombstoneSet(key: string): Promise<Set<string>> {

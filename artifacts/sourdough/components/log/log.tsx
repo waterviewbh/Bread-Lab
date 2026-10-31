@@ -258,9 +258,10 @@ export function HistorySection() {
     const sequenceId = ++loadSequenceRef.current;
     const token = await getStoredToken().catch(() => null);
 
-    const isOwnerMatch = (entry: { userId?: string }) => {
-      if (!token) return !entry.userId || entry.userId === "anonymous";
-      return entry.userId === token;
+    const isOwnerMatch = (entry: { userId?: string; user_id?: string }) => {
+      const owner = entry?.userId ?? entry?.user_id;
+      if (!token) return owner === "anonymous";
+      return owner === token;
     };
 
     const mergeActiveBake = (list: BakeHistoryEntry[], activeRaw: string | null): BakeHistoryEntry[] => {
