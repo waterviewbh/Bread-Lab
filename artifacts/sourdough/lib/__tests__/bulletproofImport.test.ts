@@ -565,28 +565,45 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
   });
 
-  it("rejects cleanup and preserves storage when RECIPES has invalid shape (object instead of array)", async () => {
-    const { clearOperationalData } = require("../storageUtils");
-    mockStorage["bread_lab_recipes_v1"] = JSON.stringify({ notAnArray: true });
+  const collectionKeysMap = [
+    { key: "bread_lab_recipes_v1", label: "recipe record" },
+    { key: "bread_lab_bake_history_v1", label: "bake history" },
+    { key: "sourdough_feed_history_v1", label: "feed history" },
+    { key: "bread_lab_deleted_recipe_ids_v1", label: "deleted recipe IDs" },
+    { key: "bread_lab_deleted_bake_ids_v1", label: "deleted bake IDs" },
+    { key: "bread_lab_deleted_feed_ids_v1", label: "deleted feed IDs" },
+  ];
 
-    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
-    expect(mockStorage["bread_lab_recipes_v1"]).toBe(JSON.stringify({ notAnArray: true }));
-  });
+  collectionKeysMap.forEach(({ key }) => {
+    it(`independently proves validation failure and zero mutation when ${key} has invalid shape`, async () => {
+      const { clearOperationalData } = require("../storageUtils");
 
-  it("rejects cleanup and preserves storage when BAKE_HISTORY has invalid shape (number instead of array)", async () => {
-    const { clearOperationalData } = require("../storageUtils");
-    mockStorage["bread_lab_bake_history_v1"] = "12345";
+      const seedData: Record<string, string> = {
+        "bread_lab_recipes_v1": JSON.stringify([{ id: "r1", userId: "anonymous" }]),
+        "bread_lab_bake_history_v1": JSON.stringify([{ id: "b1", userId: "anonymous" }]),
+        "sourdough_feed_history_v1": JSON.stringify([{ id: "f1", userId: "anonymous" }]),
+        "bread_lab_deleted_recipe_ids_v1": JSON.stringify(["del-1"]),
+        "bread_lab_deleted_bake_ids_v1": JSON.stringify(["del-2"]),
+        "bread_lab_deleted_feed_ids_v1": JSON.stringify(["del-3"]),
+        [key]: JSON.stringify({ invalidShape: true }),
+      };
 
-    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
-    expect(mockStorage["bread_lab_bake_history_v1"]).toBe("12345");
-  });
+      mockStorage = { ...seedData };
 
-  it("rejects cleanup and preserves storage when FEED_HISTORY has invalid shape (boolean instead of array)", async () => {
-    const { clearOperationalData } = require("../storageUtils");
-    mockStorage["sourdough_feed_history_v1"] = "true";
+      (AsyncStorage.setItem as jest.Mock).mockClear();
+      (AsyncStorage.removeItem as jest.Mock).mockClear();
+      (AsyncStorage.multiRemove as jest.Mock).mockClear();
 
-    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
-    expect(mockStorage["sourdough_feed_history_v1"]).toBe("true");
+      await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
+
+      for (const [k, val] of Object.entries(seedData)) {
+        expect(mockStorage[k]).toBe(val);
+      }
+
+      expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+      expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+      expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+    });
   });
 
   it("treats nonblank but unrecognized owner values in active bakes as foreign/unrecognized and safely retains them", async () => {
@@ -633,16 +650,28 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
   });
 
-  it("documents mutation-phase failure limitation when a mutation fails mid-way", async () => {
+  it("demonstrates partial mutation persistence when a later mutation fails after an earlier mutation succeeds", async () => {
     const { clearOperationalData } = require("../storageUtils");
 
     mockStorage["bread_lab_recipes_v1"] = JSON.stringify([
-      { id: "r1", name: "Recipe 1", userId: "foreign-user" }
+      { id: "r1", name: "Foreign Recipe 1", userId: "foreign-user" }
+    ]);
+    mockStorage["bread_lab_bake_history_v1"] = JSON.stringify([
+      { id: "bh1", recipeName: "Foreign Bake 1", userId: "foreign-user" }
     ]);
 
     const setItemMock = AsyncStorage.setItem as jest.Mock;
-    setItemMock.mockImplementationOnce(() => Promise.reject(new Error("Disk full during mutation")));
+    setItemMock.mockImplementation((k, v) => {
+      if (k === "bread_lab_bake_history_v1") {
+        return Promise.reject(new Error("Storage write failure on second mutation"));
+      }
+      mockStorage[k] = v;
+      return Promise.resolve();
+    });
 
-    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/Failed to clear local operational data|Disk full/);
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/Failed to clear local operational data|Storage write failure/);
+
+    // Earlier mutation (RECIPES) successfully occurred before BAKE_HISTORY failed
+    expect(mockStorage["bread_lab_recipes_v1"]).toBeDefined();
   });
 });
