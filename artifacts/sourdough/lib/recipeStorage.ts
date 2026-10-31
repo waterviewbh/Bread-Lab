@@ -37,11 +37,13 @@ export interface WorkspaceOperationContext {
 }
 
 async function assertWorkspaceOperationCurrent(context: WorkspaceOperationContext): Promise<void> {
-  if (context.generation !== getWorkspaceGeneration()) {
+  const gen = getWorkspaceGeneration();
+  const curOwner = await resolveOwner();
+  console.log(`[Debug] assertWorkspaceOperationCurrent: context.gen=${context.generation}, globalGen=${gen}, context.owner=${context.owner}, curOwner=${curOwner}`);
+  if (context.generation !== gen) {
     throw new Error("Workspace generation changed during loadAll(); aborting stale operation.");
   }
-  const currentOwner = await resolveOwner();
-  if (currentOwner !== context.owner) {
+  if (curOwner !== context.owner) {
     throw new Error("Workspace owner changed during loadAll(); aborting stale operation.");
   }
 }

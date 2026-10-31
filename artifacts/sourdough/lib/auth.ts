@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { advanceWorkspaceGeneration } from "./storageUtils";
 
 const TOKEN_KEY = "bread_lab_auth_token_v1";
 const USER_KEY = "bread_lab_auth_user_v1";
@@ -33,6 +34,7 @@ export async function getStoredUser(): Promise<AuthUser | null> {
 }
 
 export async function saveAuth(token: string, user: AuthUser): Promise<void> {
+  advanceWorkspaceGeneration();
   console.log(`[BL-DIAG] [Auth] saveAuth starting for user: ${user.id} (${user.firstName})`);
   const userJson = JSON.stringify(user);
   let attempts = 0;
@@ -72,6 +74,7 @@ export async function saveAuth(token: string, user: AuthUser): Promise<void> {
 }
 
 export async function clearAuth(): Promise<void> {
+  advanceWorkspaceGeneration();
   console.log(`[BL-DIAG] [Auth] clearAuth starting...`);
   try {
     await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
