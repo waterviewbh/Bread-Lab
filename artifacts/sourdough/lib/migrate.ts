@@ -288,7 +288,8 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   if (activeBakesUpdated) {
     try {
       const dataToStore = bakeResult.isArray ? activeBakes : activeBakes[0];
-      await AsyncStorage.setItem(ACTIVE_BAKE_KEY, JSON.stringify(dataToStore));
+      const persistKey = scopedActiveBakeResult.bakes.length > 0 ? ownerScopedActiveBakeKey : ACTIVE_BAKE_KEY;
+      await AsyncStorage.setItem(persistKey, JSON.stringify(dataToStore));
     } catch (error) {
       throw new Error(`Failed to persist assigned active bake ID: ${error instanceof Error ? error.message : String(error)}`);
     }
