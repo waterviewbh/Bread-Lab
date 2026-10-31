@@ -309,7 +309,7 @@ interface QuarantinedStore {
 }
 
 export async function quarantineOperationalData(departingUserId?: string | null): Promise<void> {
-  console.log(`[BL-DIAG] [Quarantine] quarantineOperationalData starting for departingUserId: ${departingUserId}`);
+  console.log(`[BL-DIAG] [Quarantine] ownership-aware quarantineOperationalData starting for departingUserId: ${departingUserId}`);
   let recipeRaw: string | null = null;
   let bakeHistRaw: string | null = null;
   let feedHistRaw: string | null = null;
@@ -334,51 +334,93 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     throw new Error(`Failed to read operational data for quarantine: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const ownerTarget = departingUserId && departingUserId.trim() !== "" ? departingUserId.trim() : "anonymous";
-  const qKey = ownerTarget === "anonymous" ? UNKNOWN_QUARANTINE_KEY : QUARANTINE_KEY(ownerTarget);
-
-  let existing: QuarantinedStore = {};
-  try {
-    const rawQ = await AsyncStorage.getItem(qKey);
-    if (rawQ) existing = JSON.parse(rawQ);
-  } catch {}
-
-  const mergeList = (existingList: any[] = [], newList: any[] = []) => {
-    const ids = new Set(existingList.map((x: any) => typeof x === "string" ? x : x?.id).filter(Boolean));
-    const added = newList.filter(x => {
-      const id = typeof x === "string" ? x : x?.id;
-      return !id || !ids.has(id);
-    });
-    return [...existingList, ...added];
-  };
-
   const recipes = recipeRaw ? safeParse<any[]>(recipeRaw, [], Array.isArray) : [];
-  const bakeHistory = bakeHistRaw ? safeParse<any[]>(bakeHistRaw, [], Array.isArray) : [];
-  const feedHistory = feedHistRaw ? safeParse<any[]>(feedHistRaw, [], Array.isArray) : [];
+  const bakes = bakeHistRaw ? safeParse<any[]>(bakeHistRaw, [], Array.isArray) : [];
+  const feeds = feedHistRaw ? safeParse<any[]>(feedHistRaw, [], Array.isArray) : [];
   const activeBakes = activeBakeCheck ? (Array.isArray(JSON.parse(activeBakeCheck)) ? JSON.parse(activeBakeCheck) : [JSON.parse(activeBakeCheck)]) : [];
   const activeFeed = activeFeedCheck ? JSON.parse(activeFeedCheck) : null;
   const delRecipes = delRecipeRaw ? safeParse<string[]>(delRecipeRaw, [], Array.isArray) : [];
   const delBakes = delBakeRaw ? safeParse<string[]>(delBakeRaw, [], Array.isArray) : [];
   const delFeeds = delFeedRaw ? safeParse<string[]>(delFeedRaw, [], Array.isArray) : [];
 
-  const updatedQ: QuarantinedStore = {
-    recipes: mergeList(existing.recipes, recipes),
-    bakeHistory: mergeList(existing.bakeHistory, bakeHistory),
-    feedHistory: mergeList(existing.feedHistory, feedHistory),
-    activeBakes: mergeList(existing.activeBakes, activeBakes),
-    activeFeed: activeFeed ?? existing.activeFeed,
-    deletedRecipeIds: mergeList(existing.deletedRecipeIds, delRecipes),
-    deletedBakeIds: mergeList(existing.deletedBakeIds, delBakes),
-    deletedFeedIds: mergeList(existing.deletedFeedIds, delFeeds),
+  const getOwnerKey = (item: any): string => {
+    if (!item || typeof item !== "object") return "unknown";
+    const owner = item.userId ?? item.user_id;
+    if (!owner || String(owner).trim() === "") return "unknown";
+    return String(owner).trim();
   };
 
-  await AsyncStorage.setItem(qKey, JSON.stringify(updatedQ));
-  const verifyQ = await AsyncStorage.getItem(qKey);
-  if (!verifyQ) {
-    throw new Error(`Quarantine verification failed for bucket ${qKey}`);
+  const ownerBuckets = new Map<string, QuarantinedStore>();
+
+  const addToBucket = (owner: string, category: keyof QuarantinedStore, val: any) => {
+    if (!ownerBuckets.has(owner)) ownerBuckets.set(owner, {});
+    const store = ownerBuckets.get(owner)!;
+    if (Array.isArray(val)) {
+      const listKey = category as keyof QuarantinedStore;
+      (store[listKey] as any[]) = [...((store[listKey] as any[]) || []), ...val];
+    } else {
+      (store as any)[category] = val;
+    }
+  };
+
+  for (const r of recipes) {
+    addToBucket(getOwnerKey(r), "recipes", [r]);
+  }
+  for (const b of bakes) {
+    addToBucket(getOwnerKey(b), "bakeHistory", [b]);
+  }
+  for (const f of feeds) {
+    addToBucket(getOwnerKey(f), "feedHistory", [f]);
+  }
+  for (const ab of activeBakes) {
+    addToBucket(getOwnerKey(ab), "activeBakes", [ab]);
+  }
+  if (activeFeed) {
+    addToBucket(getOwnerKey(activeFeed), "activeFeed", activeFeed);
   }
 
-  // Remove source operational keys
+  // Tombstone ownership association
+  const tombstoneOwner = departingUserId && departingUserId.trim() !== "" ? departingUserId.trim() : "anonymous";
+  if (delRecipes.length > 0) addToBucket(tombstoneOwner, "deletedRecipeIds", delRecipes);
+  if (delBakes.length > 0) addToBucket(tombstoneOwner, "deletedBakeIds", delBakes);
+  if (delFeeds.length > 0) addToBucket(tombstoneOwner, "deletedFeedIds", delFeeds);
+
+  for (const [ownerKey, bucketStore] of ownerBuckets.entries()) {
+    const qKey = ownerKey === "unknown" ? UNKNOWN_QUARANTINE_KEY : QUARANTINE_KEY(ownerKey);
+    let existing: QuarantinedStore = {};
+    try {
+      const rawQ = await AsyncStorage.getItem(qKey);
+      if (rawQ) existing = JSON.parse(rawQ);
+    } catch {}
+
+    const mergeList = (existingList: any[] = [], newList: any[] = []) => {
+      const ids = new Set(existingList.map((x: any) => typeof x === "string" ? x : x?.id).filter(Boolean));
+      const added = newList.filter(x => {
+        const id = typeof x === "string" ? x : x?.id;
+        return !id || !ids.has(id);
+      });
+      return [...existingList, ...added];
+    };
+
+    const mergedQ: QuarantinedStore = {
+      recipes: mergeList(existing.recipes, bucketStore.recipes),
+      bakeHistory: mergeList(existing.bakeHistory, bucketStore.bakeHistory),
+      feedHistory: mergeList(existing.feedHistory, bucketStore.feedHistory),
+      activeBakes: mergeList(existing.activeBakes, bucketStore.activeBakes),
+      activeFeed: bucketStore.activeFeed ?? existing.activeFeed,
+      deletedRecipeIds: mergeList(existing.deletedRecipeIds, bucketStore.deletedRecipeIds),
+      deletedBakeIds: mergeList(existing.deletedBakeIds, bucketStore.deletedBakeIds),
+      deletedFeedIds: mergeList(existing.deletedFeedIds, bucketStore.deletedFeedIds),
+    };
+
+    await AsyncStorage.setItem(qKey, JSON.stringify(mergedQ));
+    const verifyQ = await AsyncStorage.getItem(qKey);
+    if (!verifyQ) {
+      throw new Error(`Quarantine verification failed for bucket ${qKey}`);
+    }
+    console.log(`[BL-DIAG] [Quarantine] Safely partitioned and quarantined records for owner=${ownerKey} under key=${qKey}`);
+  }
+
   await AsyncStorage.multiRemove([
     APP_STORAGE_KEYS.RECIPES,
     APP_STORAGE_KEYS.BAKE_HISTORY,
@@ -390,7 +432,7 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     APP_STORAGE_KEYS.DELETED_FEED_IDS,
   ]);
 
-  console.log(`[BL-DIAG] [Quarantine] quarantineOperationalData completed successfully for owner=${ownerTarget}`);
+  console.log(`[BL-DIAG] [Quarantine] ownership-aware quarantineOperationalData completed successfully.`);
 }
 
 export async function restoreOperationalData(incomingUserId: string): Promise<void> {
