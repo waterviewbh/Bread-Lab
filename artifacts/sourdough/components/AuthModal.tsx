@@ -31,6 +31,7 @@ interface Props {
   currentUser: AuthUser | null;
   onClose: () => void;
   onAuthChange: (user: AuthUser | null) => void;
+  initialTransitionData?: { token: string; user: AuthUser } | null;
 }
 
 export async function executeFailClosedRecovery(
@@ -60,7 +61,7 @@ export async function executeFailClosedRecovery(
   return { remoteSignout, localClear };
 }
 
-export default function AuthModal({ visible, currentUser, onClose, onAuthChange }: Props) {
+export default function AuthModal({ visible, currentUser, onClose, onAuthChange, initialTransitionData }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const webTop = Platform.OS === "web" ? 67 : 0;
@@ -73,7 +74,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
   const [transitionPendingData, setTransitionPendingData] = useState<{
     token: string;
     user: AuthUser;
-  } | null>(null);
+  } | null>(initialTransitionData ?? null);
 
   const reset = () => {
     setFirstName("");
