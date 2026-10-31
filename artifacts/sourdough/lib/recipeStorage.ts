@@ -202,6 +202,15 @@ export async function loadAll(): Promise<{
       throw new Error("Workspace identity changed prior to persistence; aborting stale write.");
     }
 
+    if (typeof (global as any).__pausePrePersist === "function") {
+      await (global as any).__pausePrePersist();
+    }
+
+    const postPauseOwner = await resolveOwner();
+    if (postPauseOwner !== owner) {
+      throw new Error("Workspace identity changed during pre-persistence pause; aborting stale write.");
+    }
+
     if (token || (apiRecipes && apiRecipes.length > 0)) {
       recipes = mapped;
       await storageMutex.run(() => AsyncStorage.setItem(recipesKey, JSON.stringify(mapped)));
