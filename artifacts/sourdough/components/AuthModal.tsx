@@ -135,12 +135,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
       const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
       const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
       if (totalFailed > 0 || totalUnresolved > 0) {
-        const recovery = await executeFailClosedRecovery();
-        const statusDetails = [
-          recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
-          recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
-        ].join(" ");
-        throw new Error(`Import paused (${totalFailed} failure(s), ${totalUnresolved} unresolved). ${statusDetails} Local workspace retained with pre-sync state.`);
+        throw new Error(`Import paused (${totalFailed} failure(s), ${totalUnresolved} unresolved). Local workspace retained with pre-sync state.`);
       }
 
       await clearOperationalData(token);
@@ -201,7 +196,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
     try {
       const recovery = await executeFailClosedRecovery();
       if (!recovery.remoteSignout) {
-        console.warn("[AuthModal] Cancel transition: remote sign-out unconfirmed.");
+        const warningMsg = "Remote session termination unconfirmed during cancellation.";
+        if (Platform.OS === 'web') {
+          window.alert(warningMsg);
+        } else {
+          Alert.alert("Cancellation Warning", warningMsg);
+        }
       }
       setTransitionPendingData(null);
       reset();
@@ -310,7 +310,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
             const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
 
             if (totalFailed > 0 || totalUnresolved > 0) {
-              await api.auth.signout().catch(() => {});
               throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Local workspace retained with pre-sync state.`);
             }
 

@@ -72,9 +72,22 @@ export async function clearAuth(): Promise<void> {
   try {
     await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
   } catch {
-    await Promise.all([
-      AsyncStorage.removeItem(TOKEN_KEY),
-      AsyncStorage.removeItem(USER_KEY),
-    ]).catch(() => {});
+    try {
+      await Promise.all([
+        AsyncStorage.removeItem(TOKEN_KEY),
+        AsyncStorage.removeItem(USER_KEY),
+      ]);
+    } catch (e) {
+      console.warn("[clearAuth] Fallback removal failed", e);
+    }
+  }
+
+  const [token, userRaw] = await Promise.all([
+    AsyncStorage.getItem(TOKEN_KEY),
+    AsyncStorage.getItem(USER_KEY),
+  ]);
+
+  if (token !== null || userRaw !== null) {
+    throw new Error("Credential clearing failed verification: credentials remain in storage.");
   }
 }
