@@ -564,4 +564,85 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
     expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
   });
+
+  it("rejects cleanup and preserves storage when RECIPES has invalid shape (object instead of array)", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify({ notAnArray: true });
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
+    expect(mockStorage["bread_lab_recipes_v1"]).toBe(JSON.stringify({ notAnArray: true }));
+  });
+
+  it("rejects cleanup and preserves storage when BAKE_HISTORY has invalid shape (number instead of array)", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+    mockStorage["bread_lab_bake_history_v1"] = "12345";
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
+    expect(mockStorage["bread_lab_bake_history_v1"]).toBe("12345");
+  });
+
+  it("rejects cleanup and preserves storage when FEED_HISTORY has invalid shape (boolean instead of array)", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+    mockStorage["sourdough_feed_history_v1"] = "true";
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
+    expect(mockStorage["sourdough_feed_history_v1"]).toBe("true");
+  });
+
+  it("treats nonblank but unrecognized owner values in active bakes as foreign/unrecognized and safely retains them", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+    mockStorage["bread_lab_bake_v2"] = JSON.stringify({
+      id: "unrecognized-bake",
+      userId: "unrecognized-owner-xyz",
+      recipeName: "Unrecognized Bake",
+    });
+
+    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    expect(mockStorage["bread_lab_bake_v2"]).toBeDefined();
+  });
+
+  it("preserves every key in OPERATIONAL_KEYS with zero mutations when validation fails", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    const seedData = {
+      "bread_lab_recipes_v1": JSON.stringify({ wrongShape: true }),
+      "bread_lab_deleted_recipe_ids_v1": JSON.stringify(["del-r1"]),
+      "bread_lab_bake_v2": JSON.stringify({ id: "ab1", userId: "anonymous" }),
+      "bread_lab_bake_history_v1": JSON.stringify([{ id: "bh1", userId: "anonymous" }]),
+      "bread_lab_deleted_bake_ids_v1": JSON.stringify(["del-b1"]),
+      "sourdough_feed_session_v1": JSON.stringify({ id: "af1", userId: "anonymous" }),
+      "sourdough_feed_history_v1": JSON.stringify([{ id: "fh1", userId: "anonymous" }]),
+      "bread_lab_deleted_feed_ids_v1": JSON.stringify(["del-f1"]),
+      "bread_lab_migration_pending_v1": "1",
+    };
+
+    mockStorage = { ...seedData };
+
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (AsyncStorage.removeItem as jest.Mock).mockClear();
+    (AsyncStorage.multiRemove as jest.Mock).mockClear();
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow();
+
+    for (const [key, val] of Object.entries(seedData)) {
+      expect(mockStorage[key]).toBe(val);
+    }
+
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+  });
+
+  it("documents mutation-phase failure limitation when a mutation fails mid-way", async () => {
+    const { clearOperationalData } = require("../storageUtils");
+
+    mockStorage["bread_lab_recipes_v1"] = JSON.stringify([
+      { id: "r1", name: "Recipe 1", userId: "foreign-user" }
+    ]);
+
+    const setItemMock = AsyncStorage.setItem as jest.Mock;
+    setItemMock.mockImplementationOnce(() => Promise.reject(new Error("Disk full during mutation")));
+
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/Failed to clear local operational data|Disk full/);
+  });
 });
