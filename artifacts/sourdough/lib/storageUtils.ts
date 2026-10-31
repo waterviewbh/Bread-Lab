@@ -73,6 +73,7 @@ function validateArrayStorageKey(raw: string | null, keyLabel: string): void {
  * JSON shapes, migration pending markers, and ownership conditions without modifying or removing any storage keys.
  */
 export async function validateOperationalData(currentUserId?: string | null): Promise<void> {
+  console.log(`[BL-DIAG] [StorageUtils] validateOperationalData starting for currentUserId: ${currentUserId}`);
   let recipeRaw: string | null = null;
   let bakeHistRaw: string | null = null;
   let feedHistRaw: string | null = null;
@@ -96,10 +97,12 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
       AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING),
     ]);
   } catch (error: any) {
+    console.log(`[BL-DIAG] [StorageUtils] validateOperationalData storage read error:`, error);
     throw new Error(`Operational wipe pre-validation failed due to storage read error: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   if (migPendingCheck !== null) {
+    console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: migration pending marker present.`);
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");
   }
 
@@ -118,11 +121,13 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
         if (!b) continue;
         const owner = b.userId ?? b.user_id;
         if (!owner || String(owner).trim() === "") {
+          console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: active bake missing owner.`);
           throw new Error("Operational wipe verification failed: active bake record has unknown or missing ownership metadata.");
         }
       }
     } catch (e: any) {
       if (e.message?.includes("Operational wipe verification failed")) throw e;
+      console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: active bake malformed.`);
       throw new Error(`Operational wipe verification failed: active bake record is malformed and cannot be verified.`);
     }
   }
@@ -132,13 +137,16 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
       const parsed = JSON.parse(activeFeedCheck);
       const owner = parsed?.userId ?? parsed?.user_id;
       if (!owner || String(owner).trim() === "") {
+        console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: active feed missing owner.`);
         throw new Error("Operational wipe verification failed: active feed record has unknown or missing ownership metadata.");
       }
     } catch (e: any) {
       if (e.message?.includes("Operational wipe verification failed")) throw e;
+      console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: active feed malformed.`);
       throw new Error(`Operational wipe verification failed: active feed record is malformed and cannot be verified.`);
     }
   }
+  console.log(`[BL-DIAG] [StorageUtils] validateOperationalData passed successfully.`);
 }
 
 /**
@@ -149,6 +157,7 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
  * a failure during the mutation sequence may leave partial changes applied.
  */
 export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
+  console.log(`[BL-DIAG] [StorageUtils] clearOperationalData starting for currentUserId: ${currentUserId}`);
   await validateOperationalData(currentUserId);
 
   let recipeRaw: string | null = null;

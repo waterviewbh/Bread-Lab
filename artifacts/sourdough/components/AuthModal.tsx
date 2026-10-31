@@ -37,25 +37,33 @@ interface Props {
 export async function executeFailClosedRecovery(
   onAuthChangeFn: (user: AuthUser | null) => void = () => {}
 ): Promise<{ remoteSignout: boolean; localClear: boolean }> {
+  console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery starting...`);
   let remoteSignout = false;
   let localClear = false;
 
   try {
     const res = await api.auth.signout();
     remoteSignout = !!res?.signedOut;
-  } catch {
+    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery remote signout result: ${remoteSignout}`);
+  } catch (err) {
+    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery remote signout threw error:`, err);
     remoteSignout = false;
   }
 
   try {
     await clearAuth();
     localClear = true;
-  } catch {
+    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery local credential clearing verified success.`);
+  } catch (err) {
+    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery local credential clearing FAILED:`, err);
     localClear = false;
   }
 
   if (remoteSignout && localClear) {
+    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery: both remote signout and local clear succeeded. Resetting in-memory identity to null.`);
     onAuthChangeFn(null);
+  } else {
+    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery: incomplete recovery (remoteSignout=${remoteSignout}, localClear=${localClear}). Preserving fail-closed state.`);
   }
 
   return { remoteSignout, localClear };
