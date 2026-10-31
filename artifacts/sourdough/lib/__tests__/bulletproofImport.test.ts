@@ -881,5 +881,30 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       expect(parsedAnon.deletedRecipeIds).toContain("rec-anon-del");
       expect(mockStorage[QUARANTINE_KEY("user-auth")]).toBeUndefined();
     });
+
+    it("3. Active bake and active feed shape validation rejects invalid shapes", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS } = require("../storageUtils");
+      mockStorage[APP_STORAGE_KEYS.ACTIVE_BAKE] = JSON.stringify("not-an-object-bake");
+
+      await expect(quarantineOperationalData("user-1")).rejects.toThrow(/Active bake record must be a non-null object/);
+      expect(mockStorage[APP_STORAGE_KEYS.ACTIVE_BAKE]).toBeDefined();
+
+      mockStorage[APP_STORAGE_KEYS.ACTIVE_BAKE] = null;
+      mockStorage[APP_STORAGE_KEYS.ACTIVE_FEED] = JSON.stringify(["array-instead-of-object-feed"]);
+
+      await expect(quarantineOperationalData("user-1")).rejects.toThrow(/Active feed record must be a non-null object/);
+      expect(mockStorage[APP_STORAGE_KEYS.ACTIVE_FEED]).toBeDefined();
+    });
+
+    it("4. Existing quarantine bucket schema validation rejects invalid field types", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS, QUARANTINE_KEY } = require("../storageUtils");
+      mockStorage[APP_STORAGE_KEYS.BAKE_HISTORY] = JSON.stringify([{ id: "b1", userId: "user-1" }]);
+      const qKey = QUARANTINE_KEY("user-1");
+      // Put invalid field type in existing quarantine (recipes is string instead of array)
+      mockStorage[qKey] = JSON.stringify({ recipes: "not-an-array" });
+
+      await expect(quarantineOperationalData("user-1")).rejects.toThrow(/Quarantine validation failed.*field 'recipes' is malformed/);
+      expect(mockStorage[APP_STORAGE_KEYS.BAKE_HISTORY]).toBeDefined();
+    });
   });
 });

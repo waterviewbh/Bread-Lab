@@ -352,20 +352,49 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     if (raw === null || raw === undefined) return [];
     try {
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [parsed];
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of list) {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          throw new Error("Active bake record must be a non-null object.");
+        }
+      }
+      return list;
     } catch (e: any) {
-      throw new Error(`Quarantine failed: active bake storage contains malformed JSON: ${e.message}`);
+      if (e.message?.includes("Active bake")) throw e;
+      throw new Error(`Quarantine failed: active bake storage contains malformed JSON or invalid shape: ${e.message}`);
     }
   };
 
   const parseActiveFeedOrThrow = (raw: string | null): any => {
     if (raw === null || raw === undefined) return null;
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed !== null && (typeof parsed !== "object" || Array.isArray(parsed))) {
+        throw new Error("Active feed record must be a non-null object.");
+      }
+      return parsed;
     } catch (e: any) {
-      throw new Error(`Quarantine failed: active feed storage contains malformed JSON: ${e.message}`);
+      if (e.message?.includes("Active feed")) throw e;
+      throw new Error(`Quarantine failed: active feed storage contains malformed JSON or invalid shape: ${e.message}`);
     }
   };
+
+  function validateQuarantinedStore(store: unknown, qKey: string): QuarantinedStore {
+    if (!store || typeof store !== "object" || Array.isArray(store)) {
+      throw new Error(`Quarantine validation failed: bucket ${qKey} has invalid root shape (expected object).`);
+    }
+    const s = store as Record<string, unknown>;
+    const arrayFields = ['recipes', 'bakeHistory', 'feedHistory', 'activeBakes', 'deletedRecipeIds', 'deletedBakeIds', 'deletedFeedIds'];
+    for (const field of arrayFields) {
+      if (s[field] !== undefined && s[field] !== null && !Array.isArray(s[field])) {
+        throw new Error(`Quarantine validation failed: bucket ${qKey} field '${field}' is malformed (expected array).`);
+      }
+    }
+    if (s.activeFeed !== undefined && s.activeFeed !== null && (typeof s.activeFeed !== "object" || Array.isArray(s.activeFeed))) {
+      throw new Error(`Quarantine validation failed: bucket ${qKey} field 'activeFeed' is malformed (expected object).`);
+    }
+    return store as QuarantinedStore;
+  }
 
   const recipes = parseOrThrow(recipeRaw, "recipe record");
   const bakes = parseOrThrow(bakeHistRaw, "bake history");
@@ -427,9 +456,10 @@ export async function quarantineOperationalData(departingUserId?: string | null)
       const rawQ = await AsyncStorage.getItem(qKey);
       if (rawQ) {
         try {
-          existing = JSON.parse(rawQ);
+          const parsedQ = JSON.parse(rawQ);
+          existing = validateQuarantinedStore(parsedQ, qKey);
         } catch (parseErr: any) {
-          throw new Error(`Quarantine failed: existing quarantine bucket ${qKey} is malformed and unreadable: ${parseErr.message}`);
+          throw new Error(`Quarantine failed: existing quarantine bucket ${qKey} is malformed or invalid: ${parseErr.message}`);
         }
       }
     } catch (readErr: any) {
