@@ -183,6 +183,7 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
 
     if (recipeRaw) {
       const recipes = safeParse<any[]>(recipeRaw, [], Array.isArray);
+      const purged = recipes.filter(r => r && ((r.userId ?? r.user_id) === "anonymous" || (r.userId ?? r.user_id) === currentUserId));
       const retained = recipes.filter(r => {
         if (!r) return false;
         const owner = r.userId ?? r.user_id;
@@ -190,15 +191,19 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
         const isUnknown = !owner || String(owner).trim() === "";
         return isOtherUser || isUnknown;
       });
+      console.log(`[BL-DIAG-ASYNC] [Storage] PURGE RECIPES: Total before=${recipes.length}, Purged=${purged.length}, Retained=${retained.length}`);
       if (retained.length > 0) {
         await AsyncStorage.setItem(APP_STORAGE_KEYS.RECIPES, JSON.stringify(retained));
+        console.log(`[BL-DIAG-ASYNC] [Storage] WRITE KEY=${APP_STORAGE_KEYS.RECIPES}, count=${retained.length}`);
       } else {
         await AsyncStorage.removeItem(APP_STORAGE_KEYS.RECIPES);
+        console.log(`[BL-DIAG-ASYNC] [Storage] REMOVE KEY=${APP_STORAGE_KEYS.RECIPES}`);
       }
     }
 
     if (bakeHistRaw) {
       const bakes = safeParse<any[]>(bakeHistRaw, [], Array.isArray);
+      const purged = bakes.filter(b => b && ((b.userId ?? b.user_id) === "anonymous" || (b.userId ?? b.user_id) === currentUserId));
       const retained = bakes.filter(b => {
         if (!b) return false;
         const owner = b.userId ?? b.user_id;
@@ -206,15 +211,19 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
         const isUnknown = !owner || String(owner).trim() === "";
         return isOtherUser || isUnknown;
       });
+      console.log(`[BL-DIAG-ASYNC] [Storage] PURGE BAKE_HISTORY: Total before=${bakes.length}, Purged=${purged.length}, Retained=${retained.length}`);
       if (retained.length > 0) {
         await AsyncStorage.setItem(APP_STORAGE_KEYS.BAKE_HISTORY, JSON.stringify(retained));
+        console.log(`[BL-DIAG-ASYNC] [Storage] WRITE KEY=${APP_STORAGE_KEYS.BAKE_HISTORY}, count=${retained.length}`);
       } else {
         await AsyncStorage.removeItem(APP_STORAGE_KEYS.BAKE_HISTORY);
+        console.log(`[BL-DIAG-ASYNC] [Storage] REMOVE KEY=${APP_STORAGE_KEYS.BAKE_HISTORY}`);
       }
     }
 
     if (feedHistRaw) {
       const feeds = safeParse<any[]>(feedHistRaw, [], Array.isArray);
+      const purged = feeds.filter(f => f && ((f.userId ?? f.user_id) === "anonymous" || (f.userId ?? f.user_id) === currentUserId));
       const retained = feeds.filter(f => {
         if (!f) return false;
         const owner = f.userId ?? f.user_id;
@@ -222,10 +231,13 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
         const isUnknown = !owner || String(owner).trim() === "";
         return isOtherUser || isUnknown;
       });
+      console.log(`[BL-DIAG-ASYNC] [Storage] PURGE FEED_HISTORY: Total before=${feeds.length}, Purged=${purged.length}, Retained=${retained.length}`);
       if (retained.length > 0) {
         await AsyncStorage.setItem(APP_STORAGE_KEYS.FEED_HISTORY, JSON.stringify(retained));
+        console.log(`[BL-DIAG-ASYNC] [Storage] WRITE KEY=${APP_STORAGE_KEYS.FEED_HISTORY}, count=${retained.length}`);
       } else {
         await AsyncStorage.removeItem(APP_STORAGE_KEYS.FEED_HISTORY);
+        console.log(`[BL-DIAG-ASYNC] [Storage] REMOVE KEY=${APP_STORAGE_KEYS.FEED_HISTORY}`);
       }
     }
 
@@ -240,10 +252,13 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
           const isUnknown = !owner || String(owner).trim() === "";
           return isOtherUser || isUnknown;
         });
+        console.log(`[BL-DIAG-ASYNC] [Storage] PURGE ACTIVE_BAKE: Total before=${bakesList.length}, Retained=${retainedBakes.length}`);
         if (retainedBakes.length > 0) {
           await AsyncStorage.setItem(APP_STORAGE_KEYS.ACTIVE_BAKE, JSON.stringify(Array.isArray(parsed) ? retainedBakes : retainedBakes[0]));
+          console.log(`[BL-DIAG-ASYNC] [Storage] WRITE KEY=${APP_STORAGE_KEYS.ACTIVE_BAKE}`);
         } else {
           await AsyncStorage.removeItem(APP_STORAGE_KEYS.ACTIVE_BAKE);
+          console.log(`[BL-DIAG-ASYNC] [Storage] REMOVE KEY=${APP_STORAGE_KEYS.ACTIVE_BAKE}`);
         }
       } catch {
         // Preserve unparseable active bake state safely
@@ -258,6 +273,9 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
         const isUnknown = !owner || String(owner).trim() === "";
         if (!isOtherUser && !isUnknown) {
           await AsyncStorage.removeItem(APP_STORAGE_KEYS.ACTIVE_FEED);
+          console.log(`[BL-DIAG-ASYNC] [Storage] REMOVE KEY=${APP_STORAGE_KEYS.ACTIVE_FEED}`);
+        } else {
+          console.log(`[BL-DIAG-ASYNC] [Storage] RETAIN KEY=${APP_STORAGE_KEYS.ACTIVE_FEED} (foreign/unknown owner)`);
         }
       } catch {
         // Preserve unparseable active feed state safely
