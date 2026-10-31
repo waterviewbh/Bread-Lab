@@ -3,7 +3,7 @@ import { getOwnerStorageKey, APP_STORAGE_KEYS, quarantineOperationalData, QUARAN
 import { loadAll, writeRecipesLocal, appendRecipeLocal, addToRecipeTombstone, getRecipeTombstone } from "../recipeStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-describe("Issue #24: Connect Workspace Generation to Real Account Transitions", () => {
+describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     jest.restoreAllMocks();
@@ -26,7 +26,6 @@ describe("Issue #24: Connect Workspace Generation to Real Account Transitions", 
 
     const loadPromise = loadAll();
 
-    // Use real production transition path (saveAuth) to switch to user-B while fetch is pending
     await authModule.saveAuth("token-B", { id: "user-B", firstName: "User B", starterName: "Starter B" });
 
     resolveRemote([
@@ -39,35 +38,66 @@ describe("Issue #24: Connect Workspace Generation to Real Account Transitions", 
     expect(await AsyncStorage.getItem(keyB)).toBeNull();
   });
 
-  it("Test B — Real workspace transition via saveAuth invalidates in-flight operation before persistence", async () => {
+  it("Test B — Real workspace transition via saveAuth invalidates in-flight operation before persistence and preserves both workspaces", async () => {
     const authModule = require("../auth");
     jest.spyOn(authModule, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));
 
     await authModule.saveAuth("token-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
 
-    const apiModule = require("../api");
-    jest.spyOn(apiModule.api.recipes, "list").mockResolvedValue([
-      { id: "rec-A", userId: "user-A", name: "Recipe A", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }] }
+    const keyA = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
+    const keyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
+
+    const sentinelA = JSON.stringify([
+      { id: "sentinel-A", userId: "user-A", name: "Sentinel A", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }] }
+    ]);
+    const sentinelB = JSON.stringify([
+      { id: "sentinel-B", userId: "user-B", name: "Sentinel B", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }] }
     ]);
 
-    let resumePause: () => void = () => {};
-    const pausePromise = new Promise<void>((r) => {
-      resumePause = r;
+    await AsyncStorage.setItem(keyA, sentinelA);
+    await AsyncStorage.setItem(keyB, sentinelB);
+
+    const apiModule = require("../api");
+    jest.spyOn(apiModule.api.recipes, "list").mockResolvedValue([
+      { id: "rec-A", userId: "user-A", name: "Stale Recipe A", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }] }
+    ]);
+
+    let signalReachedBoundary!: () => void;
+    let resumeOperation!: () => void;
+
+    const reachedBoundary = new Promise<void>((resolve) => {
+      signalReachedBoundary = resolve;
+    });
+
+    const resume = new Promise<void>((resolve) => {
+      resumeOperation = resolve;
     });
 
     (global as any).__pausePrePersist = async () => {
-      // Invoke real production transition path (saveAuth for user-B)
-      await authModule.saveAuth("token-B", { id: "user-B", firstName: "User B", starterName: "Starter B" });
-      await pausePromise;
+      signalReachedBoundary();
+      await resume;
     };
 
     const loadPromise = loadAll();
-    resumePause();
 
-    await expect(loadPromise).rejects.toThrow(/Workspace owner changed|Workspace generation changed/);
+    // Do not proceed until loadAll has actually reached the boundary
+    await reachedBoundary;
 
-    const keyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
-    expect(await AsyncStorage.getItem(keyB)).toBeNull();
+    // Perform real production transition while loadAll is suspended
+    await authModule.saveAuth("token-B", {
+      id: "user-B",
+      firstName: "User B",
+      starterName: "Starter B",
+    });
+
+    // Resume stale operation only after transition completes
+    resumeOperation();
+
+    await expect(loadPromise).rejects.toThrow(/Workspace generation changed|Workspace owner changed/i);
+
+    // Verify both workspaces' existing data survives unchanged
+    expect(await AsyncStorage.getItem(keyA)).toBe(sentinelA);
+    expect(await AsyncStorage.getItem(keyB)).toBe(sentinelB);
   });
 
   it("Test C — Later identity-validation failure fails closed", async () => {
