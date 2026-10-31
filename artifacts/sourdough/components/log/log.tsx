@@ -269,8 +269,9 @@ export function HistorySection() {
       try {
         const parsed = JSON.parse(activeRaw);
         const activeBakes: any[] = Array.isArray(parsed) ? parsed : [parsed];
+        const validActiveBakes = activeBakes.filter(isOwnerMatch);
         let newList = [...list];
-        activeBakes.forEach((active) => {
+        validActiveBakes.forEach((active) => {
           if (!active?.id || !active?.startedAt) return;
           if (newList.some((e) => e.id === active.id)) return;
           newList.unshift({

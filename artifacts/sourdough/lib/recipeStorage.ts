@@ -72,8 +72,15 @@ export async function loadAll(): Promise<{
     const parsedBakes = safeParse<any>(bakeStr, [], (v) => Array.isArray(v) || (v !== null && typeof v === 'object'));
     const rawBakes: ActiveBake[] = Array.isArray(parsedBakes) ? parsedBakes : (parsedBakes ? [parsedBakes] : []);
 
+    const filteredBakes = rawBakes.filter(b => {
+      if (!b) return false;
+      const owner = (b as any).userId ?? (b as any).user_id;
+      if (!token) return owner === "anonymous";
+      return owner === token;
+    });
+
     // Unified migration and initialization
-    bakes = rawBakes.map(b => {
+    bakes = filteredBakes.map(b => {
       // Ensure b is an object
       if (!b || typeof b !== 'object') return b;
 

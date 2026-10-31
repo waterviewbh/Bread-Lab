@@ -660,34 +660,33 @@ export default function HistoryScreen() {
     ): BakeHistoryEntry[] => {
       if (!activeRaw) return list;
       try {
-        const active = JSON.parse(activeRaw) as {
-          id: string;
-          recipeId: string;
-          recipeName: string;
-          startedAt: number;
-          phases: { key: string; name: string; startedAt: number | null; completedAt: number | null; foldCount?: number; }[];
-        };
-        if (!active?.id || !active?.startedAt) return list;
-        const alreadyInHistory = list.some((e) => e.id === active.id);
-        if (alreadyInHistory) return list;
-        return [
-          {
+        const parsed = JSON.parse(activeRaw);
+        const activeBakes: any[] = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+        const validActiveBakes = activeBakes.filter(isOwnerMatchGuard);
+        let newList = [...list];
+        validActiveBakes.forEach((active) => {
+          if (!active?.id || !active?.startedAt) return;
+          if (newList.some((e) => e.id === active.id)) return;
+          newList.unshift({
             id: active.id,
             recipeId: active.recipeId ?? "",
             recipeName: active.recipeName,
             savedAt: active.startedAt,
             startedAt: active.startedAt,
-            phases: active.phases.map((p) => ({
+            phases: (active.phases || []).map((p: any) => ({
               key: p.key,
               name: p.name,
               startedAt: p.startedAt ?? null,
               completedAt: p.completedAt ?? null,
-              foldCount: (p as any).foldCount,
-              foldTimestamps: (p as any).foldTimestamps,
+              foldCount: p.foldCount,
+              foldTimestamps: p.foldTimestamps,
             })),
-          },
-          ...list,
-        ];
+            notes: active.notes ?? "",
+            yieldValue: active.yieldValue ?? "",
+            outcome: active.outcome ?? null,
+          });
+        });
+        return newList;
       } catch {
         return list;
       }

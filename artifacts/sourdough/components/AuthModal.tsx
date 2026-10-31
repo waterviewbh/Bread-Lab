@@ -78,10 +78,15 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange 
         if (!raw) return false;
         try {
           const parsed = JSON.parse(raw);
+          const checkOwner = (item: any) => {
+            if (!item || typeof item !== "object") return false;
+            const owner = item.userId ?? item.user_id;
+            return owner === "anonymous";
+          };
           if (Array.isArray(parsed)) {
-            return parsed.some(item => item && (item.userId === "anonymous" || item.user_id === "anonymous" || !item.userId));
+            return parsed.some(checkOwner);
           } else if (parsed && typeof parsed === "object") {
-            return (parsed.userId === "anonymous" || parsed.user_id === "anonymous" || !parsed.userId);
+            return checkOwner(parsed);
           }
         } catch {
           return true;
