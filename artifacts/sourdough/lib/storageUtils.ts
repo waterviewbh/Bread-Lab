@@ -60,24 +60,56 @@ export const OPERATIONAL_KEYS = [
  * Preserves records belonging to other authenticated users while purging anonymous operational records.
  */
 export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
-  // Pre-mutation verification pass (Dry-Run Safety Check): Ensure no malformed or ownerless active records exist
-  // before performing any mutations to local storage, guaranteeing atomicity and preventing partial modifications.
+  // Pre-mutation verification pass (Fail-closed reads & Dry-Run Safety Check):
+  // Ensure all required operational keys can be read successfully and parsed safely
+  // before performing any mutations to local storage, guaranteeing fail-closed error handling and atomicity.
+  let recipeRaw: string | null = null;
+  let bakeHistRaw: string | null = null;
+  let feedHistRaw: string | null = null;
   let activeBakeCheck: string | null = null;
   let activeFeedCheck: string | null = null;
   let migPendingCheck: string | null = null;
 
   try {
-    [activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
+    [recipeRaw, bakeHistRaw, feedHistRaw, activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
+      AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY),
+      AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY),
       AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
       AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
       AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING),
     ]);
   } catch (error: any) {
-    throw new Error(`Operational wipe verification failed due to storage read error: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Operational wipe pre-validation failed due to storage read error: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   if (migPendingCheck !== null) {
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");
+  }
+
+  // Validate JSON structure for historical keys before mutation (Fail-closed on malformed JSON)
+  if (recipeRaw !== null) {
+    try {
+      JSON.parse(recipeRaw);
+    } catch (e: any) {
+      throw new Error(`Operational wipe pre-validation failed: recipe record storage contains malformed JSON and cannot be verified.`);
+    }
+  }
+
+  if (bakeHistRaw !== null) {
+    try {
+      JSON.parse(bakeHistRaw);
+    } catch (e: any) {
+      throw new Error(`Operational wipe pre-validation failed: bake history storage contains malformed JSON and cannot be verified.`);
+    }
+  }
+
+  if (feedHistRaw !== null) {
+    try {
+      JSON.parse(feedHistRaw);
+    } catch (e: any) {
+      throw new Error(`Operational wipe pre-validation failed: feed history storage contains malformed JSON and cannot be verified.`);
+    }
   }
 
   if (activeBakeCheck !== null) {
@@ -113,7 +145,6 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
   try {
     console.log("[StorageUtils] Purging anonymous operational data while preserving other users' and unknown ownership records...");
 
-    const recipeRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES).catch(() => null);
     if (recipeRaw) {
       const recipes = safeParse<any[]>(recipeRaw, [], Array.isArray);
       const retained = recipes.filter(r => {
@@ -130,7 +161,6 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
       }
     }
 
-    const bakeHistRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY).catch(() => null);
     if (bakeHistRaw) {
       const bakes = safeParse<any[]>(bakeHistRaw, [], Array.isArray);
       const retained = bakes.filter(b => {
@@ -147,7 +177,6 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
       }
     }
 
-    const feedHistRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY).catch(() => null);
     if (feedHistRaw) {
       const feeds = safeParse<any[]>(feedHistRaw, [], Array.isArray);
       const retained = feeds.filter(f => {
@@ -164,10 +193,9 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
       }
     }
 
-    const activeBakeRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE).catch(() => null);
-    if (activeBakeRaw) {
+    if (activeBakeCheck) {
       try {
-        const parsed = JSON.parse(activeBakeRaw);
+        const parsed = JSON.parse(activeBakeCheck);
         const bakesList = Array.isArray(parsed) ? parsed : [parsed];
         const retainedBakes = bakesList.filter(b => {
           if (!b) return false;
@@ -186,10 +214,9 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
       }
     }
 
-    const activeFeedRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED).catch(() => null);
-    if (activeFeedRaw) {
+    if (activeFeedCheck) {
       try {
-        const parsed = JSON.parse(activeFeedRaw);
+        const parsed = JSON.parse(activeFeedCheck);
         const owner = parsed?.userId ?? parsed?.user_id;
         const isOtherUser = owner && owner !== "anonymous" && owner !== currentUserId;
         const isUnknown = !owner || String(owner).trim() === "";
