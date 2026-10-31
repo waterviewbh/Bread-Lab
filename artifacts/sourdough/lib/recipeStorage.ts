@@ -167,8 +167,7 @@ export async function loadAll(): Promise<{
     // Verify workspace identity hasn't changed during remote fetch
     const currentOwner = await resolveOwner();
     if (currentOwner !== owner) {
-      console.warn("[recipeStorage] Workspace identity changed during loadAll() execution; aborting stale operation.");
-      return { recipes: [], bakes: [], bake: null };
+      throw new Error("Workspace identity changed during loadAll() execution; aborting stale operation.");
     }
 
     const mapped: SavedRecipe[] = (apiRecipes || [])
@@ -197,6 +196,11 @@ export async function loadAll(): Promise<{
           clonedFromBakeName: r.clonedFromBakeName ?? existingLocal?.clonedFromBakeName,
         };
       });
+
+    const prePersistOwner = await resolveOwner();
+    if (prePersistOwner !== owner) {
+      throw new Error("Workspace identity changed prior to persistence; aborting stale write.");
+    }
 
     if (token || (apiRecipes && apiRecipes.length > 0)) {
       recipes = mapped;
@@ -246,7 +250,10 @@ export async function loadAll(): Promise<{
       bakes = [apiBake];
       await storageMutex.run(() => AsyncStorage.setItem(bakeKey, JSON.stringify(bakes)));
     }
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.message?.includes("Workspace identity changed") || e?.message?.includes("Owner resolution failed closed")) {
+      throw e;
+    }
     console.error("[recipeStorage] loadAll remote failed", e);
   }
 
