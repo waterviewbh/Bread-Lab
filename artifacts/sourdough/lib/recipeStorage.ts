@@ -77,6 +77,7 @@ export async function loadAll(): Promise<{
   let localBakesFound = false;
 
   const owner = await resolveOwner();
+  const token = owner === "anonymous" ? null : owner;
   const recipesKey = getOwnerStorageKey(RECIPES_KEY, owner);
   const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
   const bakeHistoryKey = getOwnerStorageKey(BAKE_HISTORY_KEY, owner);
@@ -87,7 +88,6 @@ export async function loadAll(): Promise<{
       AsyncStorage.getItem(bakeKey),
     ]);
 
-    const token = await getStoredToken().catch(() => null);
     recipes = safeParse<SavedRecipe[]>(recipeStr, [], Array.isArray).filter(
       r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
     ).filter(r => {
@@ -158,12 +158,18 @@ export async function loadAll(): Promise<{
 
   try {
     const deviceId = await getDeviceId();
-    const token = await getStoredToken().catch(() => null);
     const [apiRecipes, activeBake, deletedRecipeIds] = await Promise.all([
       token ? api.recipes.list(deviceId, token) : Promise.resolve([]),
       (localBakesFound || !token) ? Promise.resolve(null) : api.history.bakes.active(deviceId, token),
       getRecipeTombstone(),
     ]);
+
+    // Verify workspace identity hasn't changed during remote fetch
+    const currentOwner = await resolveOwner();
+    if (currentOwner !== owner) {
+      console.warn("[recipeStorage] Workspace identity changed during loadAll() execution; aborting stale operation.");
+      return { recipes: [], bakes: [], bake: null };
+    }
 
     const mapped: SavedRecipe[] = (apiRecipes || [])
       .filter((r) => !deletedRecipeIds.includes(r.id))
