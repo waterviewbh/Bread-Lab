@@ -55,14 +55,27 @@ export const OPERATIONAL_KEYS = [
   APP_STORAGE_KEYS.MIGRATION_PENDING,
 ];
 
+function validateArrayStorageKey(raw: string | null, keyLabel: string): void {
+  if (raw === null) return;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error(`Operational wipe pre-validation failed: ${keyLabel} storage has invalid shape (expected array).`);
+    }
+  } catch (e: any) {
+    if (e.message?.includes("Operational wipe pre-validation failed")) throw e;
+    throw new Error(`Operational wipe pre-validation failed: ${keyLabel} storage contains malformed JSON and cannot be verified.`);
+  }
+}
+
 /**
  * Clear local operational data without removing authentication credential keys.
  * Preserves records belonging to other authenticated users while purging anonymous operational records.
+ * Note on Atomicity: Pre-validation guarantees that validation errors occur 0% into mutation.
+ * However, because AsyncStorage operations are sequential independent calls rather than a multi-key ACID transaction,
+ * a failure during the mutation sequence may leave partial changes applied.
  */
 export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
-  // Pre-mutation verification pass (Fail-closed reads & Dry-Run Safety Check):
-  // Ensure all required operational keys can be read successfully and parsed safely
-  // before performing any mutations to local storage, guaranteeing fail-closed error handling and atomicity.
   let recipeRaw: string | null = null;
   let bakeHistRaw: string | null = null;
   let feedHistRaw: string | null = null;
@@ -93,78 +106,13 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");
   }
 
-  // Validate expected data shapes (must be arrays when present) before mutation (Requirement 1 & 2)
-  if (recipeRaw !== null) {
-    try {
-      const parsed = JSON.parse(recipeRaw);
-      if (!Array.isArray(parsed)) {
-        throw new Error("Operational wipe pre-validation failed: recipe record storage has invalid shape (expected array).");
-      }
-    } catch (e: any) {
-      if (e.message?.includes("Operational wipe pre-validation failed")) throw e;
-      throw new Error(`Operational wipe pre-validation failed: recipe record storage is malformed and cannot be verified.`);
-    }
-  }
-
-  if (bakeHistRaw !== null) {
-    try {
-      const parsed = JSON.parse(bakeHistRaw);
-      if (!Array.isArray(parsed)) {
-        throw new Error("Operational wipe pre-validation failed: bake history storage has invalid shape (expected array).");
-      }
-    } catch (e: any) {
-      if (e.message?.includes("Operational wipe pre-validation failed")) throw e;
-      throw new Error(`Operational wipe pre-validation failed: bake history storage is malformed and cannot be verified.`);
-    }
-  }
-
-  if (feedHistRaw !== null) {
-    try {
-      const parsed = JSON.parse(feedHistRaw);
-      if (!Array.isArray(parsed)) {
-        throw new Error("Operational wipe pre-validation failed: feed history storage has invalid shape (expected array).");
-      }
-    } catch (e: any) {
-      if (e.message?.includes("Operational wipe pre-validation failed")) throw e;
-      throw new Error(`Operational wipe pre-validation failed: feed history storage is malformed and cannot be verified.`);
-    }
-  }
-
-  if (delRecipeRaw !== null) {
-    try {
-      const parsed = JSON.parse(delRecipeRaw);
-      if (!Array.isArray(parsed)) {
-        throw new Error("Operational wipe pre-validation failed: deleted recipe IDs storage has invalid shape (expected array).");
-      }
-    } catch (e: any) {
-      if (e.message?.includes("Operational wipe pre-validation failed")) throw e;
-      throw new Error(`Operational wipe pre-validation failed: deleted recipe IDs storage is malformed and cannot be verified.`);
-    }
-  }
-
-  if (delBakeRaw !== null) {
-    try {
-      const parsed = JSON.parse(delBakeRaw);
-      if (!Array.isArray(parsed)) {
-        throw new Error("Operational wipe pre-validation failed: deleted bake IDs storage has invalid shape (expected array).");
-      }
-    } catch (e: any) {
-      if (e.message?.includes("Operational wipe pre-validation failed")) throw e;
-      throw new Error(`Operational wipe pre-validation failed: deleted bake IDs storage is malformed and cannot be verified.`);
-    }
-  }
-
-  if (delFeedRaw !== null) {
-    try {
-      const parsed = JSON.parse(delFeedRaw);
-      if (!Array.isArray(parsed)) {
-        throw new Error("Operational wipe pre-validation failed: deleted feed IDs storage has invalid shape (expected array).");
-      }
-    } catch (e: any) {
-      if (e.message?.includes("Operational wipe pre-validation failed")) throw e;
-      throw new Error(`Operational wipe pre-validation failed: deleted feed IDs storage is malformed and cannot be verified.`);
-    }
-  }
+  // Consolidated array shape and JSON syntax validation for collection keys (Requirement 1 & 2)
+  validateArrayStorageKey(recipeRaw, "recipe record");
+  validateArrayStorageKey(bakeHistRaw, "bake history");
+  validateArrayStorageKey(feedHistRaw, "feed history");
+  validateArrayStorageKey(delRecipeRaw, "deleted recipe IDs");
+  validateArrayStorageKey(delBakeRaw, "deleted bake IDs");
+  validateArrayStorageKey(delFeedRaw, "deleted feed IDs");
 
   if (activeBakeCheck !== null) {
     try {
