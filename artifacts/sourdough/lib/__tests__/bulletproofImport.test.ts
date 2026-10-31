@@ -779,48 +779,50 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(recovery.localClear).toBe(true);
   });
 
-  it("Test D, E, F: Cancellation and recovery integration paths correctly exercise executeFailClosedRecovery", async () => {
+  it("Test D: Cancellation with local credential-removal failure evaluates recovery guard to incomplete and preserves transition", async () => {
     const { executeFailClosedRecovery } = require("../../components/AuthModal");
     const { api } = require("../api");
 
-    // Test D: Local credential removal failure prevents transition reset
     api.auth.signout = jest.fn().mockResolvedValue({ signedOut: true });
     mockStorage["bread_lab_auth_token_v1"] = "token-xyz";
     mockStorage["bread_lab_auth_user_v1"] = JSON.stringify({ firstName: "Test" });
     (AsyncStorage.multiRemove as jest.Mock).mockRejectedValue(new Error("Disk error"));
     (AsyncStorage.removeItem as jest.Mock).mockRejectedValue(new Error("Disk error"));
 
-    let transitionClearedD = false;
-    const recoveryD = await executeFailClosedRecovery(() => {});
-    if (recoveryD.remoteSignout && recoveryD.localClear) {
-      transitionClearedD = true;
-    }
-    expect(transitionClearedD).toBe(false);
+    const recovery = await executeFailClosedRecovery(() => {});
+    const cleanupIncomplete = !recovery.remoteSignout || !recovery.localClear;
+    expect(cleanupIncomplete).toBe(true);
+    expect(recovery.localClear).toBe(false);
+  });
 
-    // Test E: Remote sign-out failure prevents transition reset
+  it("Test E: Cancellation with remote sign-out failure evaluates recovery guard to incomplete and preserves transition", async () => {
+    const { executeFailClosedRecovery } = require("../../components/AuthModal");
+    const { api } = require("../api");
+
     api.auth.signout = jest.fn().mockRejectedValue(new Error("Network offline"));
     mockStorage["bread_lab_auth_token_v1"] = null;
     mockStorage["bread_lab_auth_user_v1"] = null;
     (AsyncStorage.multiRemove as jest.Mock).mockResolvedValue(undefined);
 
-    let transitionClearedE = false;
-    const recoveryE = await executeFailClosedRecovery(() => {});
-    if (recoveryE.remoteSignout && recoveryE.localClear) {
-      transitionClearedE = true;
-    }
-    expect(transitionClearedE).toBe(false);
+    const recovery = await executeFailClosedRecovery(() => {});
+    const cleanupIncomplete = !recovery.remoteSignout || !recovery.localClear;
+    expect(cleanupIncomplete).toBe(true);
+    expect(recovery.remoteSignout).toBe(false);
+  });
 
-    // Test F: Successful cancellation clears transition state
+  it("Test F: Successful cancellation evaluates recovery guard to complete and allows transition reset", async () => {
+    const { executeFailClosedRecovery } = require("../../components/AuthModal");
+    const { api } = require("../api");
+
     api.auth.signout = jest.fn().mockResolvedValue({ signedOut: true });
     mockStorage["bread_lab_auth_token_v1"] = null;
     mockStorage["bread_lab_auth_user_v1"] = null;
     (AsyncStorage.multiRemove as jest.Mock).mockResolvedValue(undefined);
 
-    let transitionClearedF = false;
-    const recoveryF = await executeFailClosedRecovery(() => {});
-    if (recoveryF.remoteSignout && recoveryF.localClear) {
-      transitionClearedF = true;
-    }
-    expect(transitionClearedF).toBe(true);
+    const recovery = await executeFailClosedRecovery(() => {});
+    const cleanupIncomplete = !recovery.remoteSignout || !recovery.localClear;
+    expect(cleanupIncomplete).toBe(false);
+    expect(recovery.remoteSignout).toBe(true);
+    expect(recovery.localClear).toBe(true);
   });
 });
