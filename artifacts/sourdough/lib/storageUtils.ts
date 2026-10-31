@@ -648,3 +648,13 @@ export class AsyncMutex {
 }
 
 export const storageMutex = new AsyncMutex();
+
+/**
+ * Resolves an owner-scoped storage key based on base key and owner ID.
+ * Distinct namespaces for anonymous ("anonymous") versus authenticated users.
+ */
+export function getOwnerStorageKey(baseKey: string, ownerId?: string | null): string {
+  const cleanOwner = ownerId && typeof ownerId === "string" && ownerId.trim() !== "" ? ownerId.trim() : "anonymous";
+  if (baseKey.endsWith(`_${cleanOwner}`)) return baseKey;
+  return `${baseKey}_${cleanOwner}`;
+}
