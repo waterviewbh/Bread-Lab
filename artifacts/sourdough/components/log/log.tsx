@@ -811,7 +811,7 @@ export function HistorySection() {
                   style={[styles.reviewAction, { backgroundColor: colors.primary, borderColor: colors.primary }]}
                 >
                   <Feather name="activity" size={16} color={colors.primaryForeground} />
-                  <Text selectable={true} style={[styles.reviewActionText, { color: colors.primaryForeground }]}>SCORE & REVIEW BAKE</Text>
+                  <Text selectable={true} style={[styles.reviewActionText, { color: colors.primaryForeground }]}>REVIEW & SCORE BAKE</Text>
                 </Pressable>
               )}
 

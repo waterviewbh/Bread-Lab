@@ -381,7 +381,9 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   for (const r of sortedRecipesToMigrate) {
     const key = `recipe:${r.id}`;
     let targetId = ledger[key];
+    const ownerVal = r.userId ?? r.user_id ?? "missing";
 
+    console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=recipe, localId=${r.id}, targetId=${targetId}, owner=${ownerVal}, name=${r.name}`);
     try {
       const parsedYield = parseInt(r.yieldValue || "0", 10);
       const safeYield = isNaN(parsedYield) ? 0 : parsedYield;
@@ -406,8 +408,11 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         })),
       });
       recipesOk++;
+      console.log(`[BL-DIAG-ASYNC] [Migration] SUCCESS category=recipe, localId=${r.id}, targetId=${targetId}, retainedLocally=true`);
     } catch (error) {
-      console.warn(`[Migration] Failed to sync recipe (local ID: ${r.id}):`, formatErrorDiagnostic(error));
+      const errDiag = formatErrorDiagnostic(error);
+      console.log(`[BL-DIAG-ASYNC] [Migration] FAILED/UNRESOLVED category=recipe, localId=${r.id}, targetId=${targetId}, owner=${ownerVal}, error=${errDiag}, retainedLocally=true, contributingToUnresolvedCount=true`);
+      console.warn(`[Migration] Failed to sync recipe (local ID: ${r.id}):`, errDiag);
       recipesFailed++;
     }
   }
@@ -423,7 +428,9 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   for (const b of allBakes) {
     const key = `bake:${b.id}`;
     const targetId = ledger[key];
+    const ownerVal = b.userId ?? b.user_id ?? "missing";
 
+    console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=bake, localId=${b.id}, targetId=${targetId}, owner=${ownerVal}, inProgress=${b.inProgress}`);
     try {
       const parsedYield = parseInt(b.yieldValue || "0", 10);
       const safeYield = isNaN(parsedYield) ? 0 : parsedYield;
@@ -462,8 +469,11 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         })),
       });
       bakesOk++;
+      console.log(`[BL-DIAG-ASYNC] [Migration] SUCCESS category=bake, localId=${b.id}, targetId=${targetId}, retainedLocally=true`);
     } catch (error) {
-      console.warn(`[Migration] Failed to sync bake session (local ID: ${b.id}):`, formatErrorDiagnostic(error));
+      const errDiag = formatErrorDiagnostic(error);
+      console.log(`[BL-DIAG-ASYNC] [Migration] FAILED/UNRESOLVED category=bake, localId=${b.id}, targetId=${targetId}, owner=${ownerVal}, error=${errDiag}, retainedLocally=true, contributingToUnresolvedCount=true`);
+      console.warn(`[Migration] Failed to sync bake session (local ID: ${b.id}):`, errDiag);
       bakesFailed++;
     }
   }
@@ -475,7 +485,9 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   for (const s of feedHistoryToMigrate) {
     const key = `feed:${s.id}`;
     const targetId = ledger[key];
+    const ownerVal = s.userId ?? s.user_id ?? "missing";
 
+    console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=feed, localId=${s.id}, targetId=${targetId}, owner=${ownerVal}, inProgress=false`);
     try {
       const { inProgress: _, ...feedData } = s as any;
       await api.history.feed.upsert({
@@ -489,8 +501,11 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         data: feedData,
       });
       feedOk++;
+      console.log(`[BL-DIAG-ASYNC] [Migration] SUCCESS category=feed, localId=${s.id}, targetId=${targetId}, retainedLocally=true`);
     } catch (error) {
-      console.warn(`[Migration] Failed to sync feed session (local ID: ${s.id}):`, formatErrorDiagnostic(error));
+      const errDiag = formatErrorDiagnostic(error);
+      console.log(`[BL-DIAG-ASYNC] [Migration] FAILED/UNRESOLVED category=feed, localId=${s.id}, targetId=${targetId}, owner=${ownerVal}, error=${errDiag}, retainedLocally=true, contributingToUnresolvedCount=true`);
+      console.warn(`[Migration] Failed to sync feed session (local ID: ${s.id}):`, errDiag);
       feedFailed++;
     }
   }
@@ -498,7 +513,9 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   if (activeFeedToMigrate) {
     const key = `feed:${activeFeedToMigrate.id}`;
     const targetId = ledger[key];
+    const ownerVal = activeFeedToMigrate.userId ?? activeFeedToMigrate.user_id ?? "missing";
 
+    console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=active_feed, localId=${activeFeedToMigrate.id}, targetId=${targetId}, owner=${ownerVal}, inProgress=true`);
     try {
       const { inProgress: _, ...feedData } = activeFeedToMigrate as any;
       await api.history.feed.upsert({
@@ -512,11 +529,16 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
         data: feedData,
       });
       feedOk++;
+      console.log(`[BL-DIAG-ASYNC] [Migration] SUCCESS category=active_feed, localId=${activeFeedToMigrate.id}, targetId=${targetId}, retainedLocally=true`);
     } catch (error) {
-      console.warn(`[Migration] Failed to sync active feed session (local ID: ${activeFeedToMigrate.id}):`, formatErrorDiagnostic(error));
+      const errDiag = formatErrorDiagnostic(error);
+      console.log(`[BL-DIAG-ASYNC] [Migration] FAILED/UNRESOLVED category=active_feed, localId=${activeFeedToMigrate.id}, targetId=${targetId}, owner=${ownerVal}, error=${errDiag}, retainedLocally=true, contributingToUnresolvedCount=true`);
+      console.warn(`[Migration] Failed to sync active feed session (local ID: ${activeFeedToMigrate.id}):`, errDiag);
       feedFailed++;
     }
   }
+
+  console.log(`[BL-DIAG-ASYNC] [Migration] SUMMARY RECONCILIATION: recipes(ok=${recipesOk}, failed=${recipesFailed}), bakes(ok=${bakesOk}, failed=${bakesFailed}), feeds(ok=${feedOk}, failed=${feedFailed})`);
 
   const totalLocalRecipes = recipes.length;
   const unresolvedRecipes = Math.max(0, totalLocalRecipes - recipesOk - recipesFailed);
