@@ -296,13 +296,13 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
 
   // Ensure active bakes without IDs get durable IDs assigned and persisted back to storage in original shape (array vs object)
   let activeBakesUpdated = false;
-  for (const bake of activeBakesToMigrate) {
-    if (!bake || typeof bake !== "object") {
-      throw new Error("Invalid active bake record: expected object");
-    }
-    if (!bake.id || typeof bake.id !== "string" || bake.id.trim() === "") {
-      bake.id = generateSecureUUID();
-      activeBakesUpdated = true;
+  for (const bake of activeBakes) {
+    if (!bake || typeof bake !== "object") continue;
+    if (isAnonymousOrOwnedGuard(bake)) {
+      if (!bake.id || typeof bake.id !== "string" || bake.id.trim() === "") {
+        bake.id = generateSecureUUID();
+        activeBakesUpdated = true;
+      }
     }
   }
   if (activeBakesUpdated) {
