@@ -1,6 +1,6 @@
 // artifacts/sourdough/lib/__tests__/recipeMigration.test.ts
 import { migrateLocalDataToAccount } from "../migrate";
-import { getOwnerStorageKey, APP_STORAGE_KEYS } from "../storageUtils";
+import { getOwnerStorageKey, APP_STORAGE_KEYS, QUARANTINE_KEY } from "../storageUtils";
 import { api } from "../api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -46,7 +46,7 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Ownership-Safe Active-Bake Persistence", () => {
+describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Quarantine Recovery Integration", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockStorage = {};
@@ -148,7 +148,7 @@ describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Ownership
     expect(result.recipes.ok).toBe(1);
   });
 
-  // 2. Active-Bake Persistence & Ownership Safety Tests
+  // 2. Active-Bake Persistence & Quarantine Recovery Tests
   it("Active Bake Test A — Scoped-only record without ID gets assigned ID, persisted to scoped key, legacy key untouched", async () => {
     const token = "user-123";
     const scopedActiveBakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.ACTIVE_BAKE, token);
@@ -233,12 +233,13 @@ describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Ownership
     expect(storedLegacy[0].id).toBeTruthy();
   });
 
-  it("Active Bake Test D — Ownership-safe active-bake persistence verifies rejected/foreign records are not copied into owner-scoped storage keys", async () => {
+  it("Active Bake Test D — Ownership-safe active-bake persistence preserves rejected records recoverably in quarantine storage", async () => {
     const token = "user-123";
     const scopedActiveBakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.ACTIVE_BAKE, token);
+    const foreignQuarantineKey = QUARANTINE_KEY("user-FOREIGN");
 
     const foreignOriginal = {
-      id: "",
+      id: "bake-foreign-1",
       userId: "user-FOREIGN",
       recipeName: "Foreign Unassigned Bake",
       phases: [],
@@ -260,18 +261,30 @@ describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Ownership
     const result = await migrateLocalDataToAccount(token);
     expect(result.bakes.ok).toBe(1);
 
-    const storedScopedRaw = mockStorage[scopedActiveBakeKey];
-    expect(storedScopedRaw).toBeDefined();
-    const storedScopedBakes = JSON.parse(storedScopedRaw);
-
-    const eligible = storedScopedBakes.find((b: any) => b.userId === token);
-    const foreignInScoped = storedScopedBakes.find((b: any) => b.userId === "user-FOREIGN");
-
-    // Eligible record is normalized (assigned a non-empty ID) and persisted
+    // 1. Verify eligible record is normalized and persisted in scoped storage
+    const storedScoped = JSON.parse(mockStorage[scopedActiveBakeKey]);
+    const eligible = storedScoped.find((b: any) => b.userId === token);
     expect(eligible).toBeDefined();
     expect(eligible.id).toBeTruthy();
 
-    // Rejected/foreign record must NOT be copied into or persisted in owner-scoped storage key
+    // 2. Verify foreign record is excluded from active account's operational collection
+    const foreignInScoped = storedScoped.find((b: any) => b.userId === "user-FOREIGN");
     expect(foreignInScoped).toBeUndefined();
+
+    // 3. Verify foreign record is preserved recoverably in its quarantine bucket unchanged
+    const quarantineRaw = mockStorage[foreignQuarantineKey];
+    expect(quarantineRaw).toBeDefined();
+    const quarantineBucket = JSON.parse(quarantineRaw);
+    expect(quarantineBucket.activeBakes).toBeDefined();
+    const quarantinedForeign = quarantineBucket.activeBakes.find((b: any) => b.id === "bake-foreign-1");
+    expect(quarantinedForeign).toBeDefined();
+    expect(quarantinedForeign.marker).toBe("pristine-foreign-marker");
+    expect(quarantinedForeign.userId).toBe("user-FOREIGN");
+
+    // 4. Verify re-running migration does not duplicate or lose records
+    const result2 = await migrateLocalDataToAccount(token);
+    expect(result2.bakes.ok).toBe(1);
+    const quarantineBucket2 = JSON.parse(mockStorage[foreignQuarantineKey]);
+    expect(quarantineBucket2.activeBakes.length).toBe(1);
   });
 });

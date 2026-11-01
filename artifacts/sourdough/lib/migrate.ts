@@ -1,4 +1,4 @@
-import { getOwnerStorageKey } from "./storageUtils";
+import { getOwnerStorageKey, QUARANTINE_KEY, UNKNOWN_QUARANTINE_KEY } from "./storageUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import { api } from "./api";
@@ -209,6 +209,50 @@ export function isAnonymousOrOwned(record: any, token: string): boolean {
   return owner.trim() === "anonymous" || owner.trim() === token;
 }
 
+async function safelyQuarantineRejectedRecords(rejectedRecords: any[], category: string): Promise<void> {
+  if (!rejectedRecords || rejectedRecords.length === 0) return;
+
+  const ownerBuckets = new Map<string, any[]>();
+  for (const rec of rejectedRecords) {
+    if (!rec || typeof rec !== "object") continue;
+    const owner = rec.userId ?? rec.user_id;
+    const ownerKey = (!owner || String(owner).trim() === "") ? "unknown" : String(owner).trim();
+    if (!ownerBuckets.has(ownerKey)) ownerBuckets.set(ownerKey, []);
+    ownerBuckets.get(ownerKey)!.push(rec);
+  }
+
+  for (const [ownerKey, list] of ownerBuckets.entries()) {
+    const qKey = ownerKey === "unknown" ? UNKNOWN_QUARANTINE_KEY : QUARANTINE_KEY(ownerKey);
+    let existing: any = {};
+    const rawQ = await AsyncStorage.getItem(qKey).catch(() => null);
+    if (rawQ) {
+      try {
+        existing = JSON.parse(rawQ);
+      } catch {
+        existing = {};
+      }
+    }
+
+    const existingList = Array.isArray(existing[category]) ? existing[category] : [];
+    const ids = new Set(existingList.map((x: any) => x?.id).filter(Boolean));
+    const added = list.filter(x => !x?.id || !ids.has(x.id));
+    const mergedList = [...existingList, ...added];
+
+    const updatedStore = {
+      ...existing,
+      [category]: mergedList
+    };
+
+    const serialized = JSON.stringify(updatedStore);
+    await AsyncStorage.setItem(qKey, serialized);
+
+    const verifyQ = await AsyncStorage.getItem(qKey);
+    if (!verifyQ || JSON.parse(verifyQ)[category]?.length !== updatedStore[category].length) {
+      throw new Error(`Quarantine recovery write failed verification for bucket ${qKey}; aborting destructive source write to prevent data loss.`);
+    }
+  }
+}
+
 /**
  * migrateLocalDataToAccount
  * Bulletproof Two-Pass Typed Import Engine with Durable Ledger & Relationship Remapping.
@@ -287,6 +331,21 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   const activeBakes = bakeResult.bakes;
 
   const isAnonymousOrOwnedGuard = (record: any) => isAnonymousOrOwned(record, token);
+
+  const rejectedRecipes = recipes.filter(r => !isAnonymousOrOwnedGuard(r));
+  if (rejectedRecipes.length > 0) {
+    await safelyQuarantineRejectedRecords(rejectedRecipes, "recipes");
+  }
+
+  const rejectedBakeHistory = bakeHistory.filter(b => !isAnonymousOrOwnedGuard(b));
+  if (rejectedBakeHistory.length > 0) {
+    await safelyQuarantineRejectedRecords(rejectedBakeHistory, "bakeHistory");
+  }
+
+  const rejectedActiveBakes = activeBakes.filter(b => !isAnonymousOrOwnedGuard(b));
+  if (rejectedActiveBakes.length > 0) {
+    await safelyQuarantineRejectedRecords(rejectedActiveBakes, "activeBakes");
+  }
 
   const recipesToMigrate = recipes.filter(isAnonymousOrOwnedGuard);
   const bakeHistoryToMigrate = bakeHistory.filter(isAnonymousOrOwnedGuard);
