@@ -46,7 +46,7 @@ jest.mock("../deviceId", () => ({
   getDeviceId: jest.fn().mockResolvedValue("mock-device-id-123"),
 }));
 
-describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Active-Bake Persistence Tests", () => {
+describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Ownership-Safe Active-Bake Persistence", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockStorage = {};
@@ -148,7 +148,7 @@ describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Active-Ba
     expect(result.recipes.ok).toBe(1);
   });
 
-  // 2. Active-Bake Persistence Tests
+  // 2. Active-Bake Persistence & Ownership Safety Tests
   it("Active Bake Test A — Scoped-only record without ID gets assigned ID, persisted to scoped key, legacy key untouched", async () => {
     const token = "user-123";
     const scopedActiveBakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.ACTIVE_BAKE, token);
@@ -237,10 +237,24 @@ describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Active-Ba
     const token = "user-123";
     const scopedActiveBakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.ACTIVE_BAKE, token);
 
-    // Seed eligible record without ID and foreign-owned record without ID
+    const foreignOriginal = {
+      id: "",
+      userId: "user-FOREIGN",
+      recipeName: "Foreign Unassigned Bake",
+      phases: [],
+      marker: "pristine-foreign-marker"
+    };
+
+    const eligibleOriginal = {
+      id: "",
+      userId: token,
+      recipeName: "Eligible User Bake",
+      phases: []
+    };
+
     mockStorage[scopedActiveBakeKey] = JSON.stringify([
-      { id: "", userId: token, recipeName: "Eligible User Bake", phases: [] },
-      { id: "", userId: "user-FOREIGN", recipeName: "Foreign Unassigned Bake", phases: [] }
+      eligibleOriginal,
+      foreignOriginal
     ]);
 
     const result = await migrateLocalDataToAccount(token);
@@ -252,7 +266,10 @@ describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Active-Ba
 
     // Eligible record is normalized (assigned a non-empty ID)
     expect(eligible.id).toBeTruthy();
-    // Foreign record is rejected by ownership guard and must NOT be assigned an ID or rewritten
+    expect(eligible.id).not.toBe("");
+
+    // Rejected/foreign record must not be normalized, assigned an ID, or mutated in any way
     expect(foreign.id).toBe("");
+    expect(foreign.marker).toBe("pristine-foreign-marker");
   });
 });
