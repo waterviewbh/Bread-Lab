@@ -310,6 +310,11 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
       const groups = new Map<string, any[]>();
       for (const bake of activeBakes) {
         const srcKey = bake.__sourceKey || ACTIVE_BAKE_KEY;
+        const isScopedKey = srcKey !== ACTIVE_BAKE_KEY;
+        if (isScopedKey && !isAnonymousOrOwnedGuard(bake)) {
+          continue; // Do not copy rejected/foreign records into owner-scoped storage keys
+        }
+
         const cleanBake = { ...bake };
         delete cleanBake.__sourceKey;
         if (!groups.has(srcKey)) groups.set(srcKey, []);

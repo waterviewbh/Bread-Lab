@@ -233,7 +233,7 @@ describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Ownership
     expect(storedLegacy[0].id).toBeTruthy();
   });
 
-  it("Active Bake Test D — Ownership-safe active-bake persistence verifies rejected/foreign records are not rewritten or normalized", async () => {
+  it("Active Bake Test D — Ownership-safe active-bake persistence verifies rejected/foreign records are not copied into owner-scoped storage keys", async () => {
     const token = "user-123";
     const scopedActiveBakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.ACTIVE_BAKE, token);
 
@@ -260,16 +260,18 @@ describe("Issue #24: Owner-Scoped Migration Reads, Restored Coverage & Ownership
     const result = await migrateLocalDataToAccount(token);
     expect(result.bakes.ok).toBe(1);
 
-    const storedBakes = JSON.parse(mockStorage[scopedActiveBakeKey]);
-    const eligible = storedBakes.find((b: any) => b.userId === token);
-    const foreign = storedBakes.find((b: any) => b.userId === "user-FOREIGN");
+    const storedScopedRaw = mockStorage[scopedActiveBakeKey];
+    expect(storedScopedRaw).toBeDefined();
+    const storedScopedBakes = JSON.parse(storedScopedRaw);
 
-    // Eligible record is normalized (assigned a non-empty ID)
+    const eligible = storedScopedBakes.find((b: any) => b.userId === token);
+    const foreignInScoped = storedScopedBakes.find((b: any) => b.userId === "user-FOREIGN");
+
+    // Eligible record is normalized (assigned a non-empty ID) and persisted
+    expect(eligible).toBeDefined();
     expect(eligible.id).toBeTruthy();
-    expect(eligible.id).not.toBe("");
 
-    // Rejected/foreign record must not be normalized, assigned an ID, or mutated in any way
-    expect(foreign.id).toBe("");
-    expect(foreign.marker).toBe("pristine-foreign-marker");
+    // Rejected/foreign record must NOT be copied into or persisted in owner-scoped storage key
+    expect(foreignInScoped).toBeUndefined();
   });
 });
