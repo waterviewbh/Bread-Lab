@@ -1,5 +1,6 @@
 // artifacts/sourdough/lib/api.ts — Supabase-backed data layer.
 import { supabase } from "./supabase";
+import { getStoredToken } from "./auth";
 import {
   computeVitalityAnalytics,
   updateAllTimeAnalytics,
@@ -483,8 +484,9 @@ export const api = {
 
   recipes: {
     list: async (deviceId?: string, userId?: string): Promise<ApiRecipe[]> => {
-      if (!supabase || !userId) return [];
-      const filter = ownerFilter(deviceId, userId);
+      const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+      if (!supabase) return [];
+      const filter = ownerFilter(deviceId, resolvedUserId);
       if (!filter) return [];
       const { data, error } = await supabase.from("recipes").select("*").or(filter).order("created_at", { ascending: false }).returns<RecipeRow[]>();
       if (error) throw error;
@@ -601,8 +603,9 @@ export const api = {
   history: {
     feed: {
       list: async (deviceId?: string, userId?: string): Promise<ApiFeedSession[]> => {
-        if (!supabase || !userId) return [];
-        const filter = ownerFilter(deviceId, userId);
+        const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+        if (!supabase) return [];
+        const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return [];
         const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).order("saved_at", { ascending: false }).eq("in_progress", false).limit(500).returns<FeedSessionRow[]>();
         if (error) throw error;
@@ -621,8 +624,9 @@ export const api = {
       },
 
       active: async (deviceId?: string, userId?: string) => {
-        if (!supabase || !userId) return null;
-        const filter = ownerFilter(deviceId, userId);
+        if (!supabase) return null;
+        const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+        const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return null;
         const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).eq("in_progress", true).order("updated_at", { ascending: false }).limit(1).returns<FeedSessionRow[]>().maybeSingle();
         if (error) throw error;
@@ -647,8 +651,9 @@ export const api = {
 
     bakes: {
       list: async (deviceId?: string, userId?: string): Promise<ApiBakeSession[]> => {
-        if (!supabase || !userId) return [];
-        const filter = ownerFilter(deviceId, userId);
+        const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+        if (!supabase) return [];
+        const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return [];
         const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).order("saved_at", { ascending: false }).limit(200).returns<BakeSessionRow[]>();
         if (error) throw error;
@@ -656,8 +661,11 @@ export const api = {
       },
 
       active: async (deviceId?: string, userId?: string) => {
-        if (!supabase || !deviceId || !userId) return null;
-        const { data, error } = await supabase.from("bake_sessions").select("*").eq("device_id", deviceId).eq("user_id", userId).eq("in_progress", true).order("started_at", { ascending: false }).limit(1).returns<BakeSessionRow[]>().maybeSingle();
+        if (!supabase) return null;
+        const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+        const filter = ownerFilter(deviceId, resolvedUserId);
+        if (!filter) return null;
+        const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).eq("in_progress", true).order("started_at", { ascending: false }).limit(1).returns<BakeSessionRow[]>().maybeSingle();
         if (error) throw error;
         return data ? rowToApiBakeSession(data) : null;
       },

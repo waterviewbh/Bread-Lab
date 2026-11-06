@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { archiveBakeWithDiagnostics } from "@/lib/recipeStorage";
 import { BAKE_HISTORY_KEY, ActiveBake } from "@/lib/recipeTypes";
+import { getOwnerStorageKey } from "@/lib/storageUtils";
 
 let mockStore: Record<string, string> = {};
 
@@ -44,7 +45,7 @@ describe("Issue #69 — Bake Reset vs History Archival Suite", () => {
 
     await archiveBakeWithDiagnostics(mockBake, callbacks);
 
-    const raw = await AsyncStorage.getItem(BAKE_HISTORY_KEY);
+    const raw = await AsyncStorage.getItem(getOwnerStorageKey(BAKE_HISTORY_KEY, "anonymous"));
     const parsed = JSON.parse(raw || "[]");
     expect(parsed.length).toBe(1);
     expect(parsed[0].id).toBe("bake-123");

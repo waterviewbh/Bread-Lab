@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { appendRecipeLocal } from "@/lib/recipeStorage";
 import { RECIPES_KEY } from "@/lib/recipeTypes";
+import { getOwnerStorageKey } from "@/lib/storageUtils";
 import { saveCandidate, loadCandidates, updateCandidateExtraction, removeCandidate, clearCandidates } from "@/lib/candidateStorage";
 import { DETERMINISTIC_TEST_CANDIDATE } from "@/constants/testCandidateFixture";
 import { SavedRecipe } from "@/lib/recipeTypes";
@@ -57,7 +58,7 @@ describe("Issue #73 — Candidate Promotion & Storage Mutex Regression Suite", (
       appendRecipeLocal(recipeB),
     ]);
 
-    const raw = await AsyncStorage.getItem(RECIPES_KEY);
+    const raw = await AsyncStorage.getItem(getOwnerStorageKey(RECIPES_KEY, "anonymous"));
     console.log("DEBUG RAW after Promise.all:", raw, "mockStore:", mockStore);
     const parsed = JSON.parse(raw || "[]") as SavedRecipe[];
     expect(parsed.length).toBe(2);
@@ -86,7 +87,7 @@ describe("Issue #73 — Candidate Promotion & Storage Mutex Regression Suite", (
     await expect(appendRecipeLocal(newRecipe)).rejects.toThrow("Disk read error");
 
     mockShouldThrowReadError = false;
-    const raw = await AsyncStorage.getItem(RECIPES_KEY);
+    const raw = await AsyncStorage.getItem(getOwnerStorageKey(RECIPES_KEY, "anonymous"));
     const parsed = JSON.parse(raw || "[]") as SavedRecipe[];
     expect(parsed.length).toBe(1);
     expect(parsed[0].id).toBe("existing-1");

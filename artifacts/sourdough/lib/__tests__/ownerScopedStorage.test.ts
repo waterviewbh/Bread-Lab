@@ -1,4 +1,3 @@
-// artifacts/sourdough/lib/__tests__/ownerScopedStorage.test.ts
 import { getOwnerStorageKey, APP_STORAGE_KEYS, quarantineOperationalData, QUARANTINE_KEY } from "../storageUtils";
 import { loadAll, writeRecipesLocal, appendRecipeLocal, addToRecipeTombstone, getRecipeTombstone } from "../recipeStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -14,7 +13,7 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
     const authModule = require("../auth");
     jest.spyOn(authModule, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));
 
-    await authModule.saveAuth("token-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
+    await authModule.saveAuth("user-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
 
     let resolveRemote: (recipes: any[]) => void = () => {};
     const remotePromise = new Promise<any[]>((r) => {
@@ -26,7 +25,7 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
 
     const loadPromise = loadAll();
 
-    await authModule.saveAuth("token-B", { id: "user-B", firstName: "User B", starterName: "Starter B" });
+    await authModule.saveAuth("user-B", { id: "user-B", firstName: "User B", starterName: "Starter B" });
 
     resolveRemote([
       { id: "rec-A", userId: "user-A", name: "Recipe A", phases: [{ key: "p1", name: "Mix", ingredients: [], instructions: [] }] }
@@ -42,7 +41,7 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
     const authModule = require("../auth");
     jest.spyOn(authModule, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));
 
-    await authModule.saveAuth("token-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
+    await authModule.saveAuth("user-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
 
     const keyA = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
     const keyB = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
@@ -84,7 +83,7 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
     await reachedBoundary;
 
     // Perform real production transition while loadAll is suspended
-    await authModule.saveAuth("token-B", {
+    await authModule.saveAuth("user-B", {
       id: "user-B",
       firstName: "User B",
       starterName: "Starter B",
@@ -104,7 +103,7 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
     const authModule = require("../auth");
     jest.spyOn(authModule, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));
 
-    await authModule.saveAuth("token-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
+    await authModule.saveAuth("user-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
 
     let resolveRemote: (recipes: any[]) => void = () => {};
     const remotePromise = new Promise<any[]>((r) => {
@@ -142,7 +141,7 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
   it("Test E — Foreign-owner writes are rejected by guarded write path", async () => {
     const authModule = require("../auth");
     jest.spyOn(authModule, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));
-    await authModule.saveAuth("token-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
+    await authModule.saveAuth("user-A", { id: "user-A", firstName: "User A", starterName: "Starter A" });
 
     const foreignRecipe = {
       id: "rec-foreign",

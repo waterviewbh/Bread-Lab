@@ -9,7 +9,7 @@ import {
 } from "@/lib/shareDiagnostics";
 import { generateUuid } from "@/lib/recipeImport";
 import { safeParse, storageMutex, AsyncMutex } from "@/lib/storageUtils";
-import { getStoredUser } from "@/lib/auth";
+import { getStoredUser, getStoredToken } from "@/lib/auth";
 
 export const LEGACY_GLOBAL_CANDIDATES_KEY = "bread_lab_candidates_v1";
 export const ANONYMOUS_CANDIDATES_KEY = "bread_lab_candidates_v1_anonymous";
@@ -29,13 +29,11 @@ export const ingestionMutex = new AsyncMutex();
  * Unauthenticated / local sessions use bread_lab_candidates_v1_anonymous.
  */
 export async function getCandidatesKey(): Promise<string> {
-  try {
-    const user = await getStoredUser();
-    if (user && user.id) {
-      return `bread_lab_candidates_v1_${user.id}`;
-    }
-  } catch (_e) {}
-  return ANONYMOUS_CANDIDATES_KEY;
+  const token = await getStoredToken();
+  if (token === null) {
+    return ANONYMOUS_CANDIDATES_KEY;
+  }
+  return `bread_lab_candidates_v1_${token}`;
 }
 
 /**

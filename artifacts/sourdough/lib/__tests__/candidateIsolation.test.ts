@@ -44,7 +44,7 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
 
   it('2. Account A candidate is absent when Account B logs in (Account isolation)', async () => {
     // ── Log in as User A ──
-    await saveAuth('token-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
+    await saveAuth('user-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
     const keyA = await getCandidatesKey();
     expect(keyA).toBe('bread_lab_candidates_v1_user-a');
 
@@ -54,7 +54,7 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
 
     // ── Logout A, Login B ──
     await clearAuth();
-    await saveAuth('token-b', { id: 'user-b', firstName: 'Bob', starterName: 'Levain B' });
+    await saveAuth('user-b', { id: 'user-b', firstName: 'Bob', starterName: 'Levain B' });
     const keyB = await getCandidatesKey();
     expect(keyB).toBe('bread_lab_candidates_v1_user-b');
 
@@ -64,7 +64,7 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
 
   it('3. Logout/login restores the correct account candidate namespace', async () => {
     // User A creates candidate
-    await saveAuth('token-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
+    await saveAuth('user-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
     await saveCandidate(mockExtraction);
     expect((await loadCandidates()).length).toBe(1);
 
@@ -73,7 +73,7 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     expect((await loadCandidates()).length).toBe(0); // unauthenticated sees anonymous (empty)
 
     // Log back in as User A
-    await saveAuth('token-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
+    await saveAuth('user-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
     const restoredA = await loadCandidates();
     expect(restoredA.length).toBe(1); // User A's candidate is fully restored
     expect(restoredA[0].extractionResult.candidate.name).toBe('Test Loaf');
@@ -81,12 +81,12 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
 
   it('4. Account operations (edit, remove) do not affect other accounts', async () => {
     // User A creates candidate
-    await saveAuth('token-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
+    await saveAuth('user-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
     const recA = await saveCandidate(mockExtraction);
 
     // User B logs in, creates own candidate
     await clearAuth();
-    await saveAuth('token-b', { id: 'user-b', firstName: 'Bob', starterName: 'Levain B' });
+    await saveAuth('user-b', { id: 'user-b', firstName: 'Bob', starterName: 'Levain B' });
     const recB = await saveCandidate({
       status: 'single_candidate',
       warnings: [],
@@ -102,7 +102,7 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
 
     // User A logs back in, User A's candidate remains untouched
     await clearAuth();
-    await saveAuth('token-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
+    await saveAuth('user-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
     const candidatesA = await loadCandidates();
     expect(candidatesA.length).toBe(1);
     expect(candidatesA[0].id).toBe(recA.id);
@@ -118,7 +118,7 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     await AsyncStorage.setItem(LEGACY_GLOBAL_CANDIDATES_KEY, JSON.stringify([legacyRecord]));
 
     // Authenticate as User A
-    await saveAuth('token-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
+    await saveAuth('user-a', { id: 'user-a', firstName: 'Alice', starterName: 'Levain A' });
 
     // User A loads candidates — legacy data should NOT be silently attributed to User A
     const candidatesA = await loadCandidates();

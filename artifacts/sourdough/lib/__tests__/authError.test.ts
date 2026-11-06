@@ -10,7 +10,6 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   removeItem: jest.fn().mockResolvedValue(undefined),
   multiSet: jest.fn().mockResolvedValue(undefined),
   multiRemove: jest.fn().mockResolvedValue(undefined),
-  multiGet: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock("../supabase", () => ({
@@ -169,7 +168,7 @@ describe("Auth Error Handling & Domain Regression", () => {
     // Case 2: Verification read back fails -> saveAuth throws error and purges keys via clearAuth
     getItemMock.mockResolvedValue(null); // Read back returns null (simulating write failure)
 
-    await expect(saveAuth("failed-id", userObj)).rejects.toThrow(/Credential persistence failed verification/);
+    await expect(saveAuth("valid-id", userObj)).rejects.toThrow(/Credential persistence failed verification/);
     expect(AsyncStorage.multiRemove).toHaveBeenCalledWith([
       "bread_lab_auth_token_v1",
       "bread_lab_auth_user_v1",
@@ -184,5 +183,140 @@ describe("Auth Error Handling & Domain Regression", () => {
     getItemMock.mockResolvedValue("remaining-value");
 
     await expect(clearOperationalData()).rejects.toThrow(/Operational wipe verification failed/);
+  });
+
+  describe("Issue #89: Validated Local Identity Contract", () => {
+    it("returns null when both keys are absent (NLA)", async () => {
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockResolvedValue(null);
+
+      expect(await getStoredToken()).toBeNull();
+      expect(await getStoredUser()).toBeNull();
+    });
+
+    it("returns token and user when matching pair is present", async () => {
+      const userObj = { id: "user-123", firstName: "Alice", starterName: "Levain" };
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve("user-123");
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve(JSON.stringify(userObj));
+        return Promise.resolve(null);
+      });
+
+      expect(await getStoredToken()).toBe("user-123");
+      expect(await getStoredUser()).toEqual(userObj);
+    });
+
+    it("fails closed (throws error) when token is present but profile is absent", async () => {
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve("user-123");
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve(null);
+        return Promise.resolve(null);
+      });
+
+      await expect(getStoredToken()).rejects.toThrow(/Identity integrity failure/);
+      await expect(getStoredUser()).rejects.toThrow(/Identity integrity failure/);
+    });
+
+    it("fails closed (throws error) when profile is present but token is absent", async () => {
+      const userObj = { id: "user-123", firstName: "Alice", starterName: "Levain" };
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve(null);
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve(JSON.stringify(userObj));
+        return Promise.resolve(null);
+      });
+
+      await expect(getStoredToken()).rejects.toThrow(/Identity integrity failure/);
+      await expect(getStoredUser()).rejects.toThrow(/Identity integrity failure/);
+    });
+
+    it("fails closed (throws error) when token and profile IDs differ", async () => {
+      const userObj = { id: "user-999", firstName: "Alice", starterName: "Levain" };
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve("user-123");
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve(JSON.stringify(userObj));
+        return Promise.resolve(null);
+      });
+
+      await expect(getStoredToken()).rejects.toThrow(/Identity integrity failure.*IDs differ/);
+      await expect(getStoredUser()).rejects.toThrow(/Identity integrity failure.*IDs differ/);
+    });
+
+    it("fails closed when profile JSON is malformed", async () => {
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve("user-123");
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve("not-json");
+        return Promise.resolve(null);
+      });
+
+      await expect(getStoredToken()).rejects.toThrow(/Identity integrity failure.*malformed/);
+    });
+
+    it("fails closed when profile object is invalid (missing fields)", async () => {
+      const invalidUser = { id: "user-123", firstName: "Alice" }; // missing starterName
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve("user-123");
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve(JSON.stringify(invalidUser));
+        return Promise.resolve(null);
+      });
+
+      await expect(getStoredToken()).rejects.toThrow(/Identity integrity failure/);
+    });
+
+    it("fails closed when token is blank or invalid", async () => {
+      const userObj = { id: "", firstName: "Alice", starterName: "Levain" };
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve("   ");
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve(JSON.stringify(userObj));
+        return Promise.resolve(null);
+      });
+
+      await expect(getStoredToken()).rejects.toThrow(/Identity integrity failure/);
+    });
+
+    it("fails closed when reading credentials throws storage error", async () => {
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockRejectedValue(new Error("Disk read error"));
+
+      await expect(getStoredToken()).rejects.toThrow(/Credential read failed/);
+    });
+
+    it("saveAuth rejects mismatched IDs before persisting", async () => {
+      const userObj = { id: "user-456", firstName: "Bob", starterName: "Levain" };
+      await expect(saveAuth("user-123", userObj)).rejects.toThrow(/token and profile IDs differ/);
+      expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
+    });
+
+    it("Candidate storage selects anonymous when both keys absent, verified owner when valid, and rejects on integrity error", async () => {
+      const { getCandidatesKey } = require("../candidateStorage");
+
+      // 1. Both absent -> anonymous
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockResolvedValue(null);
+      expect(await getCandidatesKey()).toBe("bread_lab_candidates_v1_anonymous");
+
+      // 2. Valid authenticated pair -> owner key
+      const userObj = { id: "user-123", firstName: "Alice", starterName: "Levain" };
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve("user-123");
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve(JSON.stringify(userObj));
+        return Promise.resolve(null);
+      });
+      expect(await getCandidatesKey()).toBe("bread_lab_candidates_v1_user-123");
+
+      // 3. Integrity failure (mismatched) -> rejects (does NOT fall back to anonymous)
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_token_v1") return Promise.resolve("user-123");
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve(JSON.stringify({ id: "user-999", firstName: "Alice", starterName: "Levain" }));
+        return Promise.resolve(null);
+      });
+      await expect(getCandidatesKey()).rejects.toThrow(/Identity integrity failure/);
+    });
   });
 });
