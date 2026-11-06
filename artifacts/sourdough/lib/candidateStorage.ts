@@ -126,11 +126,11 @@ export async function ingestStagedNativeShares(): Promise<void> {
  * Reads all Candidate records from local storage for the active account.
  */
 export async function loadCandidates(): Promise<CandidateRecord[]> {
-  try {
-    await migrateLegacyCandidatesIfNeeded();
-    await ingestStagedNativeShares();
+  await migrateLegacyCandidatesIfNeeded();
+  await ingestStagedNativeShares();
 
-    const key = await getCandidatesKey();
+  const key = await getCandidatesKey();
+  try {
     const raw = await AsyncStorage.getItem(key);
     const candidates = safeParse<CandidateRecord[]>(raw, [], Array.isArray);
 
@@ -140,7 +140,7 @@ export async function loadCandidates(): Promise<CandidateRecord[]> {
       return timeB - timeA;
     });
   } catch (e) {
-    console.error("[candidateStorage] loadCandidates failed", e);
+    console.error("[candidateStorage] loadCandidates read failed", e);
     return [];
   }
 }

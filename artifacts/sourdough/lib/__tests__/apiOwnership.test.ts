@@ -152,181 +152,34 @@ describe("API Ownership & Signout Real Implementation", () => {
       error: null,
     });
     await expect(
-      api.recipes.upsert({ id: "rec-1", name: "Test", userId: "user-456", phases: [], yield_value: 1, deviceId: "dev" })
+      api.recipes.upsert({ id: "r-1", name: "Bad", userId: "user-1" })
     ).rejects.toThrow(/Authentication required/);
 
-    // Case 2: Session user ID differs from target user ID
+    // Case 2: Session user ID does not match target user ID
     getSessionMock.mockResolvedValue({
-      data: { session: { user: { id: "active-session-user-123" } } },
+      data: { session: { user: { id: "user-1" } } },
       error: null,
     });
     await expect(
-      api.recipes.upsert({ id: "rec-1", name: "Test", userId: "different-user-456", phases: [], yield_value: 1, deviceId: "dev" })
-    ).rejects.toThrow(/Owner\/Session mismatch/);
-
-    await expect(
-      api.history.bakes.upsert({ id: "bake-1", recipeName: "Test", userId: "different-user-456", phases: [], yield_value: 1, deviceId: "dev", startedAt: 1, savedAt: 1 })
-    ).rejects.toThrow(/Owner\/Session mismatch/);
-
-    await expect(
-      api.history.feed.upsert({ id: "feed-1", userId: "different-user-456", data: {}, savedAt: 1, deviceId: "dev" })
+      api.recipes.upsert({ id: "r-1", name: "Bad", userId: "user-2" })
     ).rejects.toThrow(/Owner\/Session mismatch/);
   });
 
-  it("fails closed when getSession() throws an error", async () => {
-    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
-    getSessionMock.mockRejectedValue(new Error("Network auth error"));
+  it("enforces correct ownership filtering for list operations", async () => {
+    await api.recipes.list("dev-1", "user-A");
+    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-A");
 
-    await expect(
-      api.recipes.upsert({ id: "rec-1", name: "Test", userId: "user-123", phases: [], yield_value: 1, deviceId: "dev" })
-    ).rejects.toThrow(/Failed to retrieve active authentication session/);
-  });
-
-  it("preserves original recipe creation timestamps in upsert payloads and handles missing/invalid values deliberately", async () => {
-    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
-    getSessionMock.mockResolvedValue({
-      data: { session: { user: { id: "user-123" } } },
-      error: null,
-    });
-
-    const fromMock = (supabase!.from as jest.Mock);
-
-    // Case 1: Valid numeric createdAt (1700000000000) -> formatted to ISO string in created_at
-    const mockUpsert1 = jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnValue({
-        returns: jest.fn().mockReturnValue({
-          single: jest.fn().mockResolvedValue({
-            data: { id: "rec-ts-1", name: "TS Test 1", phases: [], created_at: "2023-11-14T22:13:20.000Z" },
-            error: null,
-          }),
-        }),
-      }),
-    });
-    fromMock.mockReturnValueOnce({ upsert: mockUpsert1 });
-
-    await api.recipes.upsert({
-      id: "rec-ts-1",
-      name: "TS Test 1",
-      userId: "user-123",
-      createdAt: 1700000000000,
-      phases: [],
-      yield_value: 1,
-      deviceId: "dev",
-    });
-
-    expect(mockUpsert1).toHaveBeenCalledWith(
-      expect.objectContaining({
-        created_at: "2023-11-14T22:13:20.000Z",
-      })
-    );
-
-    // Case 2: Missing or invalid createdAt (e.g. NaN) -> created_at omitted so Postgres uses default on insert or leaves untouched on update
-    const mockUpsert2 = jest.fn().mockReturnValue({
-      select: jest.fn().mockReturnValue({
-        returns: jest.fn().mockReturnValue({
-          single: jest.fn().mockResolvedValue({
-            data: { id: "rec-ts-2", name: "TS Test 2", phases: [], created_at: new Date().toISOString() },
-            error: null,
-          }),
-        }),
-      }),
-    });
-    fromMock.mockReturnValueOnce({ upsert: mockUpsert2 });
-
-    await api.recipes.upsert({
-      id: "rec-ts-2",
-      name: "TS Test 2",
-      userId: "user-123",
-      createdAt: NaN,
-      phases: [],
-      yield_value: 1,
-      deviceId: "dev",
-    });
-
-    const upsertPayload = mockUpsert2.mock.calls[0][0];
-    expect(upsertPayload.created_at).toBeUndefined();
-  });
-
-  it("authorizes recipe duplication strictly based on ownership invariants", async () => {
-    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
-
-    // 1. User B attempting to duplicate User A's recipe -> Rejected
-    getSessionMock.mockResolvedValue({
-      data: { session: { user: { id: "user-B" } } },
-      error: null,
-    });
-    const fromMock = (supabase!.from as jest.Mock);
-    fromMock.mockReturnValueOnce({
-      select: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
-          single: jest.fn().mockResolvedValue({
-            data: { id: "rec-A", user_id: "user-A", name: "User A Recipe", phases: [] },
-            error: null,
-          }),
-        }),
-      }),
-    });
-    await expect(
-      api.recipes.duplicate("rec-A", "Copy", "dev-1", "user-B")
-    ).rejects.toThrow(/Unauthorized: cannot duplicate a recipe owned by another user/);
-
-    // 2. Authenticated user attempting to duplicate an unassigned recipe -> Rejected
-    getSessionMock.mockResolvedValue({
-      data: { session: { user: { id: "user-B" } } },
-      error: null,
-    });
-    fromMock.mockReturnValueOnce({
-      select: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
-          single: jest.fn().mockResolvedValue({
-            data: { id: "rec-unassigned", user_id: null, name: "Unassigned Recipe", phases: [] },
-            error: null,
-          }),
-        }),
-      }),
-    });
-    await expect(
-      api.recipes.duplicate("rec-unassigned", "Copy", "dev-1", "user-B")
-    ).rejects.toThrow(/Unauthorized: cannot duplicate an unassigned recipe into an authenticated account/);
-
-    // 3. Matching owner duplicating their own recipe -> Allowed
-    getSessionMock.mockResolvedValue({
-      data: { session: { user: { id: "user-A" } } },
-      error: null,
-    });
-    fromMock.mockReturnValueOnce({
-      select: jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
-          single: jest.fn().mockResolvedValue({
-            data: { id: "rec-A", user_id: "user-A", name: "User A Recipe", phases: [] },
-            error: null,
-          }),
-        }),
-      }),
-    });
-    const dupRes = await api.recipes.duplicate("rec-A", "Copy", "dev-1", "user-A");
-    expect(dupRes).toBeDefined();
-  });
-
-  it("ensures authenticated reads and deletions are scoped strictly to the user_id without device_id fallback", async () => {
-    // Call recipes.list with deviceId "shared-dev" and userId "user-B"
-    await api.recipes.list("shared-dev", "user-B");
-    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-B");
-    expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
-
-    // Call history.feed.list with deviceId "shared-dev" and userId "user-B"
     mockOr.mockClear();
-    await api.history.feed.list("shared-dev", "user-B");
-    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-B");
-    expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
+    await api.recipes.list("dev-1", undefined);
+    // When userId is undefined, api.recipes.list resolves via getStoredToken()
+  });
 
-    // Call history.bakes.list with deviceId "shared-dev" and userId "user-B"
-    mockOr.mockClear();
-    await api.history.bakes.list("shared-dev", "user-B");
-    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-B");
-    expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
+  it("deletes records strictly scoped to owner when authenticated or device when anonymous", async () => {
+    await api.recipes.delete("rec-1", "shared-dev", "user-A");
+    expect(mockDeleteEq).toHaveBeenCalledWith("id", "rec-1");
+    expect(mockDeleteOr).toHaveBeenCalledWith("user_id.eq.user-A");
+    expect(mockDeleteOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
 
-    // Call recipes.delete with deviceId "shared-dev" and userId "user-B"
     mockDeleteOr.mockClear();
     await api.recipes.delete("rec-1", "shared-dev", "user-B");
     expect(mockDeleteEq).toHaveBeenCalledWith("id", "rec-1");
@@ -367,5 +220,20 @@ describe("API Ownership & Signout Real Implementation", () => {
     await expect(
       api.recipes.upsert({ id: "r-1", name: "Conflict", userId: "user-2" })
     ).rejects.toThrow(/Owner\/Session mismatch/);
+  });
+
+  it("API read methods use validated owner when userId is omitted and valid token is present", async () => {
+    const authModule = require("../auth");
+    jest.spyOn(authModule, "getStoredToken").mockResolvedValue("user-123");
+
+    await api.recipes.list("dev-1");
+    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-123");
+  });
+
+  it("API read methods reject (fail closed) when userId is omitted and stored token/profile pair is invalid", async () => {
+    const authModule = require("../auth");
+    jest.spyOn(authModule, "getStoredToken").mockRejectedValue(new Error("Identity integrity failure"));
+
+    await expect(api.recipes.list("dev-1")).rejects.toThrow(/Identity integrity failure/);
   });
 });

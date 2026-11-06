@@ -133,4 +133,11 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     // Verify global legacy key was removed (migration happens only once)
     expect(await AsyncStorage.getItem(LEGACY_GLOBAL_CANDIDATES_KEY)).toBeNull();
   });
+
+  it('6. Invalid or mismatched identity pair causes loadCandidates() to reject instead of returning []', async () => {
+    const authModule = require('../auth');
+    jest.spyOn(authModule, 'getStoredToken').mockRejectedValue(new Error('Identity integrity failure: token and profile IDs differ'));
+
+    await expect(loadCandidates()).rejects.toThrow(/Identity integrity failure/);
+  });
 });

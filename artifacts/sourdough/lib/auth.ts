@@ -161,10 +161,17 @@ export async function clearAuth(): Promise<void> {
     }
   }
 
-  const auth = await getValidatedAuth();
-  if (auth !== null) {
+  const [storedToken, storedUser] = await Promise.all([
+    AsyncStorage.getItem(TOKEN_KEY),
+    AsyncStorage.getItem(USER_KEY),
+  ]);
+
+  const tokenStillPresent = storedToken !== null && storedToken !== undefined;
+  const userStillPresent = storedUser !== null && storedUser !== undefined;
+
+  if (tokenStillPresent || userStillPresent) {
     console.log(`[BL-DIAG] [Auth] clearAuth verification FAILED: credentials remain on disk.`);
-    throw new Error("Credential clearing failed verification: credentials remain in storage.");
+    throw new Error("Auth storage cleanup verification failed");
   }
   console.log(`[BL-DIAG] [Auth] clearAuth verification SUCCEEDED: credentials absent.`);
 }

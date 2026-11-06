@@ -484,7 +484,7 @@ export const api = {
 
   recipes: {
     list: async (deviceId?: string, userId?: string): Promise<ApiRecipe[]> => {
-      const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+      const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
       if (!supabase) return [];
       const filter = ownerFilter(deviceId, resolvedUserId);
       if (!filter) return [];
@@ -603,7 +603,7 @@ export const api = {
   history: {
     feed: {
       list: async (deviceId?: string, userId?: string): Promise<ApiFeedSession[]> => {
-        const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+        const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         if (!supabase) return [];
         const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return [];
@@ -625,7 +625,7 @@ export const api = {
 
       active: async (deviceId?: string, userId?: string) => {
         if (!supabase) return null;
-        const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+        const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return null;
         const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).eq("in_progress", true).order("updated_at", { ascending: false }).limit(1).returns<FeedSessionRow[]>().maybeSingle();
@@ -651,7 +651,7 @@ export const api = {
 
     bakes: {
       list: async (deviceId?: string, userId?: string): Promise<ApiBakeSession[]> => {
-        const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+        const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         if (!supabase) return [];
         const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return [];
@@ -662,7 +662,7 @@ export const api = {
 
       active: async (deviceId?: string, userId?: string) => {
         if (!supabase) return null;
-        const resolvedUserId = userId ?? await getStoredToken().catch(() => null);
+        const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return null;
         const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).eq("in_progress", true).order("started_at", { ascending: false }).limit(1).returns<BakeSessionRow[]>().maybeSingle();
