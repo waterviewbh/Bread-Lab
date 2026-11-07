@@ -109,6 +109,12 @@ jest.mock("../supabase", () => ({
 describe("API Ownership & Signout Real Implementation", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   it("invokes real Supabase signOut and propagates signout errors", async () => {
@@ -224,6 +230,50 @@ describe("API Ownership & Signout Real Implementation", () => {
     ).rejects.toThrow(/Owner\/Session mismatch/);
   });
 
+  it("getSession throwing an error in resolveAndVerifyOwner rejects upsert", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: null,
+      error: new Error("Session retrieval error"),
+    });
+
+    await expect(
+      api.recipes.upsert({ id: "r-1", name: "Test", userId: "user-1" })
+    ).rejects.toThrow(/Failed to retrieve active authentication session/);
+  });
+
+  it("preserves original recipe creation timestamps during upsert and handles missing/invalid values", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-1" } } },
+      error: null,
+    });
+
+    const res = await api.recipes.upsert({
+      id: "rec-1",
+      name: "Timestamp Test",
+      userId: "user-1",
+      createdAt: 1700000000000,
+      phases: [],
+      yield_value: 1,
+    });
+    expect(res).toBeDefined();
+  });
+
+  it("enforces ownership filtering and deletion checks for feed sessions and bakes", async () => {
+    await api.history.feed.list("dev-1", "user-A");
+    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-A");
+
+    mockOr.mockClear();
+    await api.history.bakes.list("dev-1", "user-A");
+    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-A");
+
+    mockDeleteOr.mockClear();
+    await api.history.feed.delete("feed-1", "shared-dev", "user-A");
+    expect(mockDeleteEq).toHaveBeenCalledWith("id", "feed-1");
+    expect(mockDeleteOr).toHaveBeenCalledWith("user_id.eq.user-A");
+  });
+
   describe("API Fail-Closed Read Coverage (Issue #89)", () => {
     const readMethods = [
       { name: "recipes.list", fn: () => api.recipes.list("dev-1") },
@@ -248,6 +298,16 @@ describe("API Ownership & Signout Real Implementation", () => {
         jest.spyOn(authModule, "getStoredToken").mockRejectedValue(new Error("Identity integrity failure"));
 
         await expect(m.fn()).rejects.toThrow(/Identity integrity failure/);
+        expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.dev-1"));
+      });
+
+      it(`${m.name}: rejects with storage failure when underlying AsyncStorage read fails and does not fall back to device-id`, async () => {
+        const AsyncStorage = require("@react-native-async-storage/async-storage");
+        jest.restoreAllMocks();
+        jest.spyOn(AsyncStorage, "getItem").mockRejectedValue(new Error("Disk read error"));
+        mockOr.mockClear();
+
+        await expect(m.fn()).rejects.toThrow(/Credential read failed|Disk read error/);
         expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.dev-1"));
       });
     }

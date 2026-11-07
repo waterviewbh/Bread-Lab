@@ -25,10 +25,12 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
 
   beforeEach(async () => {
     await AsyncStorage.clear();
+    jest.restoreAllMocks();
   });
 
   afterEach(async () => {
     await AsyncStorage.clear();
+    jest.restoreAllMocks();
   });
 
   it('1. Unauthenticated Candidate creation and loading uses anonymous namespace', async () => {
@@ -139,5 +141,25 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     jest.spyOn(authModule, 'getStoredToken').mockRejectedValue(new Error('Identity integrity failure: token and profile IDs differ'));
 
     await expect(loadCandidates()).rejects.toThrow(/Identity integrity failure/);
+  });
+
+  it('7. loadCandidates validates identity before migration or ingestion and performs zero candidate storage reads/writes on identity failure', async () => {
+    const authModule = require('../auth');
+    const integrityError = new Error('Identity integrity failure: token and profile IDs differ');
+    jest.spyOn(authModule, 'getStoredToken').mockRejectedValue(integrityError);
+
+    const getItemSpy = jest.spyOn(AsyncStorage, 'getItem');
+    const setItemSpy = jest.spyOn(AsyncStorage, 'setItem');
+
+    getItemSpy.mockClear();
+    setItemSpy.mockClear();
+
+    await expect(loadCandidates()).rejects.toThrow(integrityError);
+
+    const calls = getItemSpy.mock.calls.map(call => call[0]);
+    for (const key of calls) {
+      expect(key).not.toContain('candidates');
+    }
+    expect(setItemSpy).not.toHaveBeenCalled();
   });
 });
