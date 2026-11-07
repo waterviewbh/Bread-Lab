@@ -126,10 +126,11 @@ export async function ingestStagedNativeShares(): Promise<void> {
  * Reads all Candidate records from local storage for the active account.
  */
 export async function loadCandidates(): Promise<CandidateRecord[]> {
+  const key = await getCandidatesKey();
+
   await migrateLegacyCandidatesIfNeeded();
   await ingestStagedNativeShares();
 
-  const key = await getCandidatesKey();
   try {
     const raw = await AsyncStorage.getItem(key);
     const candidates = safeParse<CandidateRecord[]>(raw, [], Array.isArray);

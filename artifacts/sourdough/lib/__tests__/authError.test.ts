@@ -320,6 +320,18 @@ describe("Auth Error Handling & Domain Regression", () => {
       await expect(clearAuth()).rejects.toThrow(/Auth storage cleanup verification failed/);
     });
 
+    it("clearAuth fails verification when a blank profile remains", async () => {
+      const getItemMock = AsyncStorage.getItem as jest.Mock;
+      getItemMock.mockImplementation((key) => {
+        if (key === "bread_lab_auth_user_v1") return Promise.resolve("   ");
+        return Promise.resolve(null);
+      });
+
+      await expect(clearAuth()).rejects.toThrow(
+        /Auth storage cleanup verification failed/
+      );
+    });
+
     it("clearAuth propagates storage read failure during verification", async () => {
       const getItemMock = AsyncStorage.getItem as jest.Mock;
       getItemMock.mockRejectedValue(new Error("Disk read error"));

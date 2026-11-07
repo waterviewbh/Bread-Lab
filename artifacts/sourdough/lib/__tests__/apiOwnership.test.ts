@@ -2,11 +2,13 @@
 import { api } from "../api";
 import { supabase } from "../supabase";
 
-const mockChain = {
+const mockChain: any = {
   order: jest.fn().mockReturnThis(),
   eq: jest.fn().mockReturnThis(),
   limit: jest.fn().mockReturnThis(),
-  returns: jest.fn().mockResolvedValue({ data: [], error: null }),
+  returns: jest.fn().mockReturnThis(),
+  maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+  single: jest.fn().mockResolvedValue({ data: null, error: null }),
 };
 
 const mockOr = jest.fn().mockReturnValue(mockChain);
@@ -222,18 +224,32 @@ describe("API Ownership & Signout Real Implementation", () => {
     ).rejects.toThrow(/Owner\/Session mismatch/);
   });
 
-  it("API read methods use validated owner when userId is omitted and valid token is present", async () => {
-    const authModule = require("../auth");
-    jest.spyOn(authModule, "getStoredToken").mockResolvedValue("user-123");
+  describe("API Fail-Closed Read Coverage (Issue #89)", () => {
+    const readMethods = [
+      { name: "recipes.list", fn: () => api.recipes.list("dev-1") },
+      { name: "history.feed.list", fn: () => api.history.feed.list("dev-1") },
+      { name: "history.feed.active", fn: () => api.history.feed.active("dev-1") },
+      { name: "history.bakes.list", fn: () => api.history.bakes.list("dev-1") },
+      { name: "history.bakes.active", fn: () => api.history.bakes.active("dev-1") },
+    ];
 
-    await api.recipes.list("dev-1");
-    expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-123");
-  });
+    for (const m of readMethods) {
+      it(`${m.name}: uses validated owner when userId omitted and valid token present`, async () => {
+        const authModule = require("../auth");
+        jest.spyOn(authModule, "getStoredToken").mockResolvedValue("user-123");
+        mockOr.mockClear();
 
-  it("API read methods reject (fail closed) when userId is omitted and stored token/profile pair is invalid", async () => {
-    const authModule = require("../auth");
-    jest.spyOn(authModule, "getStoredToken").mockRejectedValue(new Error("Identity integrity failure"));
+        await m.fn();
+        expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-123");
+      });
 
-    await expect(api.recipes.list("dev-1")).rejects.toThrow(/Identity integrity failure/);
+      it(`${m.name}: rejects when userId omitted and getStoredToken rejects`, async () => {
+        const authModule = require("../auth");
+        jest.spyOn(authModule, "getStoredToken").mockRejectedValue(new Error("Identity integrity failure"));
+
+        await expect(m.fn()).rejects.toThrow(/Identity integrity failure/);
+        expect(mockOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.dev-1"));
+      });
+    }
   });
 });
