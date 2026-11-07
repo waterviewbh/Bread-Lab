@@ -143,19 +143,22 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     await expect(loadCandidates()).rejects.toThrow(/Identity integrity failure/);
   });
 
-  it('7. loadCandidates validates identity before migration or ingestion and performs zero candidate storage reads/writes on identity failure', async () => {
+  it('7. loadCandidates validates identity before migration or ingestion and directly proves ingestion is blocked', async () => {
     const authModule = require('../auth');
+    const candidateStorage = require('../candidateStorage');
     const integrityError = new Error('Identity integrity failure: token and profile IDs differ');
     jest.spyOn(authModule, 'getStoredToken').mockRejectedValue(integrityError);
 
+    const ingestSpy = jest.spyOn(candidateStorage, 'ingestStagedNativeShares');
     const getItemSpy = jest.spyOn(AsyncStorage, 'getItem');
     const setItemSpy = jest.spyOn(AsyncStorage, 'setItem');
 
     getItemSpy.mockClear();
     setItemSpy.mockClear();
 
-    await expect(loadCandidates()).rejects.toThrow(integrityError);
+    await expect(candidateStorage.loadCandidates()).rejects.toThrow(integrityError);
 
+    expect(ingestSpy).not.toHaveBeenCalled();
     const calls = getItemSpy.mock.calls.map(call => call[0]);
     for (const key of calls) {
       expect(key).not.toContain('candidates');
