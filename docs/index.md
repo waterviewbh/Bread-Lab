@@ -34,6 +34,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
 #### 📦 Version 2.5.5
+- [Session: Issue #89 Establishing One Validated Local Identity Contract (2026-10-26)](file:///E:/Bread-Lab/docs/journal/2026-10-26_issue_89_validated_local_identity_contract.artifact.md)
 - [Session: Tracing Starter Vitality Percentage and Documenting Meaning (Issue #79) (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_starter_vitality_percentage_tracing.artifact.md)
 - [Session: Candidate Promotion & Empty Recipe Duplication Regression Fix (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_candidate_promotion_and_empty_recipe_regression.artifact.md)
 - [Session: Recipe Runner vs. Recipe Builder Phase Order Regression Fix (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_recipe_runner_vs_builder_phase_order.artifact.md)
