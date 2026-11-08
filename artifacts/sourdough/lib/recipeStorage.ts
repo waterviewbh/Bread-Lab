@@ -11,6 +11,8 @@ import {
   BAKE_KEY,
   BAKE_HISTORY_KEY,
   DELETED_RECIPE_IDS_KEY,
+  DELETED_BAKE_IDS_KEY,
+  DELETED_FEED_IDS_KEY,
 } from "@/lib/recipeTypes";
 import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, detectYeastType, sortRecipePhases } from "@/lib/recipeUtils";
 import { safeParse, storageMutex, getOwnerStorageKey, getWorkspaceGeneration } from "@/lib/storageUtils";
@@ -83,12 +85,128 @@ export async function getRecipeTombstone(): Promise<string[]> {
   return safeParse<string[]>(raw, [], Array.isArray);
 }
 
+export async function addToBakeTombstone(id: string): Promise<void> {
+  return storageMutex.run(async () => {
+    const owner = await resolveOwner();
+    const tombstoneKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, owner);
+    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+    const set = safeParse<string[]>(raw, [], Array.isArray);
+    if (!set.includes(id)) {
+      set.push(id);
+      await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set));
+    }
+  });
+}
+
+export async function removeFromBakeTombstone(id: string): Promise<void> {
+  return storageMutex.run(async () => {
+    const owner = await resolveOwner();
+    const tombstoneKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, owner);
+    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+    if (!raw) return;
+    const set = safeParse<string[]>(raw, [], Array.isArray);
+    await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set.filter(x => x !== id)));
+  });
+}
+
+export async function getBakeTombstone(): Promise<string[]> {
+  const owner = await resolveOwner();
+  const tombstoneKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, owner);
+  const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+  return safeParse<string[]>(raw, [], Array.isArray);
+}
+
+export async function addToFeedTombstone(id: string): Promise<void> {
+  return storageMutex.run(async () => {
+    const owner = await resolveOwner();
+    const tombstoneKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, owner);
+    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+    const set = safeParse<string[]>(raw, [], Array.isArray);
+    if (!set.includes(id)) {
+      set.push(id);
+      await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set));
+    }
+  });
+}
+
+export async function removeFromFeedTombstone(id: string): Promise<void> {
+  return storageMutex.run(async () => {
+    const owner = await resolveOwner();
+    const tombstoneKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, owner);
+    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+    if (!raw) return;
+    const set = safeParse<string[]>(raw, [], Array.isArray);
+    await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set.filter(x => x !== id)));
+  });
+}
+
+export async function getFeedTombstone(): Promise<string[]> {
+  const owner = await resolveOwner();
+  const tombstoneKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, owner);
+  const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+  return safeParse<string[]>(raw, [], Array.isArray);
+}
+
+export async function processPendingDeletions(): Promise<void> {
+  try {
+    const owner = await resolveOwner();
+    const deviceId = await getDeviceId();
+    const token = owner === "anonymous" ? null : owner;
+
+    const recipeTombstones = await getRecipeTombstone();
+    for (const id of recipeTombstones) {
+      try {
+        const deleted = await api.recipes.delete(id, deviceId, token ?? undefined);
+        if (deleted) {
+          await removeFromRecipeTombstone(id);
+        }
+      } catch (e: any) {
+        if (e?.status === 404 || e?.message?.includes("not found")) {
+          await removeFromRecipeTombstone(id);
+        }
+      }
+    }
+
+    const bakeTombstones = await getBakeTombstone();
+    for (const id of bakeTombstones) {
+      try {
+        const deleted = await api.history.bakes.delete(id, deviceId, token ?? undefined);
+        if (deleted) {
+          await removeFromBakeTombstone(id);
+        }
+      } catch (e: any) {
+        if (e?.status === 404 || e?.message?.includes("not found")) {
+          await removeFromBakeTombstone(id);
+        }
+      }
+    }
+
+    const feedTombstones = await getFeedTombstone();
+    for (const id of feedTombstones) {
+      try {
+        const deleted = await api.history.feed.delete(id, deviceId, token ?? undefined);
+        if (deleted) {
+          await removeFromFeedTombstone(id);
+        }
+      } catch (e: any) {
+        if (e?.status === 404 || e?.message?.includes("not found")) {
+          await removeFromFeedTombstone(id);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[recipeStorage] processPendingDeletions failed", e);
+  }
+}
+
 // ─── loadAll ──────────────────────────────────────────────────────────────────
 export async function loadAll(): Promise<{
   recipes: SavedRecipe[];
   bakes: ActiveBake[];
   bake: ActiveBake | null;
 }> {
+  await processPendingDeletions();
+
   let recipes: SavedRecipe[] = [];
   let bakes: ActiveBake[] = [];
   let localBakesFound = false;

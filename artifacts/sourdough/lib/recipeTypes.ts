@@ -12,6 +12,8 @@ export const BAKE_KEY               = "bread_lab_bake_v2";
 export const BAKE_HISTORY_KEY       = "bread_lab_bake_history_v1";
 export const NUDGE_KEY              = "bread_lab_name_nudge_shown_v1";
 export const DELETED_RECIPE_IDS_KEY = "bread_lab_deleted_recipe_ids_v1";
+export const DELETED_BAKE_IDS_KEY   = "bread_lab_deleted_bake_ids_v1";
+export const DELETED_FEED_IDS_KEY   = "bread_lab_deleted_feed_ids_v1";
 
 // ─── Reading ──────────────────────────────────────────────────────────────────
 export interface Reading {

@@ -106,6 +106,25 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");
   }
 
+  const ownerToInspect = currentUserId && currentUserId.trim() !== "" ? currentUserId.trim() : "anonymous";
+  const recTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_RECIPE_IDS, ownerToInspect);
+  const bakeTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS, ownerToInspect);
+  const feedTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, ownerToInspect);
+
+  const [recTombRaw, bakeTombRaw, feedTombRaw] = await Promise.all([
+    AsyncStorage.getItem(recTombKey).catch(() => null),
+    AsyncStorage.getItem(bakeTombKey).catch(() => null),
+    AsyncStorage.getItem(feedTombKey).catch(() => null),
+  ]);
+
+  const recTombs = safeParse<string[]>(recTombRaw, [], Array.isArray);
+  const bakeTombs = safeParse<string[]>(bakeTombRaw, [], Array.isArray);
+  const feedTombs = safeParse<string[]>(feedTombRaw, [], Array.isArray);
+
+  if (recTombs.length > 0 || bakeTombs.length > 0 || feedTombs.length > 0) {
+    throw new Error(`Transition blocked: workspace has pending deletion work (${recTombs.length} recipes, ${bakeTombs.length} bakes, ${feedTombs.length} feeds pending deletion).`);
+  }
+
   validateArrayStorageKey(recipeRaw, "recipe record");
   validateArrayStorageKey(bakeHistRaw, "bake history");
   validateArrayStorageKey(feedHistRaw, "feed history");
