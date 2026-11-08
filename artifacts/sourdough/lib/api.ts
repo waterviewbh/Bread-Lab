@@ -594,9 +594,9 @@ export const api = {
       if (!supabase) return false;
       const filter = ownerFilter(deviceId, userId);
       if (!filter) return false;
-      const { error } = await supabase.from("recipes").delete().eq("id", id).or(filter);
+      const { error, count } = await supabase.from("recipes").delete({ count: 'exact' }).eq("id", id).or(filter);
       if (error) throw error;
-      return true;
+      return (count ?? 0) > 0;
     },
   },
 
@@ -644,8 +644,9 @@ export const api = {
         if (!supabase) return false;
         const filter = ownerFilter(deviceId, userId);
         if (!filter) return false;
-        const { error } = await supabase.from("feed_sessions").delete().eq("id", id).or(filter);
-        return !error;
+        const { error, count } = await supabase.from("feed_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
+        if (error) throw error;
+        return (count ?? 0) > 0;
       },
     },
 
@@ -690,8 +691,9 @@ export const api = {
         if (!supabase) return false;
         const filter = ownerFilter(deviceId, userId);
         if (!filter) return false;
-        const { error } = await supabase.from("bake_sessions").delete().eq("id", id).or(filter);
-        return !error;
+        const { error, count } = await supabase.from("bake_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
+        if (error) throw error;
+        return (count ?? 0) > 0;
       },
     },
   },

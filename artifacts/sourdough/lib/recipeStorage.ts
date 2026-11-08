@@ -181,71 +181,64 @@ export async function getFeedTombstone(): Promise<string[]> {
 }
 
 export async function processPendingDeletions(): Promise<void> {
-  const owner = await resolveOwner();
-  const generation = getWorkspaceGeneration();
-  const context: WorkspaceOperationContext = { owner, generation };
-  const deviceId = await getDeviceId();
-  const token = owner === "anonymous" ? null : owner;
+  try {
+    const owner = await resolveOwner();
+    const generation = getWorkspaceGeneration();
+    const context: WorkspaceOperationContext = { owner, generation };
+    const deviceId = await getDeviceId();
+    const token = owner === "anonymous" ? null : owner;
 
-  await assertWorkspaceOperationCurrent(context);
-
-  const recipeTombstones = await getRecipeTombstone();
-  for (const id of recipeTombstones) {
     await assertWorkspaceOperationCurrent(context);
-    try {
-      const deleted = await api.recipes.delete(id, deviceId, token ?? undefined);
-      if (deleted) {
-        await removeFromRecipeTombstone(id);
-      } else {
-        throw new Error(`Remote recipe delete unconfirmed for id ${id}`);
-      }
-    } catch (e: any) {
-      if (e?.status === 404 || e?.message?.includes("not found")) {
-        await removeFromRecipeTombstone(id);
-      } else {
-        throw e;
+
+    const recipeTombstones = await getRecipeTombstone();
+    for (const id of recipeTombstones) {
+      await assertWorkspaceOperationCurrent(context);
+      try {
+        const deleted = await api.recipes.delete(id, deviceId, token ?? undefined);
+        if (deleted) {
+          await removeFromRecipeTombstone(id);
+        }
+      } catch (e: any) {
+        if (e?.status === 404 || e?.message?.includes("not found")) {
+          await removeFromRecipeTombstone(id);
+        } else {
+          console.warn(`[recipeStorage] Recipe deletion retry failed for id ${id}:`, e);
+        }
       }
     }
-  }
 
-  const bakeTombstones = await getBakeTombstone();
-  for (const id of bakeTombstones) {
-    await assertWorkspaceOperationCurrent(context);
-    try {
-      const deleted = await api.history.bakes.delete(id, deviceId, token ?? undefined);
-      if (deleted) {
-        await removeFromBakeTombstone(id);
-      } else {
-        throw new Error(`Remote bake delete unconfirmed for id ${id}`);
-      }
-    } catch (e: any) {
-      if (e?.status === 404 || e?.message?.includes("not found")) {
-        await removeFromBakeTombstone(id);
-      } else {
-        throw e;
+    const bakeTombstones = await getBakeTombstone();
+    for (const id of bakeTombstones) {
+      await assertWorkspaceOperationCurrent(context);
+      try {
+        const deleted = await api.history.bakes.delete(id, deviceId, token ?? undefined);
+        if (deleted) {
+          await removeFromBakeTombstone(id);
+        }
+      } catch (e: any) {
+        if (e?.status === 404 || e?.message?.includes("not found")) {
+          await removeFromBakeTombstone(id);
+        } else {
+          console.warn(`[recipeStorage] Bake deletion retry failed for id ${id}:`, e);
+        }
       }
     }
-  }
 
-  const feedTombstones = await getFeedTombstone();
-  for (const id of feedTombstones) {
-    await assertWorkspaceOperationCurrent(context);
-    try {
-      const deleted = await api.history.feed.delete(id, deviceId, token ?? undefined);
-      if (deleted) {
-        await removeFromFeedTombstone(id);
-      } else {
-        throw new Error(`Remote feed delete unconfirmed for id ${id}`);
+    const feedTombstones = await getFeedTombstone();
+    for (const id of feedTombstones) {
+      await assertWorkspaceOperationCurrent(context);
+      try {
+        const deleted = await api.history.feed.delete(id, deviceId, token ?? undefined);
+        if (deleted) {
+          await removeFromFeedTombstone(id);
+        }
+      } catch (e: any) {
+        if (e?.status === 404 || e?.message?.includes("not found")) {
+          await removeFromFeedTombstone(id);
+        } else {
+          console.warn(`[recipeStorage] Feed deletion retry failed for id ${id}:`, e);
+        }
       }
-    } catch (e: any) {
-      if (e?.status === 404 || e?.message?.includes("not found")) {
-        await removeFromFeedTombstone(id);
-      } else {
-        throw e;
-      }
-    }
-  }
-}
     }
   } catch (e) {
     console.error("[recipeStorage] processPendingDeletions failed", e);
@@ -258,7 +251,11 @@ export async function loadAll(): Promise<{
   bakes: ActiveBake[];
   bake: ActiveBake | null;
 }> {
-  await processPendingDeletions();
+  try {
+    await processPendingDeletions();
+  } catch (e) {
+    console.warn("[recipeStorage] loadAll background deletion sync failed (continuing offline):", e);
+  }
 
   let recipes: SavedRecipe[] = [];
   let bakes: ActiveBake[] = [];
