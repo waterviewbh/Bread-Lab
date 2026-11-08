@@ -184,51 +184,93 @@ export async function getFeedTombstone(): Promise<string[]> {
   return parsed;
 }
 
+export const UNRESOLVED_LEGACY_TOMBSTONES_KEY = "bread_lab_unresolved_legacy_tombstones_v1";
+
+export interface LegacyDeletionIntent {
+  id: string;
+  recordType: "recipe" | "bake" | "feed";
+  owner: "unknown";
+  sourceKey: string;
+  disposition: "unresolved";
+}
+
 async function reconcileLegacyFlatTombstones(): Promise<void> {
-  try {
-    const [flatRec, flatBake, flatFeed] = await Promise.all([
-      AsyncStorage.getItem("bread_lab_deleted_recipe_ids_v1").catch(() => null),
-      AsyncStorage.getItem("bread_lab_deleted_bake_ids_v1").catch(() => null),
-      AsyncStorage.getItem("bread_lab_deleted_feed_ids_v1").catch(() => null),
-    ]);
+  const legacyKeys = [
+    { key: "bread_lab_deleted_recipe_ids_v1", type: "recipe" as const },
+    { key: "bread_lab_deleted_bake_ids_v1", type: "bake" as const },
+    { key: "bread_lab_deleted_feed_ids_v1", type: "feed" as const },
+  ];
 
-    if (flatRec) {
-      const ids = safeParse<string[]>(flatRec, [], Array.isArray);
-      if (ids.length > 0) {
-        const anonKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, "anonymous");
-        const rawAnon = await AsyncStorage.getItem(anonKey).catch(() => null);
-        const anonSet = safeParse<string[]>(rawAnon, [], Array.isArray);
-        const merged = Array.from(new Set([...anonSet, ...ids]));
-        await AsyncStorage.setItem(anonKey, JSON.stringify(merged));
-      }
-      await AsyncStorage.removeItem("bread_lab_deleted_recipe_ids_v1");
+  for (const { key, type } of legacyKeys) {
+    let raw: string | null = null;
+    try {
+      raw = await AsyncStorage.getItem(key);
+    } catch (err) {
+      throw new Error(`Legacy tombstone read failure for ${key}: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    if (flatBake) {
-      const ids = safeParse<string[]>(flatBake, [], Array.isArray);
-      if (ids.length > 0) {
-        const anonKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, "anonymous");
-        const rawAnon = await AsyncStorage.getItem(anonKey).catch(() => null);
-        const anonSet = safeParse<string[]>(rawAnon, [], Array.isArray);
-        const merged = Array.from(new Set([...anonSet, ...ids]));
-        await AsyncStorage.setItem(anonKey, JSON.stringify(merged));
-      }
-      await AsyncStorage.removeItem("bread_lab_deleted_bake_ids_v1");
+    if (raw === null || raw === undefined) continue;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`Legacy tombstone parse failure for ${key}: malformed JSON.`);
     }
 
-    if (flatFeed) {
-      const ids = safeParse<string[]>(flatFeed, [], Array.isArray);
-      if (ids.length > 0) {
-        const anonKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, "anonymous");
-        const rawAnon = await AsyncStorage.getItem(anonKey).catch(() => null);
-        const anonSet = safeParse<string[]>(rawAnon, [], Array.isArray);
-        const merged = Array.from(new Set([...anonSet, ...ids]));
-        await AsyncStorage.setItem(anonKey, JSON.stringify(merged));
-      }
-      await AsyncStorage.removeItem("bread_lab_deleted_feed_ids_v1");
+    if (!Array.isArray(parsed)) {
+      throw new Error(`Legacy tombstone validation failure for ${key}: expected array.`);
     }
-  } catch (e) {
-    console.error("[recipeStorage] reconcileLegacyFlatTombstones failed", e);
+
+    const ids = parsed.filter((x): x is string => typeof x === "string" && x.trim() !== "");
+    if (ids.length === 0) {
+      await AsyncStorage.removeItem(key);
+      continue;
+    }
+
+    const intents: LegacyDeletionIntent[] = ids.map((id) => ({
+      id,
+      recordType: type,
+      owner: "unknown",
+      sourceKey: key,
+      disposition: "unresolved",
+    }));
+
+    let existingRaw: string | null = null;
+    try {
+      existingRaw = await AsyncStorage.getItem(UNRESOLVED_LEGACY_TOMBSTONES_KEY);
+    } catch (err) {
+      throw new Error(`Failed to read destination unresolved legacy store: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    const existingIntents = existingRaw ? JSON.parse(existingRaw) : [];
+    if (!Array.isArray(existingIntents)) {
+      throw new Error("Destination unresolved legacy store schema corruption: expected array.");
+    }
+
+    const seenIds = new Set(existingIntents.map((item: any) => `${item.recordType}:${item.id}`));
+    const newIntents = intents.filter((intent) => !seenIds.has(`${intent.recordType}:${intent.id}`));
+    const mergedIntents = [...existingIntents, ...newIntents];
+
+    try {
+      await AsyncStorage.setItem(UNRESOLVED_LEGACY_TOMBSTONES_KEY, JSON.stringify(mergedIntents));
+    } catch (err) {
+      throw new Error(`Failed to persist destination unresolved legacy store: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    let verifyRaw: string | null = null;
+    try {
+      verifyRaw = await AsyncStorage.getItem(UNRESOLVED_LEGACY_TOMBSTONES_KEY);
+    } catch (err) {
+      throw new Error(`Verification read failure for unresolved legacy store: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    const verifiedParsed = verifyRaw ? JSON.parse(verifyRaw) : null;
+    if (!Array.isArray(verifiedParsed) || verifiedParsed.length < mergedIntents.length) {
+      throw new Error("Legacy tombstone migration verification failed: destination store content mismatch.");
+    }
+
+    await AsyncStorage.removeItem(key);
   }
 }
 

@@ -114,17 +114,35 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
   let recTombRaw: string | null = null;
   let bakeTombRaw: string | null = null;
   let feedTombRaw: string | null = null;
+  let unresolvedLegacyRaw: string | null = null;
   try {
     const res = await Promise.all([
       AsyncStorage.getItem(recTombKey),
       AsyncStorage.getItem(bakeTombKey),
       AsyncStorage.getItem(feedTombKey),
+      AsyncStorage.getItem("bread_lab_unresolved_legacy_tombstones_v1"),
     ]);
     recTombRaw = res[0];
     bakeTombRaw = res[1];
     feedTombRaw = res[2];
+    unresolvedLegacyRaw = res[3];
   } catch (err) {
     throw new Error(`Transition blocked: failed to inspect tombstone storage queues: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (unresolvedLegacyRaw !== null && unresolvedLegacyRaw !== undefined) {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(unresolvedLegacyRaw);
+    } catch (e: any) {
+      throw new Error(`Transition blocked: unresolved legacy tombstone storage is malformed: ${e.message}`);
+    }
+    if (!Array.isArray(parsed)) {
+      throw new Error("Transition blocked: unresolved legacy tombstone storage is malformed (expected array).");
+    }
+    if (parsed.length > 0) {
+      throw new Error(`Transition blocked: workspace contains ${parsed.length} unresolved legacy tombstone(s) with unknown ownership provenance.`);
+    }
   }
 
   const parseTombstones = (raw: string | null, label: string): string[] => {
