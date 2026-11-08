@@ -235,14 +235,11 @@ async function reconcileLegacyFlatTombstones(): Promise<void> {
 async function verifyRemoteAbsence(type: 'recipe' | 'bake' | 'feed', id: string, deviceId: string, token?: string): Promise<boolean> {
   try {
     if (type === 'recipe') {
-      const data = await api.recipes.list(deviceId, token);
-      return !data.some(r => r.id === id);
+      return await api.recipes.verifyAbsent(id, deviceId, token);
     } else if (type === 'bake') {
-      const bakes = await api.history.bakes.list(deviceId, token);
-      return !bakes.some(b => b.id === id);
+      return await api.history.bakes.verifyAbsent(id, deviceId, token);
     } else if (type === 'feed') {
-      const feeds = await api.history.feed.list(deviceId, token);
-      return !feeds.some(f => f.id === id);
+      return await api.history.feed.verifyAbsent(id, deviceId, token);
     }
   } catch {
     return false;
@@ -276,11 +273,7 @@ export async function processPendingDeletions(): Promise<void> {
           }
         }
       } catch (e: any) {
-        if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromRecipeTombstone(id, context);
-        } else {
-          console.warn(`[recipeStorage] Recipe deletion retry failed for id ${id}:`, e);
-        }
+        console.warn(`[recipeStorage] Recipe deletion retry failed for id ${id}:`, e);
       }
     }
 
@@ -298,11 +291,7 @@ export async function processPendingDeletions(): Promise<void> {
           }
         }
       } catch (e: any) {
-        if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromBakeTombstone(id, context);
-        } else {
-          console.warn(`[recipeStorage] Bake deletion retry failed for id ${id}:`, e);
-        }
+        console.warn(`[recipeStorage] Bake deletion retry failed for id ${id}:`, e);
       }
     }
 
@@ -320,11 +309,7 @@ export async function processPendingDeletions(): Promise<void> {
           }
         }
       } catch (e: any) {
-        if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromFeedTombstone(id, context);
-        } else {
-          console.warn(`[recipeStorage] Feed deletion retry failed for id ${id}:`, e);
-        }
+        console.warn(`[recipeStorage] Feed deletion retry failed for id ${id}:`, e);
       }
     }
   } catch (e) {

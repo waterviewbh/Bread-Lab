@@ -598,6 +598,15 @@ export const api = {
       if (error) throw error;
       return (count ?? 0) > 0;
     },
+
+    verifyAbsent: async (id: string, deviceId?: string, userId?: string): Promise<boolean> => {
+      if (!supabase) return false;
+      const filter = ownerFilter(deviceId, userId);
+      if (!filter) throw new Error("Cannot verify absence without owner scope");
+      const { data, error } = await supabase.from("recipes").select("id").eq("id", id).or(filter).maybeSingle();
+      if (error) throw error;
+      return data === null;
+    },
   },
 
   history: {
@@ -648,6 +657,15 @@ export const api = {
         if (error) throw error;
         return (count ?? 0) > 0;
       },
+
+      verifyAbsent: async (id: string, deviceId?: string, userId?: string) => {
+        if (!supabase) return false;
+        const filter = ownerFilter(deviceId, userId);
+        if (!filter) throw new Error("Cannot verify absence without owner scope");
+        const { data, error } = await supabase.from("feed_sessions").select("id").eq("id", id).or(filter).maybeSingle();
+        if (error) throw error;
+        return data === null;
+      },
     },
 
     bakes: {
@@ -694,6 +712,15 @@ export const api = {
         const { error, count } = await supabase.from("bake_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
         if (error) throw error;
         return (count ?? 0) > 0;
+      },
+
+      verifyAbsent: async (id: string, deviceId?: string, userId?: string) => {
+        if (!supabase) return false;
+        const filter = ownerFilter(deviceId, userId);
+        if (!filter) throw new Error("Cannot verify absence without owner scope");
+        const { data, error } = await supabase.from("bake_sessions").select("id").eq("id", id).or(filter).maybeSingle();
+        if (error) throw error;
+        return data === null;
       },
     },
   },
