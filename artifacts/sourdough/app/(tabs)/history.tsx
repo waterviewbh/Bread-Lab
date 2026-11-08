@@ -786,9 +786,14 @@ export default function HistoryScreen() {
 
   const deleteEntry = (id: string) => {
     const doDelete = async () => {
+      try {
+        await addToFeedTombstone(id);
+      } catch (err) {
+        Alert.alert("Deletion Error", "Failed to record deletion intent locally. Operation aborted.");
+        return;
+      }
       const updated = history.filter((e) => e.id !== id);
       setHistory(updated);
-      await addToFeedTombstone(id);
       await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
       if (selectedDay !== null) {
         const remaining = updated.filter((e) => {
@@ -801,10 +806,6 @@ export default function HistoryScreen() {
         });
         if (remaining.length === 0) setSelectedDay(null);
       }
-      const feedDeleteToken = await getStoredToken().catch(() => null);
-      api.history.feed.delete(id, localDeviceId || undefined, feedDeleteToken ?? undefined)
-        .then((deleted) => { if (deleted) removeFromFeedTombstone(id); })
-        .catch(() => {});
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };
     if (Platform.OS === "web") {
@@ -819,9 +820,14 @@ export default function HistoryScreen() {
 
   const deleteBakeEntry = (id: string) => {
     const doDelete = async () => {
+      try {
+        await addToBakeTombstone(id);
+      } catch (err) {
+        Alert.alert("Deletion Error", "Failed to record deletion intent locally. Operation aborted.");
+        return;
+      }
       const updated = bakeHistory.filter((e) => e.id !== id);
       setBakeHistory(updated);
-      await addToBakeTombstone(id);
       try {
         const activeRaw = await AsyncStorage.getItem(ACTIVE_BAKE_KEY);
         const activeId = activeRaw
@@ -830,10 +836,6 @@ export default function HistoryScreen() {
         const toStore = updated.filter((e) => e.id !== activeId);
         await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(toStore));
       } catch {}
-      const bakeDeleteToken = await getStoredToken().catch(() => null);
-      api.history.bakes.delete(id, localDeviceId || undefined, bakeDeleteToken ?? undefined)
-        .then((deleted) => { if (deleted) removeFromBakeTombstone(id); })
-        .catch(() => {});
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };
     if (Platform.OS === "web") {

@@ -545,18 +545,16 @@ const saveBakeToHistory = async (b: ActiveBake) => {
 
   const deleteRecipe = (id: string) => {
     const doDelete = async () => {
+      try {
+        await addToRecipeTombstone(id);
+      } catch (err) {
+        Alert.alert("Deletion Error", "Failed to record deletion intent locally. Operation aborted.");
+        return;
+      }
       const updated = recipes.filter((r) => r.id !== id);
       await persistRecipes(updated);
-      await addToRecipeTombstone(id);
       setEditingRecipe(null);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const [deviceId, token] = await Promise.all([
-        getDeviceId().catch(() => ""),
-        getStoredToken().catch(() => null),
-      ]);
-      api.recipes.delete(id, deviceId || undefined, token ?? undefined)
-        .then((deleted) => { if (deleted) removeFromRecipeTombstone(id); })
-        .catch(() => {});
     };
     if (Platform.OS === "web") {
       doDelete();

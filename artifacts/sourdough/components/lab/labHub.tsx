@@ -249,14 +249,17 @@ export function LabHub() {
 
   const handleDeleteRecipe = (id: string) => {
     const doDelete = async () => {
+      try {
+        await addToRecipeTombstone(id);
+      } catch (err) {
+        Alert.alert("Deletion Error", "Failed to record deletion intent locally. Operation aborted.");
+        return;
+      }
       const updated = recipes.filter(r => r.id !== id);
       setRecipes(updated);
       await writeRecipesLocal(updated);
-      await addToRecipeTombstone(id);
       handleCloseEdit();
-      const [deviceId, token] = await Promise.all([getDeviceId().catch(() => ""), getStoredToken().catch(() => null)]);
-      api.recipes.delete(id, deviceId || undefined, token ?? undefined)
-      .then(d => { if (d) removeFromRecipeTombstone(id); });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };
     Alert.alert("Delete Recipe?", "Cannot be undone.", [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: doDelete }]);
   };

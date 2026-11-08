@@ -453,12 +453,15 @@ export function HistorySection() {
 
   const deleteEntry = (id: string) => {
     const doDelete = async () => {
+      try {
+        await addToFeedTombstone(id);
+      } catch (err) {
+        Alert.alert("Deletion Error", "Failed to record deletion intent locally. Operation aborted.");
+        return;
+      }
       const updated = history.filter(e => e.id !== id);
       setHistory(updated);
-      await addToFeedTombstone(id);
       await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-      const token = await getStoredToken().catch(() => null);
-      api.history.feed.delete(id, localDeviceId || undefined, token ?? undefined).then(ok => { if (ok) removeFromFeedTombstone(id); }).catch(() => {});
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };
     Alert.alert("Delete Entry", "Remove this refresh from history?", [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: doDelete }]);
@@ -466,12 +469,15 @@ export function HistorySection() {
 
   const deleteBakeEntry = (id: string) => {
     const doDelete = async () => {
+      try {
+        await addToBakeTombstone(id);
+      } catch (err) {
+        Alert.alert("Deletion Error", "Failed to record deletion intent locally. Operation aborted.");
+        return;
+      }
       const updated = bakeHistory.filter(b => b.id !== id);
       setBakeHistory(updated);
-      await addToBakeTombstone(id);
       await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(updated));
-      const token = await getStoredToken().catch(() => null);
-      api.history.bakes.delete(id, localDeviceId || undefined, token ?? undefined).then(ok => { if (ok) removeFromBakeTombstone(id); }).catch(() => {});
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };
     Alert.alert("Delete Bake", "Remove this bake from history?", [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: doDelete }]);
