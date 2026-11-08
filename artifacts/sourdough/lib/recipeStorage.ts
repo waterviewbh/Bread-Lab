@@ -1,5 +1,6 @@
 // lib/recipeStorage.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
@@ -67,9 +68,10 @@ export async function addToRecipeTombstone(id: string): Promise<void> {
   });
 }
 
-export async function removeFromRecipeTombstone(id: string): Promise<void> {
+export async function removeFromRecipeTombstone(id: string, context?: WorkspaceOperationContext): Promise<void> {
   return storageMutex.run(async () => {
-    const owner = await resolveOwner();
+    if (context) await assertWorkspaceOperationCurrent(context);
+    const owner = context ? context.owner : await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, owner);
     const raw = await AsyncStorage.getItem(tombstoneKey);
     if (!raw) return;
@@ -112,9 +114,10 @@ export async function addToBakeTombstone(id: string): Promise<void> {
   });
 }
 
-export async function removeFromBakeTombstone(id: string): Promise<void> {
+export async function removeFromBakeTombstone(id: string, context?: WorkspaceOperationContext): Promise<void> {
   return storageMutex.run(async () => {
-    const owner = await resolveOwner();
+    if (context) await assertWorkspaceOperationCurrent(context);
+    const owner = context ? context.owner : await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, owner);
     const raw = await AsyncStorage.getItem(tombstoneKey);
     if (!raw) return;
@@ -154,9 +157,10 @@ export async function addToFeedTombstone(id: string): Promise<void> {
   });
 }
 
-export async function removeFromFeedTombstone(id: string): Promise<void> {
+export async function removeFromFeedTombstone(id: string, context?: WorkspaceOperationContext): Promise<void> {
   return storageMutex.run(async () => {
-    const owner = await resolveOwner();
+    if (context) await assertWorkspaceOperationCurrent(context);
+    const owner = context ? context.owner : await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, owner);
     const raw = await AsyncStorage.getItem(tombstoneKey);
     if (!raw) return;
@@ -180,8 +184,76 @@ export async function getFeedTombstone(): Promise<string[]> {
   return parsed;
 }
 
+async function reconcileLegacyFlatTombstones(): Promise<void> {
+  try {
+    const [flatRec, flatBake, flatFeed] = await Promise.all([
+      AsyncStorage.getItem("bread_lab_deleted_recipe_ids_v1").catch(() => null),
+      AsyncStorage.getItem("bread_lab_deleted_bake_ids_v1").catch(() => null),
+      AsyncStorage.getItem("bread_lab_deleted_feed_ids_v1").catch(() => null),
+    ]);
+
+    if (flatRec) {
+      const ids = safeParse<string[]>(flatRec, [], Array.isArray);
+      if (ids.length > 0) {
+        const anonKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, "anonymous");
+        const rawAnon = await AsyncStorage.getItem(anonKey).catch(() => null);
+        const anonSet = safeParse<string[]>(rawAnon, [], Array.isArray);
+        const merged = Array.from(new Set([...anonSet, ...ids]));
+        await AsyncStorage.setItem(anonKey, JSON.stringify(merged));
+      }
+      await AsyncStorage.removeItem("bread_lab_deleted_recipe_ids_v1");
+    }
+
+    if (flatBake) {
+      const ids = safeParse<string[]>(flatBake, [], Array.isArray);
+      if (ids.length > 0) {
+        const anonKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, "anonymous");
+        const rawAnon = await AsyncStorage.getItem(anonKey).catch(() => null);
+        const anonSet = safeParse<string[]>(rawAnon, [], Array.isArray);
+        const merged = Array.from(new Set([...anonSet, ...ids]));
+        await AsyncStorage.setItem(anonKey, JSON.stringify(merged));
+      }
+      await AsyncStorage.removeItem("bread_lab_deleted_bake_ids_v1");
+    }
+
+    if (flatFeed) {
+      const ids = safeParse<string[]>(flatFeed, [], Array.isArray);
+      if (ids.length > 0) {
+        const anonKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, "anonymous");
+        const rawAnon = await AsyncStorage.getItem(anonKey).catch(() => null);
+        const anonSet = safeParse<string[]>(rawAnon, [], Array.isArray);
+        const merged = Array.from(new Set([...anonSet, ...ids]));
+        await AsyncStorage.setItem(anonKey, JSON.stringify(merged));
+      }
+      await AsyncStorage.removeItem("bread_lab_deleted_feed_ids_v1");
+    }
+  } catch (e) {
+    console.error("[recipeStorage] reconcileLegacyFlatTombstones failed", e);
+  }
+}
+
+async function verifyRemoteAbsence(type: 'recipe' | 'bake' | 'feed', id: string, deviceId: string, token?: string): Promise<boolean> {
+  try {
+    if (type === 'recipe') {
+      const data = await api.recipes.list(deviceId, token);
+      return !data.some(r => r.id === id);
+    } else if (type === 'bake') {
+      const bakes = await api.history.bakes.list(deviceId, token);
+      return !bakes.some(b => b.id === id);
+    } else if (type === 'feed') {
+      const feeds = await api.history.feed.list(deviceId, token);
+      return !feeds.some(f => f.id === id);
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 export async function processPendingDeletions(): Promise<void> {
   try {
+    await reconcileLegacyFlatTombstones();
+
     const owner = await resolveOwner();
     const generation = getWorkspaceGeneration();
     const context: WorkspaceOperationContext = { owner, generation };
@@ -196,11 +268,16 @@ export async function processPendingDeletions(): Promise<void> {
       try {
         const deleted = await api.recipes.delete(id, deviceId, token ?? undefined);
         if (deleted) {
-          await removeFromRecipeTombstone(id);
+          await removeFromRecipeTombstone(id, context);
+        } else {
+          const absent = await verifyRemoteAbsence('recipe', id, deviceId, token ?? undefined);
+          if (absent) {
+            await removeFromRecipeTombstone(id, context);
+          }
         }
       } catch (e: any) {
         if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromRecipeTombstone(id);
+          await removeFromRecipeTombstone(id, context);
         } else {
           console.warn(`[recipeStorage] Recipe deletion retry failed for id ${id}:`, e);
         }
@@ -213,11 +290,16 @@ export async function processPendingDeletions(): Promise<void> {
       try {
         const deleted = await api.history.bakes.delete(id, deviceId, token ?? undefined);
         if (deleted) {
-          await removeFromBakeTombstone(id);
+          await removeFromBakeTombstone(id, context);
+        } else {
+          const absent = await verifyRemoteAbsence('bake', id, deviceId, token ?? undefined);
+          if (absent) {
+            await removeFromBakeTombstone(id, context);
+          }
         }
       } catch (e: any) {
         if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromBakeTombstone(id);
+          await removeFromBakeTombstone(id, context);
         } else {
           console.warn(`[recipeStorage] Bake deletion retry failed for id ${id}:`, e);
         }
@@ -230,11 +312,16 @@ export async function processPendingDeletions(): Promise<void> {
       try {
         const deleted = await api.history.feed.delete(id, deviceId, token ?? undefined);
         if (deleted) {
-          await removeFromFeedTombstone(id);
+          await removeFromFeedTombstone(id, context);
+        } else {
+          const absent = await verifyRemoteAbsence('feed', id, deviceId, token ?? undefined);
+          if (absent) {
+            await removeFromFeedTombstone(id, context);
+          }
         }
       } catch (e: any) {
         if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromFeedTombstone(id);
+          await removeFromFeedTombstone(id, context);
         } else {
           console.warn(`[recipeStorage] Feed deletion retry failed for id ${id}:`, e);
         }
@@ -243,6 +330,14 @@ export async function processPendingDeletions(): Promise<void> {
   } catch (e) {
     console.error("[recipeStorage] processPendingDeletions failed", e);
   }
+}
+
+if (typeof AppState !== "undefined" && AppState.addEventListener) {
+  AppState.addEventListener("change", (state) => {
+    if (state === "active") {
+      processPendingDeletions().catch(() => {});
+    }
+  });
 }
 
 // ─── loadAll ──────────────────────────────────────────────────────────────────
