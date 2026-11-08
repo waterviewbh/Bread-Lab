@@ -222,12 +222,18 @@ async function reconcileLegacyFlatTombstones(): Promise<void> {
       throw new Error(`Legacy tombstone validation failure for ${key}: expected array.`);
     }
 
-    const ids = parsed.filter((x): x is string => typeof x === "string" && x.trim() !== "");
-    if (ids.length === 0) {
+    if (parsed.length === 0) {
       await AsyncStorage.removeItem(key);
       continue;
     }
 
+    for (const item of parsed) {
+      if (typeof item !== "string" || item.trim() === "") {
+        throw new Error(`Legacy tombstone validation failure for ${key}: contains non-string or empty element.`);
+      }
+    }
+
+    const ids = parsed as string[];
     const intents: LegacyDeletionIntent[] = ids.map((id) => ({
       id,
       recordType: type,
@@ -266,8 +272,23 @@ async function reconcileLegacyFlatTombstones(): Promise<void> {
     }
 
     const verifiedParsed = verifyRaw ? JSON.parse(verifyRaw) : null;
-    if (!Array.isArray(verifiedParsed) || verifiedParsed.length < mergedIntents.length) {
-      throw new Error("Legacy tombstone migration verification failed: destination store content mismatch.");
+    if (!Array.isArray(verifiedParsed)) {
+      throw new Error("Legacy tombstone migration verification failed: destination is not an array.");
+    }
+
+    for (const expected of intents) {
+      const found = verifiedParsed.find(
+        (item: any) =>
+          item &&
+          typeof item === "object" &&
+          item.recordType === expected.recordType &&
+          item.id === expected.id &&
+          item.owner === "unknown" &&
+          item.disposition === "unresolved"
+      );
+      if (!found) {
+        throw new Error(`Legacy tombstone migration verification failed: missing expected intent for ${expected.recordType}:${expected.id}`);
+      }
     }
 
     await AsyncStorage.removeItem(key);
