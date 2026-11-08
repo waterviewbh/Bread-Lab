@@ -115,18 +115,52 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
   let bakeTombRaw: string | null = null;
   let feedTombRaw: string | null = null;
   let unresolvedLegacyRaw: string | null = null;
+  const flatLegacyKeys = [
+    { key: "bread_lab_deleted_recipe_ids_v1", label: "flat legacy recipe" },
+    { key: "bread_lab_deleted_bake_ids_v1", label: "flat legacy bake" },
+    { key: "bread_lab_deleted_feed_ids_v1", label: "flat legacy feed" },
+  ];
+
   try {
     const res = await Promise.all([
       AsyncStorage.getItem(recTombKey),
       AsyncStorage.getItem(bakeTombKey),
       AsyncStorage.getItem(feedTombKey),
       AsyncStorage.getItem("bread_lab_unresolved_legacy_tombstones_v1"),
+      AsyncStorage.getItem(flatLegacyKeys[0].key),
+      AsyncStorage.getItem(flatLegacyKeys[1].key),
+      AsyncStorage.getItem(flatLegacyKeys[2].key),
     ]);
     recTombRaw = res[0];
     bakeTombRaw = res[1];
     feedTombRaw = res[2];
     unresolvedLegacyRaw = res[3];
-  } catch (err) {
+
+    for (let i = 0; i < flatLegacyKeys.length; i++) {
+      const { key, label } = flatLegacyKeys[i];
+      const flatRaw = res[4 + i];
+      if (flatRaw !== null && flatRaw !== undefined) {
+        let parsedFlat: unknown;
+        try {
+          parsedFlat = JSON.parse(flatRaw);
+        } catch (e: any) {
+          throw new Error(`Transition blocked: ${label} tombstone storage ${key} is malformed JSON: ${e.message}`);
+        }
+        if (!Array.isArray(parsedFlat)) {
+          throw new Error(`Transition blocked: ${label} tombstone storage ${key} is not an array.`);
+        }
+        for (const el of parsedFlat) {
+          if (typeof el !== "string" || el.trim() === "") {
+            throw new Error(`Transition blocked: ${label} tombstone storage ${key} contains invalid or non-string element.`);
+          }
+        }
+        if (parsedFlat.length > 0) {
+          throw new Error(`Transition blocked: workspace contains nonempty ${label} tombstone queue ${key} (${parsedFlat.length} items).`);
+        }
+      }
+    }
+  } catch (err: any) {
+    if (err.message?.includes("Transition blocked")) throw err;
     throw new Error(`Transition blocked: failed to inspect tombstone storage queues: ${err instanceof Error ? err.message : String(err)}`);
   }
 

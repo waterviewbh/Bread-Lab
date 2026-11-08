@@ -254,6 +254,20 @@ async function reconcileLegacyFlatTombstones(): Promise<void> {
       throw new Error("Destination unresolved legacy store schema corruption: expected array.");
     }
 
+    for (const item of existingIntents) {
+      if (
+        !item ||
+        typeof item !== "object" ||
+        typeof item.id !== "string" ||
+        item.id.trim() === "" ||
+        !["recipe", "bake", "feed"].includes(item.recordType) ||
+        item.owner !== "unknown" ||
+        item.disposition !== "unresolved"
+      ) {
+        throw new Error("Destination unresolved legacy store contains invalid or corrupted pre-existing entry.");
+      }
+    }
+
     const seenIds = new Set(existingIntents.map((item: any) => `${item.recordType}:${item.id}`));
     const newIntents = intents.filter((intent) => !seenIds.has(`${intent.recordType}:${intent.id}`));
     const mergedIntents = [...existingIntents, ...newIntents];
