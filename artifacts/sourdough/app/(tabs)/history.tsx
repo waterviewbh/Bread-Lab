@@ -34,43 +34,24 @@ import { computeSessionAcidVelocity } from "@/lib/analytics";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 import { SafePrint } from "@/lib/printUtils";
+import {
+  addToFeedTombstone,
+  removeFromFeedTombstone,
+  getFeedTombstone,
+  addToBakeTombstone,
+  removeFromBakeTombstone,
+  getBakeTombstone,
+} from "@/lib/recipeStorage";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
 const FEED_FILTER_KEY = "bread_lab_feed_filter_v1";
 const ACTIVE_BAKE_KEY = "bread_lab_bake_v2";
-const DELETED_FEED_IDS_KEY = "bread_lab_deleted_feed_ids_v1";
-const DELETED_BAKE_IDS_KEY = "bread_lab_deleted_bake_ids_v1";
 
 export function isOwnerMatch(entry: { userId?: string; user_id?: string }, token: string | null): boolean {
   const owner = entry?.userId ?? entry?.user_id;
   if (!token) return owner === "anonymous";
   return owner === token;
-}
-
-async function loadTombstoneSet(key: string): Promise<Set<string>> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
-  } catch {
-    return new Set<string>();
-  }
-}
-
-async function addToTombstone(key: string, id: string): Promise<void> {
-  try {
-    const set = await loadTombstoneSet(key);
-    set.add(id);
-    await AsyncStorage.setItem(key, JSON.stringify([...set]));
-  } catch {}
-}
-
-async function removeFromTombstone(key: string, id: string): Promise<void> {
-  try {
-    const set = await loadTombstoneSet(key);
-    set.delete(id);
-    await AsyncStorage.setItem(key, JSON.stringify([...set]));
-  } catch {}
 }
 
 function ensureString(val: string | any[] | undefined): string {
@@ -725,18 +706,14 @@ export default function HistoryScreen() {
       // Merge Supabase results with local-only entries so a failed or
       // incomplete sync never silently erases sessions that exist only
       // in AsyncStorage (e.g., the session from last night that didn't sync).
-      const [localFeedRaw, localBakeRaw, deletedFeedRaw, deletedBakeRaw] = await Promise.all([
+      const [localFeedRaw, localBakeRaw, feedTombs, bakeTombs] = await Promise.all([
         AsyncStorage.getItem(HISTORY_KEY),
         AsyncStorage.getItem(BAKE_HISTORY_KEY),
-        AsyncStorage.getItem(DELETED_FEED_IDS_KEY),
-        AsyncStorage.getItem(DELETED_BAKE_IDS_KEY),
+        getFeedTombstone(),
+        getBakeTombstone(),
       ]);
-      const deletedFeedIds = new Set<string>(
-        deletedFeedRaw ? (JSON.parse(deletedFeedRaw) as string[]) : []
-      );
-      const deletedBakeIds = new Set<string>(
-        deletedBakeRaw ? (JSON.parse(deletedBakeRaw) as string[]) : []
-      );
+      const deletedFeedIds = new Set<string>(feedTombs);
+      const deletedBakeIds = new Set<string>(bakeTombs);
       const localFeed: HistoryEntry[] = localFeedRaw ? JSON.parse(localFeedRaw) : [];
       const supabaseFeedIds = new Set(mapped.map((e) => e.id));
       const localOnlyFeed = localFeed.filter(
@@ -811,7 +788,7 @@ export default function HistoryScreen() {
     const doDelete = async () => {
       const updated = history.filter((e) => e.id !== id);
       setHistory(updated);
-      await addToTombstone(DELETED_FEED_IDS_KEY, id);
+      await addToFeedTombstone(id);
       await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
       if (selectedDay !== null) {
         const remaining = updated.filter((e) => {
@@ -826,7 +803,7 @@ export default function HistoryScreen() {
       }
       const feedDeleteToken = await getStoredToken().catch(() => null);
       api.history.feed.delete(id, localDeviceId || undefined, feedDeleteToken ?? undefined)
-        .then((deleted) => { if (deleted) removeFromTombstone(DELETED_FEED_IDS_KEY, id); })
+        .then((deleted) => { if (deleted) removeFromFeedTombstone(id); })
         .catch(() => {});
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };
@@ -844,7 +821,7 @@ export default function HistoryScreen() {
     const doDelete = async () => {
       const updated = bakeHistory.filter((e) => e.id !== id);
       setBakeHistory(updated);
-      await addToTombstone(DELETED_BAKE_IDS_KEY, id);
+      await addToBakeTombstone(id);
       try {
         const activeRaw = await AsyncStorage.getItem(ACTIVE_BAKE_KEY);
         const activeId = activeRaw
@@ -855,7 +832,7 @@ export default function HistoryScreen() {
       } catch {}
       const bakeDeleteToken = await getStoredToken().catch(() => null);
       api.history.bakes.delete(id, localDeviceId || undefined, bakeDeleteToken ?? undefined)
-        .then((deleted) => { if (deleted) removeFromTombstone(DELETED_BAKE_IDS_KEY, id); })
+        .then((deleted) => { if (deleted) removeFromBakeTombstone(id); })
         .catch(() => {});
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };

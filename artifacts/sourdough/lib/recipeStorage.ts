@@ -50,13 +50,16 @@ async function assertWorkspaceOperationCurrent(context: WorkspaceOperationContex
   }
 }
 
-// ─── Tombstone helpers ────────────────────────────────────────────────────────
+// ─── Tombstone helpers (Fail-Closed) ──────────────────────────────────────────
 export async function addToRecipeTombstone(id: string): Promise<void> {
   return storageMutex.run(async () => {
     const owner = await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, owner);
-    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
-    const set = safeParse<string[]>(raw, [], Array.isArray);
+    const raw = await AsyncStorage.getItem(tombstoneKey);
+    const set = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(set)) {
+      throw new Error("Tombstone schema corruption: expected array for recipe tombstones.");
+    }
     if (!set.includes(id)) {
       set.push(id);
       await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set));
@@ -68,12 +71,15 @@ export async function removeFromRecipeTombstone(id: string): Promise<void> {
   return storageMutex.run(async () => {
     const owner = await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, owner);
-    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+    const raw = await AsyncStorage.getItem(tombstoneKey);
     if (!raw) return;
-    const set = safeParse<string[]>(raw, [], Array.isArray);
+    const set = JSON.parse(raw);
+    if (!Array.isArray(set)) {
+      throw new Error("Tombstone schema corruption: expected array for recipe tombstones.");
+    }
     await AsyncStorage.setItem(
       tombstoneKey,
-      JSON.stringify(set.filter((x) => x !== id))
+      JSON.stringify(set.filter((x: string) => x !== id))
     );
   });
 }
@@ -81,16 +87,24 @@ export async function removeFromRecipeTombstone(id: string): Promise<void> {
 export async function getRecipeTombstone(): Promise<string[]> {
   const owner = await resolveOwner();
   const tombstoneKey = getOwnerStorageKey(DELETED_RECIPE_IDS_KEY, owner);
-  const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
-  return safeParse<string[]>(raw, [], Array.isArray);
+  const raw = await AsyncStorage.getItem(tombstoneKey);
+  if (raw === null || raw === undefined) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Tombstone corruption: recipe tombstone data is not an array.");
+  }
+  return parsed;
 }
 
 export async function addToBakeTombstone(id: string): Promise<void> {
   return storageMutex.run(async () => {
     const owner = await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, owner);
-    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
-    const set = safeParse<string[]>(raw, [], Array.isArray);
+    const raw = await AsyncStorage.getItem(tombstoneKey);
+    const set = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(set)) {
+      throw new Error("Tombstone schema corruption: expected array for bake tombstones.");
+    }
     if (!set.includes(id)) {
       set.push(id);
       await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set));
@@ -102,26 +116,37 @@ export async function removeFromBakeTombstone(id: string): Promise<void> {
   return storageMutex.run(async () => {
     const owner = await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, owner);
-    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+    const raw = await AsyncStorage.getItem(tombstoneKey);
     if (!raw) return;
-    const set = safeParse<string[]>(raw, [], Array.isArray);
-    await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set.filter(x => x !== id)));
+    const set = JSON.parse(raw);
+    if (!Array.isArray(set)) {
+      throw new Error("Tombstone schema corruption: expected array for bake tombstones.");
+    }
+    await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set.filter((x: string) => x !== id)));
   });
 }
 
 export async function getBakeTombstone(): Promise<string[]> {
   const owner = await resolveOwner();
   const tombstoneKey = getOwnerStorageKey(DELETED_BAKE_IDS_KEY, owner);
-  const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
-  return safeParse<string[]>(raw, [], Array.isArray);
+  const raw = await AsyncStorage.getItem(tombstoneKey);
+  if (raw === null || raw === undefined) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Tombstone corruption: bake tombstone data is not an array.");
+  }
+  return parsed;
 }
 
 export async function addToFeedTombstone(id: string): Promise<void> {
   return storageMutex.run(async () => {
     const owner = await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, owner);
-    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
-    const set = safeParse<string[]>(raw, [], Array.isArray);
+    const raw = await AsyncStorage.getItem(tombstoneKey);
+    const set = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(set)) {
+      throw new Error("Tombstone schema corruption: expected array for feed tombstones.");
+    }
     if (!set.includes(id)) {
       set.push(id);
       await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set));
@@ -133,66 +158,94 @@ export async function removeFromFeedTombstone(id: string): Promise<void> {
   return storageMutex.run(async () => {
     const owner = await resolveOwner();
     const tombstoneKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, owner);
-    const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
+    const raw = await AsyncStorage.getItem(tombstoneKey);
     if (!raw) return;
-    const set = safeParse<string[]>(raw, [], Array.isArray);
-    await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set.filter(x => x !== id)));
+    const set = JSON.parse(raw);
+    if (!Array.isArray(set)) {
+      throw new Error("Tombstone schema corruption: expected array for feed tombstones.");
+    }
+    await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set.filter((x: string) => x !== id)));
   });
 }
 
 export async function getFeedTombstone(): Promise<string[]> {
   const owner = await resolveOwner();
   const tombstoneKey = getOwnerStorageKey(DELETED_FEED_IDS_KEY, owner);
-  const raw = await AsyncStorage.getItem(tombstoneKey).catch(() => null);
-  return safeParse<string[]>(raw, [], Array.isArray);
+  const raw = await AsyncStorage.getItem(tombstoneKey);
+  if (raw === null || raw === undefined) return [];
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Tombstone corruption: feed tombstone data is not an array.");
+  }
+  return parsed;
 }
 
 export async function processPendingDeletions(): Promise<void> {
-  try {
-    const owner = await resolveOwner();
-    const deviceId = await getDeviceId();
-    const token = owner === "anonymous" ? null : owner;
+  const owner = await resolveOwner();
+  const generation = getWorkspaceGeneration();
+  const context: WorkspaceOperationContext = { owner, generation };
+  const deviceId = await getDeviceId();
+  const token = owner === "anonymous" ? null : owner;
 
-    const recipeTombstones = await getRecipeTombstone();
-    for (const id of recipeTombstones) {
-      try {
-        const deleted = await api.recipes.delete(id, deviceId, token ?? undefined);
-        if (deleted) {
-          await removeFromRecipeTombstone(id);
-        }
-      } catch (e: any) {
-        if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromRecipeTombstone(id);
-        }
+  await assertWorkspaceOperationCurrent(context);
+
+  const recipeTombstones = await getRecipeTombstone();
+  for (const id of recipeTombstones) {
+    await assertWorkspaceOperationCurrent(context);
+    try {
+      const deleted = await api.recipes.delete(id, deviceId, token ?? undefined);
+      if (deleted) {
+        await removeFromRecipeTombstone(id);
+      } else {
+        throw new Error(`Remote recipe delete unconfirmed for id ${id}`);
+      }
+    } catch (e: any) {
+      if (e?.status === 404 || e?.message?.includes("not found")) {
+        await removeFromRecipeTombstone(id);
+      } else {
+        throw e;
       }
     }
+  }
 
-    const bakeTombstones = await getBakeTombstone();
-    for (const id of bakeTombstones) {
-      try {
-        const deleted = await api.history.bakes.delete(id, deviceId, token ?? undefined);
-        if (deleted) {
-          await removeFromBakeTombstone(id);
-        }
-      } catch (e: any) {
-        if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromBakeTombstone(id);
-        }
+  const bakeTombstones = await getBakeTombstone();
+  for (const id of bakeTombstones) {
+    await assertWorkspaceOperationCurrent(context);
+    try {
+      const deleted = await api.history.bakes.delete(id, deviceId, token ?? undefined);
+      if (deleted) {
+        await removeFromBakeTombstone(id);
+      } else {
+        throw new Error(`Remote bake delete unconfirmed for id ${id}`);
+      }
+    } catch (e: any) {
+      if (e?.status === 404 || e?.message?.includes("not found")) {
+        await removeFromBakeTombstone(id);
+      } else {
+        throw e;
       }
     }
+  }
 
-    const feedTombstones = await getFeedTombstone();
-    for (const id of feedTombstones) {
-      try {
-        const deleted = await api.history.feed.delete(id, deviceId, token ?? undefined);
-        if (deleted) {
-          await removeFromFeedTombstone(id);
-        }
-      } catch (e: any) {
-        if (e?.status === 404 || e?.message?.includes("not found")) {
-          await removeFromFeedTombstone(id);
-        }
+  const feedTombstones = await getFeedTombstone();
+  for (const id of feedTombstones) {
+    await assertWorkspaceOperationCurrent(context);
+    try {
+      const deleted = await api.history.feed.delete(id, deviceId, token ?? undefined);
+      if (deleted) {
+        await removeFromFeedTombstone(id);
+      } else {
+        throw new Error(`Remote feed delete unconfirmed for id ${id}`);
       }
+    } catch (e: any) {
+      if (e?.status === 404 || e?.message?.includes("not found")) {
+        await removeFromFeedTombstone(id);
+      } else {
+        throw e;
+      }
+    }
+  }
+}
     }
   } catch (e) {
     console.error("[recipeStorage] processPendingDeletions failed", e);

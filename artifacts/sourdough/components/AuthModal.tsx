@@ -399,6 +399,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         const sessionUserId = activeSession?.user?.id ?? null;
         const currentToken = sessionUserId ?? await getStoredToken();
 
+        // Enforce transition cleanliness gate before sign-out
+        await validateOperationalData(currentToken);
+
         if (currentToken) {
           const migrationResult = await migrateLocalDataToAccount(currentToken);
           const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;

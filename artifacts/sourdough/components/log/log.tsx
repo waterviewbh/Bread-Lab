@@ -35,38 +35,19 @@ import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 import { SafePrint } from "@/lib/printUtils";
 import { type BakeOutcome } from "@/lib/recipeTypes";
+import {
+  addToFeedTombstone,
+  removeFromFeedTombstone,
+  getFeedTombstone,
+  addToBakeTombstone,
+  removeFromBakeTombstone,
+  getBakeTombstone,
+} from "@/lib/recipeStorage";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const BAKE_HISTORY_KEY = "bread_lab_bake_history_v1";
 const FEED_FILTER_KEY = "bread_lab_feed_filter_v1";
 const ACTIVE_BAKE_KEY = "bread_lab_bake_v2";
-const DELETED_FEED_IDS_KEY = "bread_lab_deleted_feed_ids_v1";
-const DELETED_BAKE_IDS_KEY = "bread_lab_deleted_bake_ids_v1";
-
-async function loadTombstoneSet(key: string): Promise<Set<string>> {
-  try {
-    const raw = await AsyncStorage.getItem(key);
-    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
-  } catch {
-    return new Set<string>();
-  }
-}
-
-async function addToTombstone(key: string, id: string): Promise<void> {
-  try {
-    const set = await loadTombstoneSet(key);
-    set.add(id);
-    await AsyncStorage.setItem(key, JSON.stringify([...set]));
-  } catch {}
-}
-
-async function removeFromTombstone(key: string, id: string): Promise<void> {
-  try {
-    const set = await loadTombstoneSet(key);
-    set.delete(id);
-    await AsyncStorage.setItem(key, JSON.stringify([...set]));
-  } catch {}
-}
 
 function ensureString(val: string | any[] | undefined): string {
   if (!val) return "";
@@ -324,16 +305,16 @@ export function HistorySection() {
         userId: token ?? (s.data as any)?.userId,
       }));
 
-      const [localFeedRaw, localBakeRaw, deletedFeedRaw, deletedBakeRaw] = await Promise.all([
+      const [localFeedRaw, localBakeRaw, feedTombs, bakeTombs] = await Promise.all([
         AsyncStorage.getItem(HISTORY_KEY),
         AsyncStorage.getItem(BAKE_HISTORY_KEY),
-        AsyncStorage.getItem(DELETED_FEED_IDS_KEY),
-        AsyncStorage.getItem(DELETED_BAKE_IDS_KEY),
+        getFeedTombstone(),
+        getBakeTombstone(),
       ]);
       if (loadSequenceRef.current !== sequenceId) return;
 
-      const deletedFeedIds = new Set<string>(deletedFeedRaw ? JSON.parse(deletedFeedRaw) : []);
-      const deletedBakeIds = new Set<string>(deletedBakeRaw ? JSON.parse(deletedBakeRaw) : []);
+      const deletedFeedIds = new Set<string>(feedTombs);
+      const deletedBakeIds = new Set<string>(bakeTombs);
       const localFeed: HistoryEntry[] = localFeedRaw ? JSON.parse(localFeedRaw) : [];
       const supabaseFeedIds = new Set(mapped.map((e) => e.id));
       const localOnlyFeed = localFeed.filter(e => !supabaseFeedIds.has(e.id) && !deletedFeedIds.has(e.id) && isOwnerMatch(e));
@@ -474,10 +455,10 @@ export function HistorySection() {
     const doDelete = async () => {
       const updated = history.filter(e => e.id !== id);
       setHistory(updated);
-      await addToTombstone(DELETED_FEED_IDS_KEY, id);
+      await addToFeedTombstone(id);
       await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
       const token = await getStoredToken().catch(() => null);
-      api.history.feed.delete(id, localDeviceId || undefined, token ?? undefined).then(ok => { if (ok) removeFromTombstone(DELETED_FEED_IDS_KEY, id); }).catch(() => {});
+      api.history.feed.delete(id, localDeviceId || undefined, token ?? undefined).then(ok => { if (ok) removeFromFeedTombstone(id); }).catch(() => {});
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };
     Alert.alert("Delete Entry", "Remove this refresh from history?", [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: doDelete }]);
@@ -487,10 +468,10 @@ export function HistorySection() {
     const doDelete = async () => {
       const updated = bakeHistory.filter(b => b.id !== id);
       setBakeHistory(updated);
-      await addToTombstone(DELETED_BAKE_IDS_KEY, id);
+      await addToBakeTombstone(id);
       await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(updated));
       const token = await getStoredToken().catch(() => null);
-      api.history.bakes.delete(id, localDeviceId || undefined, token ?? undefined).then(ok => { if (ok) removeFromTombstone(DELETED_BAKE_IDS_KEY, id); }).catch(() => {});
+      api.history.bakes.delete(id, localDeviceId || undefined, token ?? undefined).then(ok => { if (ok) removeFromBakeTombstone(id); }).catch(() => {});
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     };
     Alert.alert("Delete Bake", "Remove this bake from history?", [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: doDelete }]);

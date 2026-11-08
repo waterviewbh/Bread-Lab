@@ -111,15 +111,38 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
   const bakeTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS, ownerToInspect);
   const feedTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, ownerToInspect);
 
-  const [recTombRaw, bakeTombRaw, feedTombRaw] = await Promise.all([
-    AsyncStorage.getItem(recTombKey).catch(() => null),
-    AsyncStorage.getItem(bakeTombKey).catch(() => null),
-    AsyncStorage.getItem(feedTombKey).catch(() => null),
-  ]);
+  let recTombRaw: string | null = null;
+  let bakeTombRaw: string | null = null;
+  let feedTombRaw: string | null = null;
+  try {
+    const res = await Promise.all([
+      AsyncStorage.getItem(recTombKey),
+      AsyncStorage.getItem(bakeTombKey),
+      AsyncStorage.getItem(feedTombKey),
+    ]);
+    recTombRaw = res[0];
+    bakeTombRaw = res[1];
+    feedTombRaw = res[2];
+  } catch (err) {
+    throw new Error(`Transition blocked: failed to inspect tombstone storage queues: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
-  const recTombs = safeParse<string[]>(recTombRaw, [], Array.isArray);
-  const bakeTombs = safeParse<string[]>(bakeTombRaw, [], Array.isArray);
-  const feedTombs = safeParse<string[]>(feedTombRaw, [], Array.isArray);
+  const parseTombstones = (raw: string | null, label: string): string[] => {
+    if (raw === null || raw === undefined) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        throw new Error(`Tombstone storage schema corruption for ${label}: expected array.`);
+      }
+      return parsed;
+    } catch (e: any) {
+      throw new Error(`Transition blocked: ${label} tombstone storage is malformed or unreadable: ${e.message}`);
+    }
+  };
+
+  const recTombs = parseTombstones(recTombRaw, "recipe");
+  const bakeTombs = parseTombstones(bakeTombRaw, "bake");
+  const feedTombs = parseTombstones(feedTombRaw, "feed");
 
   if (recTombs.length > 0 || bakeTombs.length > 0 || feedTombs.length > 0) {
     throw new Error(`Transition blocked: workspace has pending deletion work (${recTombs.length} recipes, ${bakeTombs.length} bakes, ${feedTombs.length} feeds pending deletion).`);
