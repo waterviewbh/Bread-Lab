@@ -194,7 +194,7 @@ export interface LegacyDeletionIntent {
   disposition: "unresolved";
 }
 
-async function reconcileLegacyFlatTombstones(): Promise<void> {
+export async function reconcileLegacyFlatTombstones(): Promise<void> {
   const legacyKeys = [
     { key: "bread_lab_deleted_recipe_ids_v1", type: "recipe" as const },
     { key: "bread_lab_deleted_bake_ids_v1", type: "bake" as const },
@@ -249,6 +249,10 @@ async function reconcileLegacyFlatTombstones(): Promise<void> {
       throw new Error(`Failed to read destination unresolved legacy store: ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    if (existingRaw === "") {
+      throw new Error("Destination unresolved legacy store is malformed (empty string).");
+    }
+
     const existingIntents = existingRaw ? JSON.parse(existingRaw) : [];
     if (!Array.isArray(existingIntents)) {
       throw new Error("Destination unresolved legacy store schema corruption: expected array.");
@@ -262,7 +266,9 @@ async function reconcileLegacyFlatTombstones(): Promise<void> {
         item.id.trim() === "" ||
         !["recipe", "bake", "feed"].includes(item.recordType) ||
         item.owner !== "unknown" ||
-        item.disposition !== "unresolved"
+        item.disposition !== "unresolved" ||
+        typeof item.sourceKey !== "string" ||
+        item.sourceKey.trim() === ""
       ) {
         throw new Error("Destination unresolved legacy store contains invalid or corrupted pre-existing entry.");
       }
