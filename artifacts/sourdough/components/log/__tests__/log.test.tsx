@@ -18,6 +18,13 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   clear: jest.fn(async () => {
     mockStore = {};
   }),
+  multiGet: jest.fn(async (keys: string[]) => keys.map(k => [k, mockStore[k] ?? null])),
+  multiSet: jest.fn(async (entries: [string, string][]) => {
+    entries.forEach(([k, v]) => { mockStore[k] = v; });
+  }),
+  multiRemove: jest.fn(async (keys: string[]) => {
+    keys.forEach(k => delete mockStore[k]);
+  }),
 }));
 
 jest.mock('@/lib/api', () => ({
@@ -57,13 +64,9 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
   beforeEach(async () => {
     jest.clearAllMocks();
     mockStore = {};
-    (api.history.feed.delete as jest.Mock).mockReset();
     (api.history.feed.delete as jest.Mock).mockResolvedValue(true);
-    (api.history.feed.verifyAbsent as jest.Mock).mockReset();
     (api.history.feed.verifyAbsent as jest.Mock).mockResolvedValue(true);
-    (api.history.bakes.delete as jest.Mock).mockReset();
     (api.history.bakes.delete as jest.Mock).mockResolvedValue(true);
-    (api.history.bakes.verifyAbsent as jest.Mock).mockReset();
     (api.history.bakes.verifyAbsent as jest.Mock).mockResolvedValue(true);
   });
 
@@ -87,13 +90,8 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
     expect(tombstones).not.toContain('feed-tomb-focus-1');
   });
 
-  it('Test 2 — Pull-to-refresh processes pending deletions', async () => {
-    await act(async () => {
-      await recipeStorage.addToFeedTombstone('feed-tomb-refresh-1');
-    });
-
-    (api.history.feed.delete as jest.Mock).mockResolvedValueOnce(true);
-
+  it('Test 2 — Pull-to-refresh processes pending deletions independently', async () => {
+    // 1. Render with no initial tombstones
     await act(async () => {
       render(<HistorySection />);
     });
@@ -102,23 +100,37 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
       expect(screen.getByText('Calendar')).toBeTruthy();
     });
 
+    const initialCallCount = (api.history.feed.delete as jest.Mock).mock.calls.length;
+
+    // 2. Seed a real Feed tombstone after initial load
+    await act(async () => {
+      await recipeStorage.addToFeedTombstone('feed-tomb-refresh-2');
+    });
+
     (api.history.feed.delete as jest.Mock).mockResolvedValueOnce(true);
 
     const scrollView = screen.getByTestId('history-scroll-view');
     const refreshControl = scrollView.props.refreshControl;
     expect(refreshControl).toBeDefined();
 
+    // 3. Invoke onRefresh
     await act(async () => {
       await refreshControl.props.onRefresh();
     });
 
+    // 4. Assert delete call count increased by exactly one and included the seeded ID
     await waitFor(() => {
-      expect(api.history.feed.delete).toHaveBeenCalledWith('feed-tomb-refresh-1', expect.any(String), undefined);
+      expect((api.history.feed.delete as jest.Mock).mock.calls.length).toBe(initialCallCount + 1);
+      expect(api.history.feed.delete).toHaveBeenCalledWith('feed-tomb-refresh-2', expect.any(String), undefined);
     });
+
+    // 5. Assert tombstone is removed after successful processing
+    const tombstones = await recipeStorage.getFeedTombstone();
+    expect(tombstones).not.toContain('feed-tomb-refresh-2');
   });
 
-  it('Test 3 — Processing failure preserves real tombstone and normal History behavior', async () => {
-    const tombstoneId = 'feed-fail-preserve-1';
+  it('Test 3 — Exercise failed deletion acknowledgment and failed absence verification', async () => {
+    const tombstoneId = 'feed-fail-absence-1';
     await act(async () => {
       await recipeStorage.addToFeedTombstone(tombstoneId);
     });
@@ -126,9 +138,9 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
     expect(await recipeStorage.getFeedTombstone())
       .toContain(tombstoneId);
 
-    // Simulate remote delete failure and absence verification failure
-    (api.history.feed.delete as jest.Mock).mockRejectedValue(new Error('Network error'));
-    (api.history.feed.verifyAbsent as jest.Mock).mockResolvedValue(false);
+    // Configure delete to resolve false (not reject) and verifyAbsent to resolve false
+    (api.history.feed.delete as jest.Mock).mockResolvedValueOnce(false);
+    (api.history.feed.verifyAbsent as jest.Mock).mockResolvedValueOnce(false);
 
     await act(async () => {
       render(<HistorySection />);
@@ -141,8 +153,15 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
           expect.any(String),
           undefined
         );
+      expect(api.history.feed.verifyAbsent)
+        .toHaveBeenCalledWith(
+          tombstoneId,
+          expect.any(String),
+          undefined
+        );
     });
 
+    // Assert real tombstone remains in storage because delete and verifyAbsent both indicated failure/absence unverified
     expect(await recipeStorage.getFeedTombstone())
       .toContain(tombstoneId);
 
