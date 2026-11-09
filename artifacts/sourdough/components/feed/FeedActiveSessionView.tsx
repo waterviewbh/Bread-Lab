@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -37,6 +38,8 @@ import { fonts } from "@/constants/theme";
 interface Props {
   session: FeedSession;
   historyData: FeedSession[];
+  refreshing?: boolean;
+  onRefresh?: () => void;
   onLogReading: (reading: Reading) => void;
   onSavePeak: (peak: PeakData) => void;
   onClearSession: () => void;
@@ -47,6 +50,8 @@ interface Props {
 export default function FeedActiveSessionView({
   session,
   historyData,
+  refreshing,
+  onRefresh,
   onLogReading,
   onSavePeak,
   onClearSession,
@@ -309,6 +314,7 @@ export default function FeedActiveSessionView({
           paddingHorizontal: 20,
         }}
         showsVerticalScrollIndicator={false}
+        refreshControl={onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined}
       >
         <TourStep order={1} name="app-name">
           <CopilotView style={styles.appHeader}>

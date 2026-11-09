@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,6 +34,8 @@ import { useLocalSearchParams } from "expo-router";
 
 interface Props {
   historyData: FeedSession[];
+  refreshing?: boolean;
+  onRefresh?: () => void;
   onStartFeed: (data: {
     starterWeight: string;
     flourWeight: number;
@@ -47,7 +50,7 @@ interface Props {
   }) => void;
 }
 
-export default function FeedSetupView({ onStartFeed, historyData }: Props) {
+export default function FeedSetupView({ onStartFeed, historyData, refreshing, onRefresh }: Props) {
   const params = useLocalSearchParams<{ starter?: string, flour?: string, water?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -237,6 +240,7 @@ const pickPhoto = (onPhoto: (uri: string) => void) => {
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          refreshControl={onRefresh ? <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} /> : undefined}
         >
           <Animated.View entering={FadeIn.duration(400)} style={styles.appHeader}>
             <Text selectable={true} style={[styles.appTitle, { color: colors.foreground }]}>Feed Tracker</Text>

@@ -330,7 +330,13 @@ async function verifyRemoteAbsence(type: 'recipe' | 'bake' | 'feed', id: string,
   return false;
 }
 
+let isProcessingDeletions = false;
+
 export async function processPendingDeletions(): Promise<void> {
+  if (isProcessingDeletions) {
+    return;
+  }
+  isProcessingDeletions = true;
   try {
     await reconcileLegacyFlatTombstones();
 
@@ -397,6 +403,8 @@ export async function processPendingDeletions(): Promise<void> {
     }
   } catch (e) {
     console.error("[recipeStorage] processPendingDeletions failed", e);
+  } finally {
+    isProcessingDeletions = false;
   }
 }
 

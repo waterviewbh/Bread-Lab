@@ -19,6 +19,8 @@ import { FeedSession, Reading, PeakData } from "@/types/feed";
 import { calcRatioStr, checkGraduationEligibility } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { Ionicons } from "@expo/vector-icons"; // Added for Day 2 button icon
+import { useFocusEffect } from "expo-router";
+import { processPendingDeletions } from "@/lib/recipeStorage";
 
 const STORAGE_KEY = "sourdough_feed_session_v1";
 const HISTORY_KEY = "sourdough_feed_history_v1";
@@ -96,98 +98,119 @@ export function ActiveFeedSection({
     } catch (e) { reportSyncFailure(); }
   }, [reportSyncStart, reportSyncSuccess, reportSyncFailure, starterTutorialMode]);
 
-  useEffect(() => {
-    const init = async () => {
-      const [stored, histRaw, bakeHistRaw, user, declined] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEY),
-        AsyncStorage.getItem(HISTORY_KEY),
-        AsyncStorage.getItem(BAKE_HISTORY_KEY),
-        getStoredUser(),
-        AsyncStorage.getItem(DECLINED_TUTORIAL_KEY),
-      ]);
+  const [refreshing, setRefreshing] = useState(false);
 
-      if (declined === "true") setHasDeclinedTutorial(true);
+  const init = useCallback(async () => {
+    try {
+      await processPendingDeletions();
+    } catch (e) {
+      console.warn("[Feed] background deletion sync failed:", e);
+    }
 
-      let currentSession: FeedSession | null = null;
-      if (stored) {
-        currentSession = JSON.parse(stored);
-      } else {
-        // HYDRATION: Fetch from Supabase if local is empty
-        try {
-          const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
-          const remote = await api.history.feed.active(deviceId, userId ?? undefined);
-          if (remote) {
-            currentSession = remote.data as unknown as FeedSession;
-            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(currentSession));
-          }
-        } catch (e) {
-          console.warn("[Feed] Failed to hydrate remote active session", e);
+    const [stored, histRaw, bakeHistRaw, user, declined] = await Promise.all([
+      AsyncStorage.getItem(STORAGE_KEY),
+      AsyncStorage.getItem(HISTORY_KEY),
+      AsyncStorage.getItem(BAKE_HISTORY_KEY),
+      getStoredUser(),
+      AsyncStorage.getItem(DECLINED_TUTORIAL_KEY),
+    ]);
+
+    if (declined === "true") setHasDeclinedTutorial(true);
+
+    let currentSession: FeedSession | null = null;
+    if (stored) {
+      currentSession = JSON.parse(stored);
+    } else {
+      // HYDRATION: Fetch from Supabase if local is empty
+      try {
+        const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
+        const remote = await api.history.feed.active(deviceId, userId ?? undefined);
+        if (remote) {
+          currentSession = remote.data as unknown as FeedSession;
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(currentSession));
         }
+      } catch (e) {
+        console.warn("[Feed] Failed to hydrate remote active session", e);
       }
+    }
 
-      let historyArray: FeedSession[] = [];
-      if (histRaw) {
-        try {
-          const parsed = JSON.parse(histRaw);
-          if (Array.isArray(parsed)) {
-            historyArray = parsed;
-            setHistoryData(parsed);
-          }
-        } catch (e) {
-          console.warn("[Feed] Failed to parse history", e);
+    let historyArray: FeedSession[] = [];
+    if (histRaw) {
+      try {
+        const parsed = JSON.parse(histRaw);
+        if (Array.isArray(parsed)) {
+          historyArray = parsed;
+          setHistoryData(parsed);
         }
+      } catch (e) {
+        console.warn("[Feed] Failed to parse history", e);
       }
-      if (user) setCurrentUser(user);
+    }
+    if (user) setCurrentUser(user);
 
-      if (currentSession) {
-        setSession(currentSession);
-        syncActiveSession(currentSession);
-      }
+    if (currentSession) {
+      setSession(currentSession);
+      syncActiveSession(currentSession);
+    }
 
-      // --- NEW: Robust Onboarding Check ---
-      // We only show the "New Culture" prompt if:
-      // 1. Not already in tutorial mode
-      // 2. Haven't declined it before
-      // 3. No active session exists
-      // 4. No feed history exists
-      // 5. No bake history exists (established baker)
-      // 6. User is not logged in (returning user)
-      const hasBakes = bakeHistRaw && JSON.parse(bakeHistRaw).length > 0;
-      const shouldPrompt = !starterTutorialMode &&
-                           declined !== "true" &&
-                           !currentSession &&
-                           historyArray.length === 0 &&
-                           !hasBakes &&
-                           !user;
+    // --- NEW: Robust Onboarding Check ---
+    // We only show the "New Culture" prompt if:
+    // 1. Not already in tutorial mode
+    // 2. Haven't declined it before
+    // 3. No active session exists
+    // 4. No feed history exists
+    // 5. No bake history exists (established baker)
+    // 6. User is not logged in (returning user)
+    const hasBakes = bakeHistRaw && JSON.parse(bakeHistRaw).length > 0;
+    const shouldPrompt = !starterTutorialMode &&
+                         declined !== "true" &&
+                         !currentSession &&
+                         historyArray.length === 0 &&
+                         !hasBakes &&
+                         !user;
 
-      if (shouldPrompt) {
-        Alert.alert(
-          "Would you like to start a new culture?",
-          "It looks like your feed history is empty. Would you like a guided tutorial to establish a new starter?",
-          [
-            {
-              text: "No thanks",
-              style: "cancel",
-              onPress: () => {
-                setHasDeclinedTutorial(true);
-                AsyncStorage.setItem(DECLINED_TUTORIAL_KEY, "true");
-              }
-            },
-            {
-              text: "Let's begin!",
-              onPress: () => {
-                setStarterTutorialMode(true);
-                setTutorialDay(1);
-              }
+    if (shouldPrompt) {
+      Alert.alert(
+        "Would you like to start a new culture?",
+        "It looks like your feed history is empty. Would you like a guided tutorial to establish a new starter?",
+        [
+          {
+            text: "No thanks",
+            style: "cancel",
+            onPress: () => {
+              setHasDeclinedTutorial(true);
+              AsyncStorage.setItem(DECLINED_TUTORIAL_KEY, "true");
             }
-          ]
-        );
-      }
+          },
+          {
+            text: "Let's begin!",
+            onPress: () => {
+              setStarterTutorialMode(true);
+              setTutorialDay(1);
+            }
+          }
+        ]
+      );
+    }
 
-      setIsLoaded(true);
-    };
-    init();
-  }, [syncActiveSession]);
+    setIsLoaded(true);
+  }, [syncActiveSession, starterTutorialMode, setStarterTutorialMode, setTutorialDay]);
+
+  useFocusEffect(
+    useCallback(() => {
+      init();
+    }, [init])
+  );
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await processPendingDeletions();
+      await init();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [init]);
 
   // --- Handlers ---
   const handleStartFeed = async (data: any) => {
@@ -345,6 +368,8 @@ export function ActiveFeedSection({
         <FeedActiveSessionView
           session={session}
           historyData={historyData}
+          refreshing={refreshing}
+          onRefresh={refresh}
           onLogReading={(r) => {
             if (!session) return;
             const updated = {
@@ -392,7 +417,7 @@ export function ActiveFeedSection({
             </Pressable>
           </View>
         ) : (
-          <FeedSetupView onStartFeed={handleStartFeed} historyData={historyData} />
+          <FeedSetupView onStartFeed={handleStartFeed} historyData={historyData} refreshing={refreshing} onRefresh={refresh} />
         )
       )}
 

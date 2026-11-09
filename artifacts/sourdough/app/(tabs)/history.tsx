@@ -41,6 +41,7 @@ import {
   addToBakeTombstone,
   removeFromBakeTombstone,
   getBakeTombstone,
+  processPendingDeletions,
 } from "@/lib/recipeStorage";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
@@ -635,6 +636,11 @@ export default function HistoryScreen() {
   };
 
   async function loadHistory() {
+    try {
+      await processPendingDeletions();
+    } catch (e) {
+      console.warn("[History] background deletion sync failed:", e);
+    }
     const mergeActiveBake = (
       list: BakeHistoryEntry[],
       activeRaw: string | null
@@ -788,6 +794,7 @@ export default function HistoryScreen() {
     const doDelete = async () => {
       try {
         await addToFeedTombstone(id);
+        await processPendingDeletions().catch(() => {});
       } catch (err) {
         Alert.alert("Deletion Error", "Failed to record deletion intent locally. Operation aborted.");
         return;
@@ -822,6 +829,7 @@ export default function HistoryScreen() {
     const doDelete = async () => {
       try {
         await addToBakeTombstone(id);
+        await processPendingDeletions().catch(() => {});
       } catch (err) {
         Alert.alert("Deletion Error", "Failed to record deletion intent locally. Operation aborted.");
         return;
