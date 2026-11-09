@@ -29,7 +29,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   }),
 }));
 
-describe("Omicron-8/10: Fail-Safe Legacy Tombstone Disposition & Validation", () => {
+describe("Omicron-8/10/11: Fail-Safe Legacy Tombstone Disposition & Retry Workflow", () => {
   beforeEach(async () => {
     mockStorage = {};
     jest.clearAllMocks();
@@ -116,5 +116,53 @@ describe("Omicron-8/10: Fail-Safe Legacy Tombstone Disposition & Validation", ()
     await expect(loadAll()).resolves.toBeDefined();
     expect(mockStorage[key]).toBeDefined();
     await expect(validateOperationalData(null)).rejects.toThrow(/contains invalid or non-string element/i);
+  });
+
+  it("Omicron-11 End-to-End Workflow — Failed migration preserves intent and retry migrates successfully without loss/duplication", async () => {
+    const sourceKey = "bread_lab_deleted_bake_ids_v1";
+    const initialBakes = JSON.stringify(["bake-1", "bake-2"]);
+    mockStorage[sourceKey] = initialBakes;
+
+    // Make AsyncStorage.setItem() reject specifically for UNRESOLVED_LEGACY_TOMBSTONES_KEY
+    (AsyncStorage.setItem as jest.Mock).mockImplementation((key, val) => {
+      if (key === UNRESOLVED_LEGACY_TOMBSTONES_KEY) {
+        return Promise.reject(new Error("Simulated destination write failure"));
+      }
+      mockStorage[key] = val;
+      return Promise.resolve();
+    });
+
+    // Run loadAll()
+    await expect(loadAll()).resolves.toBeDefined();
+
+    // Verify failure outcomes
+    expect(mockStorage[sourceKey]).toBe(initialBakes);
+    expect(mockStorage[UNRESOLVED_LEGACY_TOMBSTONES_KEY]).toBeUndefined();
+    await expect(validateOperationalData(null)).rejects.toThrow(/nonempty flat legacy|pending deletion work|unresolved legacy tombstone/i);
+
+    // Restore successful destination writes
+    (AsyncStorage.setItem as jest.Mock).mockImplementation((key, val) => {
+      mockStorage[key] = val;
+      return Promise.resolve();
+    });
+
+    // Run loadAll() again to exercise retry
+    await loadAll();
+
+    // Verify success outcomes
+    expect(mockStorage[sourceKey]).toBeUndefined();
+    const destRaw = mockStorage[UNRESOLVED_LEGACY_TOMBSTONES_KEY];
+    expect(destRaw).toBeDefined();
+    const destParsed = JSON.parse(destRaw || "[]");
+    expect(destParsed).toHaveLength(2);
+    expect(destParsed[0]).toMatchObject({ id: "bake-1", recordType: "bake", sourceKey, owner: "unknown", disposition: "unresolved" });
+    expect(destParsed[1]).toMatchObject({ id: "bake-2", recordType: "bake", sourceKey, owner: "unknown", disposition: "unresolved" });
+
+    // Run loadAll again -> idempotent (no duplication)
+    await loadAll();
+    expect(JSON.parse(mockStorage[UNRESOLVED_LEGACY_TOMBSTONES_KEY] || "[]")).toHaveLength(2);
+
+    // validateOperationalData continues to reject while unresolved intents remain
+    await expect(validateOperationalData(null)).rejects.toThrow(/unresolved legacy tombstone/i);
   });
 });
