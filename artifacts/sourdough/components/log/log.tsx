@@ -42,6 +42,7 @@ import {
   addToBakeTombstone,
   removeFromBakeTombstone,
   getBakeTombstone,
+  processPendingDeletions,
 } from "@/lib/recipeStorage";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
@@ -236,6 +237,11 @@ export function HistorySection() {
   }, []);
 
   const loadHistory = useCallback(async () => {
+    try {
+      await processPendingDeletions();
+    } catch (e) {
+      console.warn("[History] background deletion sync failed:", e);
+    }
     const sequenceId = ++loadSequenceRef.current;
     const token = await getStoredToken().catch(() => null);
 
@@ -591,7 +597,7 @@ export function HistorySection() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadHistory} tintColor={colors.mutedForeground} />}>
+      <ScrollView testID="history-scroll-view" contentContainerStyle={[styles.container, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadHistory} tintColor={colors.mutedForeground} />}>
         <Animated.View entering={FadeIn.duration(400)} style={styles.pageHeader}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
             <View>
