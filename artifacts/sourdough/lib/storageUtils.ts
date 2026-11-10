@@ -643,6 +643,7 @@ export async function restoreOperationalData(incomingUserId: string): Promise<vo
     // (Buckets written by older versions may still carry an activeFeed; it is ignored here.)
 
     console.log(`[BL-DIAG] [Quarantine] restoreOperationalData completed for incomingUserId: ${incomingUserId}`);
+    notifyWorkspaceChanged();
   } catch (err) {
     console.error(`[BL-DIAG] [Quarantine] restoreOperationalData failed:`, err);
     throw err;
@@ -739,6 +740,28 @@ export function getWorkspaceGeneration(): number {
 export function advanceWorkspaceGeneration(): number {
   workspaceGeneration++;
   return workspaceGeneration;
+}
+
+// Screens that hold device-local state (for example a mounted Feed screen) subscribe here so they
+// reset the moment the workspace changes, instead of waiting for a focus or a failed write.
+// Fired AFTER a credential change has been persisted and after a restore; never polled.
+const workspaceChangeListeners = new Set<() => void>();
+
+export function subscribeToWorkspaceChange(listener: () => void): () => void {
+  workspaceChangeListeners.add(listener);
+  return () => {
+    workspaceChangeListeners.delete(listener);
+  };
+}
+
+export function notifyWorkspaceChanged(): void {
+  for (const listener of Array.from(workspaceChangeListeners)) {
+    try {
+      listener();
+    } catch (e) {
+      console.warn("[StorageUtils] workspace-change listener threw", e);
+    }
+  }
 }
 
 /**

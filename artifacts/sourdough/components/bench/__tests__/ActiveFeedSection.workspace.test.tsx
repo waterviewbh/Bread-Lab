@@ -3,8 +3,8 @@ import { Alert } from "react-native";
 import { render, waitFor, cleanup } from "@testing-library/react-native";
 import { ActiveFeedSection } from "../ActiveFeedSection";
 import { saveAuth } from "@/lib/auth";
-import { executeWorkspaceTransition } from "@/lib/transitionCoordinator";
-import { quarantineOperationalData, restoreOperationalData } from "@/lib/storageUtils";
+import { executeWorkspaceTransition, getCoordinatorState, setCoordinatorState } from "@/lib/transitionCoordinator";
+import { QUARANTINE_KEY } from "@/lib/storageUtils";
 import { getFeedTombstone } from "@/lib/recipeStorage";
 import { api } from "@/lib/api";
 
@@ -24,15 +24,40 @@ let mockViewProps: any = null;
 let mockSetupProps: any = null;
 let mockFailRemoveKey: ((key: string) => boolean) | null = null;
 let mockDeviceGate: Promise<void> | null = null;
+// One-shot gates that pause storage at an exact point so races are deterministic (no sleeps).
+let mockActiveWriteGate: { promise: Promise<void>; entered: boolean } | null = null;
+let mockCredentialWriteGate: { promise: Promise<void>; entered: boolean } | null = null;
+let mockTokenReadGate: { promise: Promise<void>; armed: boolean; waiting: boolean } | null = null;
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
-  getItem: jest.fn(async (k: string) => (k in mockStore ? mockStore[k] : null)),
-  setItem: jest.fn(async (k: string, v: string) => { mockStore[k] = v; }),
+  getItem: jest.fn(async (k: string) => {
+    const valueAtStart = k in mockStore ? mockStore[k] : null;
+    if (k === "bread_lab_auth_token_v1" && mockTokenReadGate && mockTokenReadGate.armed) {
+      mockTokenReadGate.armed = false;
+      mockTokenReadGate.waiting = true;
+      await mockTokenReadGate.promise;
+    }
+    return valueAtStart;
+  }),
+  setItem: jest.fn(async (k: string, v: string) => {
+    if (k === "sourdough_feed_session_v1" && mockActiveWriteGate && !mockActiveWriteGate.entered) {
+      mockActiveWriteGate.entered = true;
+      await mockActiveWriteGate.promise;
+    }
+    mockStore[k] = v;
+  }),
   removeItem: jest.fn(async (k: string) => {
     if (mockFailRemoveKey && mockFailRemoveKey(k)) throw new Error(`removeItem failed for ${k}`);
     delete mockStore[k];
+    if (k === "sourdough_feed_session_v1" && mockTokenReadGate) mockTokenReadGate.armed = true;
   }),
-  multiSet: jest.fn(async (pairs: [string, string][]) => { pairs.forEach(([k, v]) => { mockStore[k] = v; }); }),
+  multiSet: jest.fn(async (pairs: [string, string][]) => {
+    if (mockCredentialWriteGate && !mockCredentialWriteGate.entered) {
+      mockCredentialWriteGate.entered = true;
+      await mockCredentialWriteGate.promise;
+    }
+    pairs.forEach(([k, v]) => { mockStore[k] = v; });
+  }),
   multiRemove: jest.fn(async (ks: string[]) => { ks.forEach((k) => delete mockStore[k]); }),
   clear: jest.fn(async () => { mockStore = {}; }),
 }));
@@ -80,7 +105,10 @@ const userOf = (t: string) => ({ id: t, firstName: t, starterName: "Starter" });
 const START = { starterWeight: "50", flourWeight: 50, waterWeight: 50, initialVolume: "100" };
 const READING = { id: "r1", timestamp: 2, volume: "120" } as any;
 const PEAK = { volume: "200", timestamp: 3 } as any;
+// The baker has been shown the "finish your Feed first" warning and chose to continue.
+const ACK = { activeFeedAcknowledged: true };
 
+const drain = () => new Promise<void>((r) => setTimeout(r, 0));
 const activeId = () => (mockStore[ACTIVE] ? JSON.parse(mockStore[ACTIVE]).id : null);
 const storageHas = (needle: string) => Object.values(mockStore).some((v) => v.includes(needle));
 
@@ -100,14 +128,10 @@ const mountEmpty = async (token: string | null) => {
   await waitFor(() => expect(mockSetupProps).toBeTruthy());
 };
 
-// Two ways the app moves from Account A to Account B. Both run the real implementations.
+// Two real workspace changes, both through the production transition code.
 const transitions: Record<string, (from: string, to: string) => Promise<void>> = {
-  "executeWorkspaceTransition": (from, to) => executeWorkspaceTransition(from, to, to, userOf(to)),
-  "AuthModal path (quarantine -> restore -> saveAuth)": async (from, to) => {
-    await quarantineOperationalData(from);
-    await restoreOperationalData(to);
-    await saveAuth(to, userOf(to));
-  },
+  "account switch (A -> B)": (from, to) => executeWorkspaceTransition(from, to, to, userOf(to), ACK),
+  "sign-out (A -> NLA)": (from) => executeWorkspaceTransition(from, null, null, null, ACK),
 };
 
 /** Presses "Abandon Feed" then confirms "Discard". Resolves when the operation finishes. */
@@ -128,6 +152,10 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
     mockSetupProps = null;
     mockFailRemoveKey = null;
     mockDeviceGate = null;
+    mockActiveWriteGate = null;
+    mockCredentialWriteGate = null;
+    mockTokenReadGate = null;
+    setCoordinatorState("IDLE");
     spies = [
       jest.spyOn(Alert, "alert").mockImplementation(() => {}),
       jest.spyOn(console, "warn").mockImplementation(() => {}),
@@ -190,15 +218,15 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
 
     it("signed-out (NLA) baker's active Feed is discarded on sign-in and never appears for B", async () => {
       const { id: nlaId } = await mountAndStartFeed(null);
-      await executeWorkspaceTransition(null as any, "tokB", "tokB", userOf("tokB"));
+      await executeWorkspaceTransition(null as any, "tokB", "tokB", userOf("tokB"), ACK);
       expect(mockStore[ACTIVE]).toBeUndefined();
       expect(storageHas(nlaId)).toBe(false); // not parked in the "unknown" bucket either
     });
 
     it("A's discarded session does not come back when A returns", async () => {
       const { id: aId } = await mountAndStartFeed("tokA");
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"));
-      await executeWorkspaceTransition("tokB", "tokA", "tokA", userOf("tokA"));
+      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      await executeWorkspaceTransition("tokB", "tokA", "tokA", userOf("tokA"), ACK);
       expect(mockStore[ACTIVE]).toBeUndefined();
       expect(storageHas(aId)).toBe(false);
     });
@@ -208,7 +236,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
   describe("B. Ownership fence", () => {
     it("a stale completion (handler rendered for A) writes nothing into B's history and uploads nothing", async () => {
       const { id: aId, view: staleView } = await mountAndStartFeed("tokA");
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"));
+      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
 
       await staleView.onSavePeak(PEAK);
 
@@ -219,7 +247,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
 
     it("stale handlers never touch B's own active session (no overwrite of destination data)", async () => {
       const { id: aId, view: staleView } = await mountAndStartFeed("tokA");
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"));
+      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
 
       // B resets the screen and starts a Feed of their own.
       await mockViewProps.onRefresh();
@@ -249,7 +277,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       mockDeviceGate = new Promise<void>((r) => { release = r; });
       const pending = view.onSavePeak(PEAK); // paused inside getDeviceId()
 
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"));
+      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
       release();
       await pending;
 
@@ -324,6 +352,90 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
     });
   });
 
+  // ───────────────────────── H. A write cannot straddle a transition ─────────────────────────
+  describe("H. Atomicity: ownership check and write are one step; a switch cannot land between them", () => {
+    it("a switch that arrives while a Feed write is in flight waits for it, then discards what it wrote", async () => {
+      const { id: aId, view } = await mountAndStartFeed("tokA");
+      let release!: () => void;
+      mockActiveWriteGate = { promise: new Promise<void>((r) => { release = r; }), entered: false };
+
+      const write = view.onLogReading(READING); // has passed the ownership check; paused mid-write
+      await waitFor(() => expect(mockActiveWriteGate!.entered).toBe(true));
+
+      const transition = executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      // Let everything that can run, run. The switch cannot proceed while the write holds the lock:
+      // credentials are still Account A's. (Without the lock the switch would already be finished.)
+      await drain();
+      await drain();
+      expect(mockStore["bread_lab_auth_token_v1"]).toBe("tokA");
+      expect(mockStore["sourdough_feed_session_v1"]).toBeDefined(); // not yet discarded
+
+      release();
+      await write;
+      await transition;
+
+      expect(getCoordinatorState()).toBe("IDLE");
+      expect(mockStore["bread_lab_auth_token_v1"]).toBe("tokB");
+      expect(mockStore[ACTIVE]).toBeUndefined();   // the late write was discarded, not carried into B
+      expect(storageHas(aId)).toBe(false);
+    });
+
+    it("a Feed write that arrives in the middle of a switch is refused once the switch completes", async () => {
+      const { id: aId, view } = await mountAndStartFeed("tokA");
+      let release!: () => void;
+      mockCredentialWriteGate = { promise: new Promise<void>((r) => { release = r; }), entered: false };
+
+      const transition = executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      // Paused inside the switch: A's data is already set aside, credentials not yet pivoted.
+      await waitFor(() => expect(mockCredentialWriteGate!.entered).toBe(true));
+      expect(mockStore[ACTIVE]).toBeUndefined();
+
+      const lateWrite = view.onLogReading(READING); // queued behind the switch
+      release();
+      await transition;
+      await lateWrite;
+
+      expect(mockStore[ACTIVE]).toBeUndefined();
+      expect(storageHas(aId)).toBe(false);
+      expect(feedApi.upsert).not.toHaveBeenCalled();
+    });
+
+    it("a switch that lands between the local completion and the cloud upload stops the upload; the finished record stays safe locally", async () => {
+      const { id: aId, view } = await mountAndStartFeed("tokA");
+      let release!: () => void;
+      mockTokenReadGate = { promise: new Promise<void>((r) => { release = r; }), armed: false, waiting: false };
+
+      // The local part (history + clearing the active key) completes, then the pre-upload workspace
+      // check is paused on its credential read.
+      const completion = view.onSavePeak(PEAK);
+      await waitFor(() => expect(mockTokenReadGate!.waiting).toBe(true));
+      expect(JSON.parse(mockStore[HISTORY])[0].id).toBe(aId); // already saved on the device
+
+      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK); // the switch lands here
+      release();
+      await completion;
+
+      expect(feedApi.upsert).not.toHaveBeenCalled(); // never issued under B
+      const parked = JSON.parse(mockStore[QUARANTINE_KEY("tokA")]);
+      expect(parked.feedHistory.map((h: any) => h.id)).toContain(aId); // waits for A's next sign-in
+    });
+  });
+
+  describe("Automatic reset: the mounted screen follows the workspace by itself", () => {
+    Object.entries(transitions).forEach(([label, transition]) => {
+      it(`${label}: no refresh, no focus and no write is needed`, async () => {
+        const { id: aId } = await mountAndStartFeed("tokA");
+        mockSetupProps = null;
+
+        await transition("tokA", "tokB");
+
+        await waitFor(() => expect(mockSetupProps).toBeTruthy()); // the screen reset on its own
+        expect(storageHas(aId)).toBe(false);
+        expect(feedApi.upsert).not.toHaveBeenCalled();
+      });
+    });
+  });
+
   // ───────────────────────── Owner stamp ─────────────────────────
   describe("Owner stamp: every workspace state has a userId", () => {
     it("a new feed is stamped with the account id when signed in", async () => {
@@ -338,24 +450,24 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       expect(mockViewProps.session.userId).toBe("anonymous");
     });
 
-    it("a stored session stamped for a different workspace is not adopted, and storage is left alone", async () => {
+    it("a stored session stamped for a different workspace is discarded, never adopted", async () => {
       await saveAuth("tokA", userOf("tokA"));
-      const foreign = JSON.stringify({
+      mockStore[ACTIVE] = JSON.stringify({
         id: "foreign-1", userId: "someone-else", starterWeight: "50", ratioStr: "1:1:1", flourWeight: 50,
         waterWeight: 50, wwPercent: 0, initialPH: "", initialVolume: "100", fedPhoto: null, savedAt: 1, readings: [],
       });
-      mockStore[ACTIVE] = foreign;
 
       await render(<ActiveFeedSection />);
       await waitFor(() => expect(mockSetupProps).toBeTruthy());
       await mockSetupProps.onRefresh();
 
-      expect(mockViewProps).toBeNull();          // never shown
-      expect(mockStore[ACTIVE]).toBe(foreign);   // never touched
+      expect(mockViewProps).toBeNull();            // never shown
+      expect(mockStore[ACTIVE]).toBeUndefined();   // removed, so it cannot linger unseen
+      expect(storageHas("foreign-1")).toBe(false);
       expect(feedApi.upsert).not.toHaveBeenCalled();
     });
 
-    it("a session saved before stamping existed is adopted and gets stamped on its next change", async () => {
+    it("a session saved before stamping existed (no userId) is discarded, never adopted", async () => {
       await saveAuth("tokA", userOf("tokA"));
       mockStore[ACTIVE] = JSON.stringify({
         id: "legacy-1", starterWeight: "50", ratioStr: "1:1:1", flourWeight: 50, waterWeight: 50, wwPercent: 0,
@@ -363,13 +475,28 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       });
 
       await render(<ActiveFeedSection />);
-      await waitFor(() => expect(mockViewProps?.session?.id).toBe("legacy-1"));
-      expect(JSON.parse(mockStore[ACTIVE]).userId).toBeUndefined(); // reading alone writes nothing
+      await waitFor(() => expect(mockSetupProps).toBeTruthy());
+      await mockSetupProps.onRefresh();
 
-      await mockViewProps.onLogReading(READING);
-      expect(JSON.parse(mockStore[ACTIVE]).userId).toBe("tokA");
+      expect(mockViewProps).toBeNull();
+      expect(mockStore[ACTIVE]).toBeUndefined();
+      expect(storageHas("legacy-1")).toBe(false);
     });
 
+    it("discarding an unadoptable session never deletes one the baker saved in the meantime", async () => {
+      await saveAuth("tokA", userOf("tokA"));
+      const stale = JSON.stringify({ id: "legacy-2", fedPhoto: null, savedAt: 1, readings: [] });
+      mockStore[ACTIVE] = stale;
+      await render(<ActiveFeedSection />);
+      await waitFor(() => expect(mockSetupProps).toBeTruthy());
+      await mockSetupProps.onRefresh();
+      // A fresh, correctly stamped feed started afterwards is untouched by any later reload.
+      await mockSetupProps.onStartFeed({ ...START });
+      await waitFor(() => expect(mockViewProps?.session?.id).toBeTruthy());
+      const mine = mockStore[ACTIVE];
+      await mockViewProps.onRefresh();
+      expect(mockStore[ACTIVE]).toBe(mine);
+    });
     it("the finished record carries the session's stamp", async () => {
       const { view } = await mountAndStartFeed("tokA");
       await view.onSavePeak(PEAK);

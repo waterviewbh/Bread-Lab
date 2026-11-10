@@ -25,6 +25,7 @@ import {
   getWorkspaceIdentity,
   type WorkspaceOperationContext,
 } from "@/lib/recipeStorage";
+import { storageMutex, subscribeToWorkspaceChange } from "@/lib/storageUtils";
 
 const STORAGE_KEY = "sourdough_feed_session_v1";
 const HISTORY_KEY = "sourdough_feed_history_v1";
@@ -80,6 +81,7 @@ export function ActiveFeedSection({
   // Counts successful local writes so a slow init() cannot overwrite a newer local edit.
   const localEditsRef = useRef(0);
   const initRef = useRef<(() => Promise<void>) | null>(null);
+  const onboardingPromptOpenRef = useRef(false);
 
   const sessionBelongsHere = async (): Promise<boolean> => {
     const held = identityRef.current;
@@ -116,13 +118,39 @@ export function ActiveFeedSection({
       dropStaleSession();
       return false;
     }
-    if (!(await sessionBelongsHere())) {
+    // The check and the write are one step under storageMutex. A workspace transition holds the
+    // same mutex for its whole local switch, so it either finishes before this check (and the
+    // check then fails) or starts after this write (and then discards it). Nothing can land
+    // between the check and the write.
+    let stale = false;
+    const written = await storageMutex.run(async () => {
+      if (!(await sessionBelongsHere())) {
+        stale = true;
+        return false;
+      }
+      await write();
+      return true;
+    });
+    if (stale) {
       dropStaleSession();
       return false;
     }
-    await write();
-    localEditsRef.current += 1;
-    return true;
+    if (written) localEditsRef.current += 1;
+    return written;
+  };
+
+  // Removes the stored active session only if it is still exactly what we read and the workspace
+  // is unchanged, so it can never delete a session written since, or another workspace's.
+  const discardStoredSessionIfUnchanged = async (rawValue: string, identity: WorkspaceOperationContext) => {
+    try {
+      await storageMutex.run(async () => {
+        const now = await getWorkspaceIdentity();
+        if (now.owner !== identity.owner || now.generation !== identity.generation) return;
+        if ((await AsyncStorage.getItem(STORAGE_KEY)) === rawValue) await AsyncStorage.removeItem(STORAGE_KEY);
+      });
+    } catch (e) {
+      console.warn("[Feed] Could not discard stored session", e);
+    }
   };
 
   const [refreshing, setRefreshing] = useState(false);
@@ -173,10 +201,13 @@ export function ActiveFeedSection({
       }
     }
 
-    // A stored session stamped for a different workspace is never adopted (and storage is left
-    // alone). An unstamped one predates stamping; it is adopted and stamped on its next change.
-    if (currentSession && currentSession.userId && currentSession.userId !== identity.owner) {
-      console.warn("[Feed] Stored active session belongs to a different workspace; not adopting it");
+    // Only a session stamped for THIS workspace is adopted. One saved before stamping existed, or
+    // stamped for another workspace, is discarded: active work is device-local and does not survive
+    // a transition, and we never guess ownership. It is removed so it cannot linger unseen (and
+    // trigger a warning about a feed the baker cannot see).
+    if (currentSession && currentSession.userId !== identity.owner) {
+      console.warn("[Feed] Stored active session is unstamped or belongs to another workspace; discarding it");
+      await discardStoredSessionIfUnchanged(stored as string, identity);
       currentSession = null;
     }
 
@@ -216,7 +247,8 @@ export function ActiveFeedSection({
                          !hasBakes &&
                          !user;
 
-    if (shouldPrompt) {
+    if (shouldPrompt && !onboardingPromptOpenRef.current) {
+      onboardingPromptOpenRef.current = true;
       Alert.alert(
         "Would you like to start a new culture?",
         "It looks like your feed history is empty. Would you like a guided tutorial to establish a new starter?",
@@ -225,6 +257,7 @@ export function ActiveFeedSection({
             text: "No thanks",
             style: "cancel",
             onPress: () => {
+              onboardingPromptOpenRef.current = false;
               setHasDeclinedTutorial(true);
               AsyncStorage.setItem(DECLINED_TUTORIAL_KEY, "true");
             }
@@ -232,11 +265,13 @@ export function ActiveFeedSection({
           {
             text: "Let's begin!",
             onPress: () => {
+              onboardingPromptOpenRef.current = false;
               setStarterTutorialMode(true);
               setTutorialDay(1);
             }
           }
-        ]
+        ],
+        { onDismiss: () => { onboardingPromptOpenRef.current = false; } }
       );
     }
 
@@ -244,6 +279,18 @@ export function ActiveFeedSection({
   }, [starterTutorialMode, setStarterTutorialMode, setTutorialDay]);
 
   useEffect(() => { initRef.current = init; }, [init]);
+
+  // Reset the moment the workspace changes anywhere in the app (sign-in, sign-out, account switch),
+  // not just on focus. No polling and no network: this fires once, after the change is persisted.
+  useEffect(() => {
+    return subscribeToWorkspaceChange(() => {
+      // Hide the departing workspace's session at once, then reload once any in-flight switch has finished.
+      identityRef.current = null;
+      sessionRef.current = null;
+      setSession(null);
+      void storageMutex.run(async () => {}).then(() => initRef.current?.());
+    });
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -397,23 +444,35 @@ export function ActiveFeedSection({
       sessionRef.current = null;
       setSession(null);
 
-      // Normal Mode: persist the FINISHED record to the cloud. The same ID replaces any legacy
-      // in-progress row, because every column (inProgress, data, timestamps) is rewritten.
+      // Normal Mode: the finished record is already safe on the device. Upload it only if the
+      // workspace is unchanged; otherwise it stays local and uploads when its own account is next
+      // active. (The API independently refuses a payload whose owner differs from the signed-in
+      // session, so a switch landing after this check still cannot write it under another account.)
+      // The same ID replaces any legacy in-progress row, because every column is rewritten.
+      let sameWorkspace = false;
       try {
-        reportSyncStart();
-        await api.history.feed.upsert({
-          id: completed.id,
-          deviceId,
-          userId: held && held.owner !== "anonymous" ? held.owner : undefined,
-          savedAt: completed.savedAt,
-          startedAt: completed.savedAt,
-          updatedAt: completed.updatedAt,
-          inProgress: false,
-          data: completed as any,
-        });
-        reportSyncSuccess();
-      } catch (e) {
-        reportSyncFailure();
+        const now = await getWorkspaceIdentity();
+        sameWorkspace = !!held && now.owner === held.owner && now.generation === held.generation;
+      } catch {
+        sameWorkspace = false;
+      }
+      if (sameWorkspace) {
+        try {
+          reportSyncStart();
+          await api.history.feed.upsert({
+            id: completed.id,
+            deviceId,
+            userId: held && held.owner !== "anonymous" ? held.owner : undefined,
+            savedAt: completed.savedAt,
+            startedAt: completed.savedAt,
+            updatedAt: completed.updatedAt,
+            inProgress: false,
+            data: completed as any,
+          });
+          reportSyncSuccess();
+        } catch (e) {
+          reportSyncFailure();
+        }
       }
     } else {
       sessionRef.current = tutorialUpdated;
@@ -535,7 +594,7 @@ export function ActiveFeedSection({
         )
       )}
 
-      <AuthModal visible={showAuthModal} currentUser={currentUser} onClose={() => setShowAuthModal(false)} onAuthChange={(u) => { setCurrentUser(u); void initRef.current?.(); }} />
+      <AuthModal visible={showAuthModal} currentUser={currentUser} onClose={() => setShowAuthModal(false)} onAuthChange={setCurrentUser} />
 
       <Modal visible={showGraduationModal} animationType="slide" transparent={true}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 }}>

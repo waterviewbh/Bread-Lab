@@ -11,7 +11,9 @@ import {
 } from "../storageUtils";
 import { saveAuth } from "../auth";
 import { addToFeedTombstone } from "../recipeStorage";
-import { executeWorkspaceTransition, setCoordinatorState, getCoordinatorState } from "../transitionCoordinator";
+import { executeWorkspaceTransition, setCoordinatorState, getCoordinatorState, ActiveFeedNotAcknowledgedError } from "../transitionCoordinator";
+import * as fs from "fs";
+import * as path from "path";
 import {
   hasActiveFeed,
   confirmDiscardActiveFeed,
@@ -37,6 +39,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 jest.mock("../api", () => ({ api: { auth: { signout: jest.fn() } } }));
 
 const ACTIVE = APP_STORAGE_KEYS.ACTIVE_FEED;
+const ACK = { activeFeedAcknowledged: true };
 const userOf = (t: string) => ({ id: t, firstName: t, starterName: "Starter" });
 const anyKeyContains = (needle: string) => Object.values(mockStore).some((v) => v.includes(needle));
 
@@ -82,17 +85,24 @@ describe("Active Feed at a workspace transition", () => {
       await expect(validateOperationalData(null, { discardActiveFeed: true })).rejects.toThrow(/pending deletion work/);
     });
 
-    it("a blocked transition leaves the active Feed untouched (nothing is discarded until it proceeds)", async () => {
+    it("a pending deletion in the DEPARTING workspace blocks the transition and leaves the active Feed untouched", async () => {
       await saveAuth("tokA", userOf("tokA"));
-      mockStore[ACTIVE] = JSON.stringify({ id: "feed-A" });
-      // The coordinator's readiness check inspects the INCOMING account's pending deletions.
-      mockStore[getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, "tokB")] = JSON.stringify(["finished-feed-9"]);
+      mockStore[ACTIVE] = JSON.stringify({ id: "feed-A", userId: "tokA" });
+      await addToFeedTombstone("finished-feed-9"); // pending finished-record deletion for tokA
       const before = mockStore[ACTIVE];
 
-      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"))).rejects.toThrow(/pending deletion work/);
+      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK)).rejects.toThrow(/pending deletion work/);
 
-      expect(mockStore[ACTIVE]).toBe(before);
+      expect(mockStore[ACTIVE]).toBe(before); // nothing was discarded or moved
       expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+    });
+
+    it("the INCOMING account's own leftover pending deletions do not block entering it", async () => {
+      await saveAuth("tokA", userOf("tokA"));
+      mockStore[getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, "tokB")] = JSON.stringify(["old-pending"]);
+
+      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK)).resolves.toBeUndefined();
+      expect(getCoordinatorState()).toBe("IDLE");
     });
   });
 
@@ -101,7 +111,7 @@ describe("Active Feed at a workspace transition", () => {
       await saveAuth("tokA", userOf("tokA"));
       mockStore[ACTIVE] = JSON.stringify({ id: "feed-A", readings: [] });
 
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"));
+      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
 
       expect(getCoordinatorState()).toBe("IDLE");
       expect(mockStore[ACTIVE]).toBeUndefined();
@@ -120,7 +130,7 @@ describe("Active Feed at a workspace transition", () => {
       mockStore[ACTIVE] = JSON.stringify({ id: "feed-A" });
       mockStore[APP_STORAGE_KEYS.FEED_HISTORY] = JSON.stringify([{ id: "a-finished", userId: "tokA" }]);
 
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"));
+      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
 
       const history = JSON.parse(mockStore[APP_STORAGE_KEYS.FEED_HISTORY]);
       expect(history.map((h: any) => h.id)).toEqual(["b-finished"]); // B's finished data is back, A's is not
@@ -140,6 +150,73 @@ describe("Active Feed at a workspace transition", () => {
       await quarantineOperationalData(null);
       expect(mockStore[ACTIVE]).toBeUndefined();
       expect(anyKeyContains("nla-feed")).toBe(false);
+    });
+  });
+
+  describe("warn-first is enforced by the transition itself", () => {
+    it("refuses to discard an active Feed the baker has not been warned about, and changes nothing", async () => {
+      await saveAuth("tokA", userOf("tokA"));
+      mockStore[ACTIVE] = JSON.stringify({ id: "feed-A", userId: "tokA" });
+      const before = { ...mockStore };
+
+      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"))).rejects.toBeInstanceOf(ActiveFeedNotAcknowledgedError);
+
+      expect(mockStore).toEqual(before);
+      expect(getCoordinatorState()).toBe("IDLE");
+    });
+
+    it("needs no acknowledgement when there is nothing to lose", async () => {
+      await saveAuth("tokA", userOf("tokA"));
+      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"))).resolves.toBeUndefined();
+    });
+
+    it("sign-out: clears credentials, discards the active Feed, sets finished data aside, and restores nothing", async () => {
+      await saveAuth("tokA", userOf("tokA"));
+      mockStore[ACTIVE] = JSON.stringify({ id: "feed-A", userId: "tokA" });
+      mockStore[APP_STORAGE_KEYS.FEED_HISTORY] = JSON.stringify([{ id: "a-finished", userId: "tokA" }]);
+
+      await executeWorkspaceTransition("tokA", null, null, null, ACK);
+
+      expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();
+      expect(mockStore[ACTIVE]).toBeUndefined();
+      expect(mockStore[APP_STORAGE_KEYS.FEED_HISTORY]).toBeUndefined();
+      expect(JSON.parse(mockStore[QUARANTINE_KEY("tokA")]).feedHistory.map((h: any) => h.id)).toEqual(["a-finished"]);
+    });
+
+    // Source-level guarantees: the choke point cannot be bypassed by a call site added later.
+    const sourceRoot = path.resolve(__dirname, "..", "..");
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        if (e.name === "node_modules" || e.name === "__tests__" || e.name.startsWith(".")) return [];
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) return walk(full);
+        return /\.(ts|tsx)$/.test(e.name) && !/\.local\.test\./.test(e.name) ? [full] : [];
+      });
+
+    it("no production code outside the transition modules changes the workspace directly", () => {
+      const allowed = new Set(["lib/storageUtils.ts", "lib/auth.ts", "lib/udl.ts", "lib/transitionCoordinator.ts"]);
+      const direct = /\b(quarantineOperationalData|restoreOperationalData|saveAuth|clearAuth)\s*\(|UDL\.(quarantineData|restoreData)\s*\(/;
+      const offenders = ["app", "components", "lib", "hooks", "contexts"]
+        .map((d) => path.join(sourceRoot, d))
+        .filter((d) => fs.existsSync(d))
+        .flatMap(walk)
+        .filter((f) => !allowed.has(path.relative(sourceRoot, f).split(path.sep).join("/")))
+        .filter((f) => direct.test(fs.readFileSync(f, "utf8")))
+        .map((f) => path.relative(sourceRoot, f));
+      expect(offenders).toEqual([]);
+    });
+
+    it("every sign-in, sign-out and account-switch path in AuthModal asks first and passes the acknowledgement", () => {
+      const src = fs.readFileSync(path.join(sourceRoot, "components", "AuthModal.tsx"), "utf8");
+      const calls = (src.match(/executeWorkspaceTransition\(/g) || []).length;
+      const acks = (src.match(/activeFeedAcknowledged:/g) || []).length;
+      expect(calls).toBeGreaterThanOrEqual(5); // switch, NLA sign-in, import, proceed-without-import, sign-out
+      expect(acks).toBe(calls);
+      for (const entry of ["const handleIdentify = async", "const handleChoiceImport = async", "const handleChoiceProceedWithoutImport = async", "const performClear = async"]) {
+        const at = src.indexOf(entry);
+        expect(at).toBeGreaterThan(-1);
+        expect(src.slice(at, at + 900)).toMatch(/ensureActiveFeedAck\(\)/);
+      }
     });
   });
 

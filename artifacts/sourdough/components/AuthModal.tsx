@@ -18,8 +18,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
-import { saveAuth, getStoredToken, clearAuth, type AuthUser } from "@/lib/auth";
-import { clearAllAppData, clearOperationalData, validateOperationalData, quarantineOperationalData, restoreOperationalData, safeParse } from "@/lib/storageUtils";
+import { getStoredToken, type AuthUser } from "@/lib/auth";
+import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
+import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
 import { confirmActiveFeedTransition } from "@/lib/activeWork";
@@ -52,7 +53,7 @@ export async function executeFailClosedRecovery(
   }
 
   try {
-    await clearAuth();
+    await clearCredentialsExclusive();
     localClear = true;
     console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery local credential clearing verified success.`);
   } catch (err) {
@@ -169,15 +170,17 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         throw new Error(`Import paused (${totalFailed} failure(s), ${totalUnresolved} unresolved). Local workspace retained with pre-sync state.`);
       }
 
-      await quarantineOperationalData(null);
-      await restoreOperationalData(token);
-      await saveAuth(token, user);
+      await executeWorkspaceTransition(null, token, token, user, { activeFeedAcknowledged: activeFeedAckRef.current });
 
       onAuthChange(user);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
     } catch (err: any) {
+      if (err instanceof ActiveFeedNotAcknowledgedError) {
+        Alert.alert("Import Failed", err.message);
+        return;
+      }
       const recovery = await executeFailClosedRecovery(onAuthChange);
       const statusDetails = [
         recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
@@ -200,15 +203,17 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     setLoading(true);
     try {
       const { token, user } = transitionPendingData;
-      await quarantineOperationalData(null);
-      await restoreOperationalData(token);
-      await saveAuth(token, user);
+      await executeWorkspaceTransition(null, token, token, user, { activeFeedAcknowledged: activeFeedAckRef.current });
 
       onAuthChange(user);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
     } catch (err: any) {
+      if (err instanceof ActiveFeedNotAcknowledgedError) {
+        Alert.alert("Purge/Setup Failed", err.message);
+        return;
+      }
       const recovery = await executeFailClosedRecovery(onAuthChange);
       const statusDetails = [
         recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
@@ -301,39 +306,25 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
       // 5. Switching from Account A -> Account B
       if (currentToken && savedAccountA) {
-        let wipeSuccess = false;
         try {
-          await quarantineOperationalData(currentToken);
-          await restoreOperationalData(result.token);
-          wipeSuccess = true;
-        } catch (wipeErr) {
-          console.error("Local operational quarantine failed during account switch", wipeErr);
+          await executeWorkspaceTransition(currentToken, result.token, result.token, result.user, {
+            activeFeedAcknowledged: activeFeedAckRef.current,
+          });
+        } catch (switchErr) {
+          if (switchErr instanceof ActiveFeedNotAcknowledgedError) throw switchErr; // nothing changed
+          console.error("Account switch failed", switchErr);
           const recovery = await executeFailClosedRecovery(onAuthChange);
           const statusDetails = [
             recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
             recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
           ].join(" ");
-          throw new Error(`Local workspace quarantine failed. ${statusDetails} Session reset for safety.`);
+          throw new Error(`Account switch failed: ${switchErr instanceof Error ? switchErr.message : String(switchErr)}. ${statusDetails} Session reset for safety.`);
         }
-
-        if (wipeSuccess) {
-          try {
-            await saveAuth(result.token, result.user);
-          } catch (saveErr) {
-            console.error("Credential persistence failed after local quarantine", saveErr);
-            const recovery = await executeFailClosedRecovery(onAuthChange);
-            const statusDetails = [
-              recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
-              recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
-            ].join(" ");
-            throw new Error(`Credential persistence failed. ${statusDetails} Workspace reset to unauthenticated.`);
-          }
-          onAuthChange(result.user);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          reset();
-          onClose();
-          return;
-        }
+        onAuthChange(result.user);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        reset();
+        onClose();
+        return;
       }
 
       // 5. Switching from Anonymous -> Account B
@@ -354,15 +345,16 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
               throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Local workspace retained with pre-sync state.`);
             }
 
-            await quarantineOperationalData(null);
-            await restoreOperationalData(result.token);
-            await saveAuth(result.token, result.user);
+            await executeWorkspaceTransition(null, result.token, result.token, result.user, {
+              activeFeedAcknowledged: activeFeedAckRef.current,
+            });
             onAuthChange(result.user);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             reset();
             onClose();
             return;
           } catch (anonErr) {
+            if (anonErr instanceof ActiveFeedNotAcknowledgedError) throw anonErr; // nothing changed
             const recovery = await executeFailClosedRecovery(onAuthChange);
             const statusDetails = [
               recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
@@ -427,14 +419,30 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
           if (totalFailed > 0 || totalUnresolved > 0) {
             throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
           }
-          await quarantineOperationalData(currentToken);
         }
 
+        // Remote sign-out first: if it fails, nothing local has changed and the baker is still
+        // signed in with their data intact. The local part below is atomic.
         const signoutRes = await api.auth.signout();
         if (!signoutRes.signedOut) {
           throw new Error("Failed to sign out from cloud session.");
         }
-        await clearAuth();
+        try {
+          if (currentToken) {
+            await executeWorkspaceTransition(currentToken, null, null, null, {
+              activeFeedAcknowledged: activeFeedAckRef.current,
+            });
+          } else {
+            await clearCredentialsExclusive();
+          }
+        } catch (localErr) {
+          const recovery = await executeFailClosedRecovery(onAuthChange);
+          const statusDetails = [
+            recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
+            recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
+          ].join(" ");
+          throw new Error(`Local sign-out step failed: ${localErr instanceof Error ? localErr.message : String(localErr)}. ${statusDetails}`);
+        }
         onAuthChange(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onClose();
