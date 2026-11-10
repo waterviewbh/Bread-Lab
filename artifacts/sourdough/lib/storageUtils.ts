@@ -78,6 +78,8 @@ export interface ValidateOperationalDataOptions {
    * transition gate must not inspect or block on it. Callers that gate a transition pass true.
    */
   discardActiveFeed?: boolean;
+  /** Same for an active bake, when the transition discards it (the NLA departure only). */
+  discardActiveBake?: boolean;
 }
 
 export async function validateOperationalData(
@@ -218,7 +220,7 @@ export async function validateOperationalData(
   validateArrayStorageKey(delBakeRaw, "deleted bake IDs");
   validateArrayStorageKey(delFeedRaw, "deleted feed IDs");
 
-  if (activeBakeCheck !== null) {
+  if (activeBakeCheck !== null && !options.discardActiveBake) {
     try {
       const parsed = JSON.parse(activeBakeCheck);
       const bakesList = Array.isArray(parsed) ? parsed : [parsed];

@@ -206,17 +206,29 @@ describe("Active Feed at a workspace transition", () => {
       expect(offenders).toEqual([]);
     });
 
-    it("every sign-in, sign-out and account-switch path in AuthModal asks first and passes the acknowledgement", () => {
+    it("every sign-in, sign-out and account-switch path in AuthModal passes the acknowledgement, and warns first where it applies", () => {
       const src = fs.readFileSync(path.join(sourceRoot, "components", "AuthModal.tsx"), "utf8");
       const calls = (src.match(/executeWorkspaceTransition\(/g) || []).length;
       const acks = (src.match(/activeFeedAcknowledged:/g) || []).length;
-      expect(calls).toBeGreaterThanOrEqual(5); // switch, NLA sign-in, import, proceed-without-import, sign-out
+      expect(calls).toBeGreaterThanOrEqual(4); // account switch, import, proceed-without-import, sign-out
       expect(acks).toBe(calls);
-      for (const entry of ["const handleIdentify = async", "const handleChoiceImport = async", "const handleChoiceProceedWithoutImport = async", "const performClear = async"]) {
-        const at = src.indexOf(entry);
-        expect(at).toBeGreaterThan(-1);
-        expect(src.slice(at, at + 900)).toMatch(/ensureActiveFeedAck\(\)/);
-      }
+
+      const body = (from: string, to: string) => {
+        const start = src.indexOf(from);
+        const end = src.indexOf(to, start + 1);
+        expect(start).toBeGreaterThan(-1);
+        expect(end).toBeGreaterThan(start);
+        return src.slice(start, end);
+      };
+
+      // Account -> account and sign-out: the active-Feed warning is asked before the transition.
+      expect(body("const handleIdentify = async", "const handleClearIdentity = async")).toMatch(/ensureActiveFeedAck\(\)/);
+      expect(body("const performClear = async", "// WEB FIX")).toMatch(/ensureActiveFeedAck\(\)/);
+
+      // NLA -> account: the baker sees the local-work panel, then chooses; both choices carry an explicit NLA disposition.
+      expect(body("const handleChoiceImport = async", "const handleChoiceProceedWithoutImport = async")).toMatch(/nlaDisposition:\s*\{ mode: "import"/);
+      expect(body("const handleChoiceProceedWithoutImport = async", "const handleChoiceCancel = async")).toMatch(/nlaDisposition:\s*\{ mode: "discard"/);
+      expect(src).toMatch(/NLA_LOCAL_WORK_TITLE/);
     });
   });
 

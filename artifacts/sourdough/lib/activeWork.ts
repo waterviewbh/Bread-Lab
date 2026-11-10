@@ -6,6 +6,7 @@
 import { Alert, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { APP_STORAGE_KEYS } from "./storageUtils";
+import { NLA_SCOPE } from "./nlaWorkspace";
 
 export const ACTIVE_FEED_TRANSITION_TITLE = "Active Feed in progress";
 export const ACTIVE_FEED_TRANSITION_MESSAGE =
@@ -19,6 +20,40 @@ export async function hasActiveFeed(): Promise<boolean> {
     return raw !== null && raw !== undefined && raw !== "";
   } catch {
     // The transition itself reads this key and fails closed on a read error.
+    return false;
+  }
+}
+
+/** Panel shown ONLY on NLA -> account transitions when active Feed or Bake work exists (agreed wording). */
+export const NLA_LOCAL_WORK_TITLE = "Local work on this device";
+export const NLA_LOCAL_WORK_PARAGRAPHS = [
+  "You have active Feed or Bake work on this device.",
+  "This work is not included in your account and will be discarded when you leave the offline workspace.",
+  "Your saved recipes, bake history, feed history, and other eligible records will be handled according to your choice below.",
+] as const;
+
+const hasStoredWork = (raw: string | null | undefined): boolean => {
+  if (raw === null || raw === undefined || raw === "") return false;
+  try {
+    const v = JSON.parse(raw);
+    if (v === null) return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") return Object.keys(v).length > 0;
+    return true;
+  } catch {
+    return true; // unreadable is treated as present: never assume there is nothing to lose
+  }
+};
+
+/** True if the NLA workspace holds an active Feed or Bake session (either storage cabinet). */
+export async function hasActiveNlaWork(): Promise<boolean> {
+  try {
+    const keys = [...NLA_SCOPE.activeFeed, ...NLA_SCOPE.activeBakes];
+    for (const key of keys) {
+      if (hasStoredWork(await AsyncStorage.getItem(key))) return true;
+    }
+    return false;
+  } catch {
     return false;
   }
 }

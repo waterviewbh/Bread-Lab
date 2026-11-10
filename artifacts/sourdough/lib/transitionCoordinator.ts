@@ -11,7 +11,19 @@ import { storageMutex, advanceWorkspaceGeneration } from "./storageUtils";
 import { UDL } from "./udl";
 import { saveAuth, clearAuth } from "./auth";
 import { api } from "./api";
-import { hasActiveFeed } from "./activeWork";
+import { hasActiveFeed, hasActiveNlaWork } from "./activeWork";
+import { isNlaOwner } from "./nlaBoundary";
+import { clearMigrationPending } from "./migrate";
+import {
+  nlaSnapshotChanged,
+  applyNlaPurgeLocked,
+  inventoryNlaWorkspace,
+  snapshotProtectedKeys,
+  verifyNlaCleanliness,
+  retireNlaTombstonesLocked,
+  NlaPurgeVerificationError,
+  type PurgePlan,
+} from "./nlaWorkspace";
 
 export type CoordinatorState = "IDLE" | "TRANSITIONING" | "RECOVERY_REQUIRED";
 
@@ -37,9 +49,29 @@ export class ActiveFeedNotAcknowledgedError extends Error {
   }
 }
 
+/** Thrown, before anything changes, when the offline workspace changed after the baker made their choice. */
+export class NlaWorkspaceChangedError extends Error {
+  constructor() {
+    super("Your offline workspace changed while this was in progress, so nothing was changed. Please try again.");
+    this.name = "NlaWorkspaceChangedError";
+  }
+}
+
+/**
+ * What to do with the NLA workspace when leaving it for an account. The plan was built from a snapshot; if the
+ * workspace no longer matches that snapshot the transition refuses (nothing is deleted that was not seen).
+ */
+export interface NlaDisposition {
+  mode: "import" | "discard";
+  plan: PurgePlan;
+  snapshotRaw: Record<string, string | null>;
+}
+
 export interface WorkspaceTransitionOptions {
-  /** True once the baker has been shown the "finish your Feed first" warning and chose to continue. */
+  /** True once the baker has been shown the warning about active work and chose to continue. */
   activeFeedAcknowledged?: boolean;
+  /** NLA departures only: the verified purge (import) or full purge (discard) to run instead of setting data aside. */
+  nlaDisposition?: NlaDisposition;
 }
 
 /**
@@ -55,20 +87,49 @@ export async function executeWorkspaceTransition(
   options: WorkspaceTransitionOptions = {}
 ): Promise<void> {
   return storageMutex.run(async () => {
-    // Refuse before anything changes (state stays IDLE) if the baker has not been warned.
-    if (!options.activeFeedAcknowledged && (await hasActiveFeed())) {
-      throw new ActiveFeedNotAcknowledgedError();
+    const outgoingIsNla = outgoingOwnerId === null || isNlaOwner(outgoingOwnerId);
+    const disposition = outgoingIsNla ? options.nlaDisposition : undefined;
+
+    // Refuse before anything changes (state stays IDLE) if the offline workspace is no longer what the baker chose about.
+    if (disposition && (await nlaSnapshotChanged(disposition.snapshotRaw))) {
+      throw new NlaWorkspaceChangedError();
+    }
+
+    // Refuse before anything changes if the baker has not been warned about active work that would be discarded.
+    if (!options.activeFeedAcknowledged) {
+      const hasWork = outgoingIsNla ? await hasActiveNlaWork() : await hasActiveFeed();
+      if (hasWork) throw new ActiveFeedNotAcknowledgedError();
     }
 
     setCoordinatorState("TRANSITIONING");
     advanceWorkspaceGeneration();
 
     try {
-      // 1. Gate on the DEPARTING workspace: pending deletions or an interrupted migration block.
-      await UDL.verifyReadiness(outgoingOwnerId ?? "anonymous");
+      if (disposition) {
+        // The baker's explicit choice supersedes an "import in progress" marker, and NLA has no remote
+        // copies, so its pending-deletion queues are simply retired (no network).
+        await clearMigrationPending();
+        await retireNlaTombstonesLocked();
+      }
 
-      // 2. Set the outgoing workspace's data aside. Its active Feed is discarded, never parked.
-      await UDL.quarantineData(outgoingOwnerId);
+      // 1. Gate on the DEPARTING workspace: pending deletions or an interrupted migration block.
+      await UDL.verifyReadiness(outgoingOwnerId ?? "anonymous", { discardActiveBake: !!disposition });
+
+      // 2. Leave the outgoing workspace.
+      if (disposition) {
+        // NLA is cleaned up, not parked: journaled, repeatable purge of exactly the planned records, then a
+        // full verification that the NLA scope is clean and nothing outside it changed.
+        const protectedBefore = await snapshotProtectedKeys();
+        const before = await inventoryNlaWorkspace();
+        await applyNlaPurgeLocked(disposition.plan);
+        const problems = await verifyNlaCleanliness(before, disposition.plan, protectedBefore);
+        if (problems.length) throw new NlaPurgeVerificationError(problems);
+        // Leftovers (foreign-owned, conflicts, unreadable) deliberately stay where they are: they were reported,
+        // and a generic set-aside here would park unresolved NLA records where a later purge could delete them.
+      } else {
+        // Set the outgoing workspace's data aside. Its active Feed is discarded, never parked.
+        await UDL.quarantineData(outgoingOwnerId);
+      }
 
       // 3. Bring the incoming workspace's data in, then pivot credentials.
       if (incomingOwnerId !== null && incomingToken && incomingUser) {
@@ -87,7 +148,6 @@ export async function executeWorkspaceTransition(
     }
   });
 }
-
 /**
  * Clears credentials while holding the same mutex, so nothing persisting under the old identity can
  * interleave with the change. Used by failure recovery, which must not change workspace unlocked.

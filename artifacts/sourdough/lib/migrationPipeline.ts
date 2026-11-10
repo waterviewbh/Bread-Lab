@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { APP_STORAGE_KEYS } from "./storageUtils";
+import { resumePendingNlaPurge } from "./nlaWorkspace";
 
 const CURRENT_SCHEMA_VERSION = 2;
 
@@ -20,6 +21,14 @@ export async function runSchemaMigrations(): Promise<void> {
     await AsyncStorage.setItem(APP_STORAGE_KEYS.SCHEMA_VERSION, CURRENT_SCHEMA_VERSION.toString());
   } catch (error) {
     console.error("[Migration] Schema migration failed", error);
+  }
+
+  // Crash recovery: if the app stopped part-way through cleaning up the offline workspace after a verified
+  // import (or an explicit discard), finish exactly the journaled work. A no-op when there is no journal.
+  try {
+    await resumePendingNlaPurge();
+  } catch (error) {
+    console.error("[Migration] Could not finish an interrupted offline-workspace cleanup", error);
   }
 }
 

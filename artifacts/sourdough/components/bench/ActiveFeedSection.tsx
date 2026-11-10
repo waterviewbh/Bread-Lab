@@ -26,6 +26,7 @@ import {
   type WorkspaceOperationContext,
 } from "@/lib/recipeStorage";
 import { storageMutex, subscribeToWorkspaceChange } from "@/lib/storageUtils";
+import { isNlaOwner } from "@/lib/nlaBoundary";
 
 const STORAGE_KEY = "sourdough_feed_session_v1";
 const HISTORY_KEY = "sourdough_feed_history_v1";
@@ -456,7 +457,8 @@ export function ActiveFeedSection({
       } catch {
         sameWorkspace = false;
       }
-      if (sameWorkspace) {
+      // NLA is device-only: the finished feed stays on the device and is never uploaded from here.
+      if (sameWorkspace && held && !isNlaOwner(held.owner)) {
         try {
           reportSyncStart();
           await api.history.feed.upsert({

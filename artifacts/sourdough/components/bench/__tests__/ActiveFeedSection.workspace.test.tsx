@@ -109,6 +109,15 @@ const PEAK = { volume: "200", timestamp: 3 } as any;
 const ACK = { activeFeedAcknowledged: true };
 
 const drain = () => new Promise<void>((r) => setTimeout(r, 0));
+const everyApiMock = (): jest.Mock[] => [
+  (api as any).auth.signout,
+  (api as any).recipes.delete, (api as any).recipes.verifyAbsent,
+  (api as any).history.bakes.delete, (api as any).history.bakes.verifyAbsent,
+  ...Object.values(feedApi),
+];
+const expectNoApiCalls = () => {
+  for (const mock of everyApiMock()) expect(mock).not.toHaveBeenCalled();
+};
 const activeId = () => (mockStore[ACTIVE] ? JSON.parse(mockStore[ACTIVE]).id : null);
 const storageHas = (needle: string) => Object.values(mockStore).some((v) => v.includes(needle));
 
@@ -300,6 +309,38 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       expect(feedApi.upsert).not.toHaveBeenCalled();
       expect(feedApi.delete).not.toHaveBeenCalled();
       expect(feedApi.verifyAbsent).not.toHaveBeenCalled();
+    });
+
+    it("NLA invariant: start, log, refresh, abandon and complete make ZERO Supabase calls (indirect paths included)", async () => {
+      // Start + log + refresh + abandon
+      const first = await mountAndStartFeed(null);
+      await first.view.onLogReading(READING);
+      await mockViewProps.onRefresh();
+      await abandon(mockViewProps);
+      await waitFor(() => expect(mockSetupProps).toBeTruthy());
+
+      // Start + complete
+      mockViewProps = null;
+      await mockSetupProps.onStartFeed({ ...START });
+      await waitFor(() => expect(mockViewProps?.session?.id).toBeTruthy());
+      await mockViewProps.onSavePeak(PEAK);
+
+      // Reload the empty screen too (init() -> pending-deletion pass -> history read)
+      await mockSetupProps.onRefresh();
+
+      expectNoApiCalls();
+    });
+
+    it("NLA invariant: a pending NLA tombstone seen by the Feed screen's own refresh is retired locally, with no API call", async () => {
+      await mountEmpty(null);
+      const { addToFeedTombstone, getFeedTombstone } = require("@/lib/recipeStorage");
+      await addToFeedTombstone("nla-pending-feed");
+      expect(await getFeedTombstone()).toEqual(["nla-pending-feed"]);
+
+      await mockSetupProps.onRefresh();
+
+      expect(await getFeedTombstone()).toEqual([]);
+      expectNoApiCalls();
     });
 
     it("a legacy remote inProgress:true row is never hydrated as the active session", async () => {
@@ -520,16 +561,14 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       expect(mockStore[ACTIVE]).toBeUndefined();
     });
 
-    it("signed out (NLA): the finished record is stamped anonymous locally and uploaded without an account", async () => {
+    it("signed out (NLA): the finished record is stamped anonymous and kept on the device; nothing is uploaded", async () => {
       const { id, view } = await mountAndStartFeed(null);
       await view.onSavePeak(PEAK);
 
-      const body = feedApi.upsert.mock.calls[0][0];
-      expect(body).toMatchObject({ id, inProgress: false });
-      expect(body.userId).toBeUndefined();
       expect(JSON.parse(mockStore[HISTORY])[0]).toMatchObject({ id, userId: "anonymous" });
+      expect(mockStore[ACTIVE]).toBeUndefined();
+      expectNoApiCalls();
     });
-
     it("a legacy in-progress row with the same id is replaced by the finished representation", async () => {
       // Model of the cloud table: upsert rewrites every column of the row with this id.
       const remote: Record<string, any> = {};

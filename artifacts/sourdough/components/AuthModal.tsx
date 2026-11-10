@@ -20,10 +20,24 @@ import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { getStoredToken, type AuthUser } from "@/lib/auth";
 import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
-import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError } from "@/lib/transitionCoordinator";
+import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError, NlaWorkspaceChangedError } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
-import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
-import { confirmActiveFeedTransition } from "@/lib/activeWork";
+import { migrateLocalDataToAccount, clearMigrationPending } from "@/lib/migrate";
+import { confirmActiveFeedTransition, NLA_LOCAL_WORK_TITLE, NLA_LOCAL_WORK_PARAGRAPHS } from "@/lib/activeWork";
+import {
+  inventoryNlaWorkspace,
+  buildPurgePlan,
+  summarizeInventory,
+  describeInventory,
+  type NlaInventory,
+} from "@/lib/nlaWorkspace";
+import {
+  importNlaWorkspace,
+  describeImportReport,
+  reportToMigrationResult,
+  ImportNotVerifiedError,
+} from "@/lib/nlaImport";
+import { processPendingDeletions } from "@/lib/recipeStorage";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 
@@ -81,6 +95,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   const [firstName, setFirstName] = useState("");
   const [starterName, setStarterName] = useState("");
   const [loading, setLoading] = useState(false);
+  // What is on this device in the offline (NLA) workspace, shown on the choice screen.
+  const [nlaInventory, setNlaInventory] = useState<NlaInventory | null>(null);
+  const [choiceMessage, setChoiceMessage] = useState<string | null>(null);
   const [transitionPendingData, setTransitionPendingData] = useState<{
     token: string;
     user: AuthUser;
@@ -98,6 +115,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   useEffect(() => {
     if (!visible) activeFeedAckRef.current = false;
   }, [visible]);
+  // A choice screen opened with preset data (no inventory yet) still shows what is on the device.
+  useEffect(() => {
+    if (transitionPendingData && !nlaInventory) {
+      inventoryNlaWorkspace().then(setNlaInventory).catch(() => {});
+    }
+  }, [transitionPendingData, nlaInventory]);
 
   const reset = () => {
     activeFeedAckRef.current = false;
@@ -106,92 +129,83 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     setLoading(false);
     setMode("name");
     setTransitionPendingData(null);
+    setNlaInventory(null);
+    setChoiceMessage(null);
+  };
+
+  const refreshInventory = async () => {
+    try {
+      setNlaInventory(await inventoryNlaWorkspace());
+    } catch {
+      /* the next attempt re-reads it */
+    }
   };
 
   const displayName = currentUser
     ? `${currentUser.firstName}'s ${currentUser.starterName}`
     : "";
 
-  const checkHasAnonymousRecords = async (): Promise<boolean> => {
-    try {
-      const [recipesRaw, bakesRaw, historyRaw, activeBakeRaw] = await Promise.all([
-        AsyncStorage.getItem("bread_lab_recipes_v1").catch(() => "__ERROR__"),
-        AsyncStorage.getItem("bread_lab_bake_history_v1").catch(() => "__ERROR__"),
-        AsyncStorage.getItem("sourdough_feed_history_v1").catch(() => "__ERROR__"),
-        AsyncStorage.getItem("bread_lab_bake_v2").catch(() => "__ERROR__"),
-      ]);
-
-      if (recipesRaw === "__ERROR__" || bakesRaw === "__ERROR__" || historyRaw === "__ERROR__" || activeBakeRaw === "__ERROR__") {
-        return true;
-      }
-
-      const hasAnon = (raw: string | null) => {
-        if (!raw) return false;
-        try {
-          const parsed = JSON.parse(raw);
-          const checkOwner = (item: any) => {
-            if (!item || typeof item !== "object") return false;
-            const owner = item.userId ?? item.user_id;
-            return owner === "anonymous";
-          };
-          if (Array.isArray(parsed)) {
-            return parsed.some(checkOwner);
-          } else if (parsed && typeof parsed === "object") {
-            return checkOwner(parsed);
-          }
-        } catch {
-          return true;
-        }
-        return false;
-      };
-
-      return hasAnon(recipesRaw) || hasAnon(bakesRaw) || hasAnon(historyRaw) || hasAnon(activeBakeRaw);
-    } catch {
-      return true;
+  // Shared failure path for the two choices: fail closed (the new account's session is signed out and the
+  // baker stays in the offline workspace with everything intact), and say so plainly.
+  const failChoice = async (title: string, err: unknown) => {
+    const recovery = await executeFailClosedRecovery(onAuthChange);
+    const statusDetails = [
+      recovery.remoteSignout ? "Your account session was closed." : "Closing your account session could not be confirmed.",
+      recovery.localClear ? "You are still in your offline workspace." : "Local sign-in cleanup could not be verified.",
+    ].join(" ");
+    const msg = `${err instanceof Error ? err.message : String(err)} ${statusDetails}`;
+    if (Platform.OS === "web") {
+      window.alert(`${title}: ${msg}`);
+    } else {
+      Alert.alert(title, msg);
+    }
+    if (recovery.remoteSignout && recovery.localClear) {
+      setTransitionPendingData(null);
+      setNlaInventory(null);
     }
   };
 
-
+  const noteLeftovers = (note: string, leftovers: boolean) => {
+    if (!leftovers) return;
+    if (Platform.OS === "web") window.alert(note);
+    else Alert.alert("Some items stayed on this device", note);
+  };
 
   const handleChoiceImport = async () => {
     if (!transitionPendingData) return;
-    if (!(await ensureActiveFeedAck())) return;
     setLoading(true);
+    setChoiceMessage(null);
     try {
       const { token, user } = transitionPendingData;
-      await setMigrationPending();
       startMigration();
-      const migrationResult = await migrateLocalDataToAccount(token);
-      finishMigration(migrationResult);
-
-      const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
-      const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
-      if (totalFailed > 0 || totalUnresolved > 0) {
-        throw new Error(`Import paused (${totalFailed} failure(s), ${totalUnresolved} unresolved). Local workspace retained with pre-sync state.`);
+      // upload -> read back -> exact id/ownership/field reconciliation -> drafts re-homed -> verified purge plan
+      const outcome = await importNlaWorkspace(token);
+      finishMigration(reportToMigrationResult(outcome.report));
+      setNlaInventory(outcome.inventory);
+      if (!outcome.report.ok || !outcome.purgePlan) {
+        throw new ImportNotVerifiedError(describeImportReport(outcome.report));
       }
 
-      await executeWorkspaceTransition(null, token, token, user, { activeFeedAcknowledged: activeFeedAckRef.current });
+      // Only now: purge exactly the verified records (and discard active work) and switch accounts.
+      await executeWorkspaceTransition(null, token, token, user, {
+        activeFeedAcknowledged: true, // the baker saw the local-work panel before choosing
+        nlaDisposition: { mode: "import", plan: outcome.purgePlan, snapshotRaw: outcome.inventory.raw },
+      });
 
       onAuthChange(user);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const report = outcome.report;
       reset();
       onClose();
+      noteLeftovers(describeImportReport(report), report.cannotImport.length + report.unresolved.length + report.draftsRenamed.length > 0);
     } catch (err: any) {
-      if (err instanceof ActiveFeedNotAcknowledgedError) {
-        Alert.alert("Import Failed", err.message);
+      if (err instanceof NlaWorkspaceChangedError) {
+        // Refused before anything changed; the account session is still open and the import is safe to repeat.
+        await refreshInventory();
+        setChoiceMessage(err.message);
         return;
       }
-      const recovery = await executeFailClosedRecovery(onAuthChange);
-      const statusDetails = [
-        recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
-        recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
-      ].join(" ");
-      const msg = `${err instanceof Error ? err.message : String(err)} (${statusDetails})`;
-      if (Platform.OS === 'web') {
-        window.alert(`Import Failed: ${msg}`);
-      } else {
-        Alert.alert("Import Failed", msg);
-      }
+      await failChoice("Import didn't complete", err);
     } finally {
       setLoading(false);
     }
@@ -199,37 +213,44 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   const handleChoiceProceedWithoutImport = async () => {
     if (!transitionPendingData) return;
-    if (!(await ensureActiveFeedAck())) return;
     setLoading(true);
+    setChoiceMessage(null);
     try {
       const { token, user } = transitionPendingData;
-      await executeWorkspaceTransition(null, token, token, user, { activeFeedAcknowledged: activeFeedAckRef.current });
+      // The plan is built from the inventory the baker was shown. If the workspace changed since, the transition
+      // refuses and the baker reviews the updated counts, so nothing unseen is ever removed.
+      const inventory = nlaInventory;
+      if (!inventory) {
+        await refreshInventory();
+        setChoiceMessage("Please review what is on this device, then choose again.");
+        return;
+      }
+      if (!inventory.readable) {
+        throw new Error("Some data on this device could not be read, so nothing was changed.");
+      }
+      const plan = buildPurgePlan(inventory, "discard");
+      await executeWorkspaceTransition(null, token, token, user, {
+        activeFeedAcknowledged: true, // the baker saw the local-work panel before choosing
+        nlaDisposition: { mode: "discard", plan, snapshotRaw: inventory.raw },
+      });
 
       onAuthChange(user);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const left = inventory.unresolved.length;
       reset();
       onClose();
+      noteLeftovers(describeInventory(summarizeInventory(inventory)), left > 0);
     } catch (err: any) {
-      if (err instanceof ActiveFeedNotAcknowledgedError) {
-        Alert.alert("Purge/Setup Failed", err.message);
+      if (err instanceof NlaWorkspaceChangedError) {
+        await refreshInventory();
+        setChoiceMessage(err.message);
         return;
       }
-      const recovery = await executeFailClosedRecovery(onAuthChange);
-      const statusDetails = [
-        recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
-        recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
-      ].join(" ");
-      const msg = `${err instanceof Error ? err.message : String(err)} (${statusDetails})`;
-      if (Platform.OS === 'web') {
-        window.alert(`Purge/Setup Failed: ${msg}`);
-      } else {
-        Alert.alert("Purge/Setup Failed", msg);
-      }
+      await failChoice("Couldn't continue", err);
     } finally {
       setLoading(false);
     }
   };
-
   const handleChoiceCancel = async () => {
     setLoading(true);
     try {
@@ -259,7 +280,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       Alert.alert("Fill in both fields.");
       return;
     }
-    if (!(await ensureActiveFeedAck())) return;
     setLoading(true);
     try {
       // 1. Verify active Supabase session (Account A) — fail closed on lookup errors
@@ -281,6 +301,16 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       const savedAccountA = currentUser && currentToken ? { token: currentToken, user: currentUser } : null;
 
       if (currentToken) {
+        // Account -> account: warn about active Feed work. (NLA -> account uses the panel on the choice screen.)
+        if (!(await ensureActiveFeedAck())) return;
+      } else {
+        // NLA: its pending deletions are retired locally (no network call), and a stale "import in progress"
+        // marker from an interrupted attempt must not block the choice screen.
+        await processPendingDeletions().catch(() => {});
+        await clearMigrationPending().catch(() => {});
+      }
+
+      if (currentToken) {
         // 2. Pre-sync local pending records to Account A before switching
         startMigration();
         const preMigrationResult = await migrateLocalDataToAccount(currentToken);
@@ -294,7 +324,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       }
 
       // 3. Non-mutating pre-validation pass before authenticating B
-      await validateOperationalData(currentToken, { discardActiveFeed: true });
+      await validateOperationalData(currentToken, { discardActiveFeed: true, discardActiveBake: !currentToken });
 
       // 4. Authenticate Account B FIRST before clearing operational data
       const isSignUp = mode === "name";
@@ -327,44 +357,15 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         return;
       }
 
-      // 5. Switching from Anonymous -> Account B
+      // 5. Switching from the offline (NLA) workspace -> an account: ALWAYS offer the three choices, even when
+      //    nothing was detected, so the baker is never surprised and detection can never silently miss data.
       if (!currentToken) {
-        const hasAnonRecords = await checkHasAnonymousRecords();
-        if (hasAnonRecords) {
-          // Present Transition Choice Modal
-          setTransitionPendingData({ token: result.token, user: result.user });
-          return;
-        } else {
-          try {
-            // No anonymous local records to migrate, verify migration result
-            const migrationResult = await migrateLocalDataToAccount(result.token);
-            const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
-            const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
-
-            if (totalFailed > 0 || totalUnresolved > 0) {
-              throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Local workspace retained with pre-sync state.`);
-            }
-
-            await executeWorkspaceTransition(null, result.token, result.token, result.user, {
-              activeFeedAcknowledged: activeFeedAckRef.current,
-            });
-            onAuthChange(result.user);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            reset();
-            onClose();
-            return;
-          } catch (anonErr) {
-            if (anonErr instanceof ActiveFeedNotAcknowledgedError) throw anonErr; // nothing changed
-            const recovery = await executeFailClosedRecovery(onAuthChange);
-            const statusDetails = [
-              recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
-              recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
-            ].join(" ");
-            throw new Error(`Anonymous transition failed: ${anonErr instanceof Error ? anonErr.message : String(anonErr)}. ${statusDetails}`);
-          }
-        }
+        const inventory = await inventoryNlaWorkspace();
+        setNlaInventory(inventory);
+        setChoiceMessage(null);
+        setTransitionPendingData({ token: result.token, user: result.user });
+        return;
       }
-
       await getDeviceId()
         .then(async (deviceId) => {
           let linked = false;
@@ -521,15 +522,29 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
           {transitionPendingData ? (
             <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[s.cardName, { color: colors.foreground, marginBottom: 8 }]}>
-                Offline Workspace Found
+                Your offline workspace
               </Text>
               <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 12 }]}>
-                You have local recipes or bakes created offline on this device. Choose how you would like to proceed with {transitionPendingData.user.firstName}&apos;s account:
+                {nlaInventory ? describeInventory(summarizeInventory(nlaInventory)) : "Checking what is on this device…"}
               </Text>
-              <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 20, fontStyle: "italic" }]}>
-                Your anonymous recipes and data will be discarded and won’t be available in your account or on this device in the future.
+              {nlaInventory && summarizeInventory(nlaInventory).activeWork > 0 ? (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={[s.cardName, { color: colors.foreground, fontSize: 15, marginBottom: 6 }]}>
+                    {NLA_LOCAL_WORK_TITLE}
+                  </Text>
+                  {NLA_LOCAL_WORK_PARAGRAPHS.map((paragraph) => (
+                    <Text key={paragraph} style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 6 }]}>
+                      {paragraph}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 12 }]}>
+                Import & Proceed adds these records to {transitionPendingData.user.firstName}&apos;s account, confirms each one, and then clears them from this device. Proceed Without Importing continues without them and clears them from this device. Nothing in your account is deleted either way.
               </Text>
-
+              {choiceMessage ? (
+                <Text style={[s.cardInfo, { color: colors.foreground, marginBottom: 12 }]}>{choiceMessage}</Text>
+              ) : null}
               <View style={{ gap: 12 }}>
                 <Pressable
                   onPress={handleChoiceImport}
