@@ -57,9 +57,14 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       return Promise.resolve();
     });
     (AsyncStorage.getItem as jest.Mock).mockImplementation((key) => Promise.resolve(mockStorage[key] ?? null));
-    // Earlier tests replace multiRemove with a rejecting/no-op mock and never restore it; start each test with the working one.
+    // Earlier tests replace multiRemove/removeItem with rejecting or no-op mocks and never restore them;
+    // start each test with the working ones.
     (AsyncStorage.multiRemove as jest.Mock).mockImplementation((keys: string[]) => {
       keys.forEach((k) => delete mockStorage[k]);
+      return Promise.resolve();
+    });
+    (AsyncStorage.removeItem as jest.Mock).mockImplementation((key: string) => {
+      delete mockStorage[key];
       return Promise.resolve();
     });
   });
@@ -560,76 +565,108 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(mockStorage["bread_lab_migration_pending_v1"]).toBe("1");
   });
 
-  it("preserves entire operational workspace and performs zero mutations when pre-validation fails", async () => {
+  // ── Pre-validation: each test states its OWN starting storage and proves the one condition it names. ──
+  //
+  // validateOperationalData checks, in this order: read errors -> migration-pending marker -> flat legacy
+  // tombstone queues (malformed / not an array / non-string element / NON-EMPTY) -> unresolved legacy
+  // tombstones -> owner-scoped pending deletions -> array shape of the collection keys -> active bake.
+  // A non-empty tombstone queue therefore always surfaces first. Tests that are about a malformed
+  // collection or active bake must NOT seed a pending queue, or they stop reaching their own check.
+  // (Their old seeds predate the legacy-queue guard added in omicron-9.)
+  const healthyCollections = (): Record<string, string> => ({
+    "bread_lab_recipes_v1": JSON.stringify([{ id: "r1", name: "Recipe 1", userId: "anonymous" }]),
+    "bread_lab_bake_history_v1": JSON.stringify([{ id: "b1", recipeName: "Bake 1", userId: "anonymous" }]),
+    "sourdough_feed_history_v1": JSON.stringify([{ id: "f1", userId: "anonymous" }]),
+  });
+
+  const expectRejectedWithZeroMutation = async (seedData: Record<string, string>, expected: RegExp) => {
     const { clearOperationalData } = require("../storageUtils");
-
-    const seedData = {
-      "bread_lab_recipes_v1": JSON.stringify([{ id: "r1", name: "Recipe 1", userId: "anonymous" }]),
-      "bread_lab_bake_history_v1": JSON.stringify([{ id: "bh1", recipeName: "Bake 1", userId: "anonymous" }]),
-      "sourdough_feed_history_v1": JSON.stringify([{ id: "fh1", userId: "anonymous" }]),
-      "bread_lab_bake_v2": "{malformed-active-bake",
-      "sourdough_feed_session_v1": JSON.stringify({ id: "af1", userId: "anonymous" }),
-      "bread_lab_deleted_recipe_ids_v1": JSON.stringify(["del-1"]),
-    };
-
     mockStorage = { ...seedData };
 
     (AsyncStorage.setItem as jest.Mock).mockClear();
     (AsyncStorage.removeItem as jest.Mock).mockClear();
+    (AsyncStorage.multiSet as jest.Mock).mockClear();
     (AsyncStorage.multiRemove as jest.Mock).mockClear();
 
-    await expect(clearOperationalData("user-clearing")).rejects.toThrow(/malformed/);
+    await expect(clearOperationalData("user-clearing")).rejects.toThrow(expected);
 
-    for (const [key, val] of Object.entries(seedData)) {
-      expect(mockStorage[key]).toBe(val);
-    }
-
+    // Nothing was written, removed or altered: every seeded key is byte-for-byte unchanged and no
+    // key appeared.
+    expect(mockStorage).toEqual(seedData);
     expect(AsyncStorage.setItem).not.toHaveBeenCalled();
     expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
     expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+  };
+
+  it("preserves entire operational workspace and performs zero mutations when pre-validation fails", async () => {
+    await expectRejectedWithZeroMutation(
+      {
+        ...healthyCollections(),
+        "bread_lab_bake_v2": "{malformed-active-bake",
+        "sourdough_feed_session_v1": JSON.stringify({ id: "af1", userId: "anonymous" }),
+      },
+      /active bake record is malformed/
+    );
   });
 
-  const collectionKeysMap = [
+  // Collection keys: validated by validateArrayStorageKey, whose message names the key's label.
+  const collectionShapeCases = [
     { key: "bread_lab_recipes_v1", label: "recipe record" },
     { key: "bread_lab_bake_history_v1", label: "bake history" },
     { key: "sourdough_feed_history_v1", label: "feed history" },
-    { key: "bread_lab_deleted_recipe_ids_v1", label: "deleted recipe IDs" },
-    { key: "bread_lab_deleted_bake_ids_v1", label: "deleted bake IDs" },
-    { key: "bread_lab_deleted_feed_ids_v1", label: "deleted feed IDs" },
   ];
 
-  collectionKeysMap.forEach(({ key }) => {
+  collectionShapeCases.forEach(({ key, label }) => {
     it(`independently proves validation failure and zero mutation when ${key} has invalid shape`, async () => {
-      const { clearOperationalData } = require("../storageUtils");
-
-      const seedData: Record<string, string> = {
-        "bread_lab_recipes_v1": JSON.stringify([{ id: "r1", userId: "anonymous" }]),
-        "bread_lab_bake_history_v1": JSON.stringify([{ id: "b1", userId: "anonymous" }]),
-        "sourdough_feed_history_v1": JSON.stringify([{ id: "f1", userId: "anonymous" }]),
-        "bread_lab_deleted_recipe_ids_v1": JSON.stringify(["del-1"]),
-        "bread_lab_deleted_bake_ids_v1": JSON.stringify(["del-2"]),
-        "bread_lab_deleted_feed_ids_v1": JSON.stringify(["del-3"]),
-        [key]: JSON.stringify({ invalidShape: true }),
-      };
-
-      mockStorage = { ...seedData };
-
-      (AsyncStorage.setItem as jest.Mock).mockClear();
-      (AsyncStorage.removeItem as jest.Mock).mockClear();
-      (AsyncStorage.multiSet as jest.Mock).mockClear();
-      (AsyncStorage.multiRemove as jest.Mock).mockClear();
-
-      await expect(clearOperationalData("user-clearing")).rejects.toThrow(/invalid shape|malformed/);
-
-      for (const [k, val] of Object.entries(seedData)) {
-        expect(mockStorage[k]).toBe(val);
-      }
-
-      expect(AsyncStorage.setItem).not.toHaveBeenCalled();
-      expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
-      expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
-      expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+      await expectRejectedWithZeroMutation(
+        { ...healthyCollections(), [key]: JSON.stringify({ invalidShape: true }) },
+        new RegExp(`Operational wipe pre-validation failed: ${label} storage has invalid shape`)
+      );
     });
+  });
+
+  // Flat deleted-ID keys are legacy queues. Their shape is policed by the legacy-queue guard, which
+  // runs before (and so shadows) the later validateArrayStorageKey calls for the same keys; those
+  // later calls cannot fire for these keys. The guard's message names the exact key under test.
+  const legacyQueueShapeCases = [
+    { key: "bread_lab_deleted_recipe_ids_v1", label: "flat legacy recipe" },
+    { key: "bread_lab_deleted_bake_ids_v1", label: "flat legacy bake" },
+    { key: "bread_lab_deleted_feed_ids_v1", label: "flat legacy feed" },
+  ];
+
+  legacyQueueShapeCases.forEach(({ key, label }) => {
+    it(`independently proves validation failure and zero mutation when ${key} has invalid shape`, async () => {
+      await expectRejectedWithZeroMutation(
+        { ...healthyCollections(), [key]: JSON.stringify({ invalidShape: true }) },
+        new RegExp(`Transition blocked: ${label} tombstone storage ${key} is not an array`)
+      );
+    });
+  });
+
+  // A workspace with BOTH pending deletion work and malformed data is rejected with zero mutation.
+  // The pending-deletion block is reported first (it is checked first); nothing is changed.
+  it("rejects a workspace with a pending flat legacy tombstone AND a malformed collection, with zero mutation", async () => {
+    await expectRejectedWithZeroMutation(
+      {
+        ...healthyCollections(),
+        "bread_lab_bake_history_v1": JSON.stringify({ invalidShape: true }),
+        "bread_lab_deleted_recipe_ids_v1": JSON.stringify(["del-1"]),
+      },
+      /Transition blocked: workspace contains nonempty flat legacy recipe tombstone queue bread_lab_deleted_recipe_ids_v1 \(1 items\)/
+    );
+  });
+
+  it("rejects a workspace with a pending owner-scoped deletion AND a malformed active bake, with zero mutation", async () => {
+    const { getOwnerStorageKey, APP_STORAGE_KEYS } = require("../storageUtils");
+    await expectRejectedWithZeroMutation(
+      {
+        ...healthyCollections(),
+        "bread_lab_bake_v2": "{malformed-active-bake",
+        [getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, "user-clearing")]: JSON.stringify(["pending-feed-1"]),
+      },
+      /Transition blocked: workspace has pending deletion work \(0 recipes, 0 bakes, 1 feeds pending deletion\)/
+    );
   });
 
   it("treats nonblank but unrecognized owner values in active bakes as foreign/unrecognized and safely retains them", async () => {
@@ -731,13 +768,28 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
 
   it("clearAuth rejects when multiRemove and fallback both fail and credentials remain", async () => {
     const { clearAuth } = require("../auth");
+    const { subscribeToWorkspaceChange } = require("../storageUtils");
+    const seededUser = JSON.stringify({ firstName: "Test" });
     mockStorage["bread_lab_auth_token_v1"] = "token-xyz";
-    mockStorage["bread_lab_auth_user_v1"] = JSON.stringify({ firstName: "Test" });
+    mockStorage["bread_lab_auth_user_v1"] = seededUser;
 
     (AsyncStorage.multiRemove as jest.Mock).mockRejectedValue(new Error("Disk error"));
     (AsyncStorage.removeItem as jest.Mock).mockRejectedValue(new Error("Disk error"));
 
-    await expect(clearAuth()).rejects.toThrow(/Credential clearing failed verification/);
+    // A failed cleanup must never look like a completed identity reset: nobody is told the workspace changed.
+    const onWorkspaceChanged = jest.fn();
+    const unsubscribe = subscribeToWorkspaceChange(onWorkspaceChanged);
+    try {
+      // Current production message (lib/auth.ts; asserted in authError.test.ts as well).
+      await expect(clearAuth()).rejects.toThrow(/Auth storage cleanup verification failed/);
+    } finally {
+      unsubscribe();
+    }
+
+    // The credentials really are still on disk, so the rejection came from the verification step.
+    expect(mockStorage["bread_lab_auth_token_v1"]).toBe("token-xyz");
+    expect(mockStorage["bread_lab_auth_user_v1"]).toBe(seededUser);
+    expect(onWorkspaceChanged).not.toHaveBeenCalled();
   });
 
   it("Test A: executeFailClosedRecovery with failed local credential removal reports localClear false and does not call onAuthChange(null)", async () => {
