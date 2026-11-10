@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { advanceWorkspaceGeneration } from "./storageUtils";
+import { advanceWorkspaceGeneration, notifyWorkspaceChanged } from "./storageUtils";
 
 const TOKEN_KEY = "bread_lab_auth_token_v1";
 const USER_KEY = "bread_lab_auth_user_v1";
@@ -140,6 +140,7 @@ export async function saveAuth(token: string, user: AuthUser): Promise<void> {
     throw new Error("Credential persistence failed verification. Session reset to unauthenticated.");
   }
   console.log(`[BL-DIAG] [Auth] saveAuth verification SUCCEEDED for user: ${user.id}`);
+  notifyWorkspaceChanged();
 }
 
 export async function clearAuth(): Promise<void> {
@@ -174,4 +175,5 @@ export async function clearAuth(): Promise<void> {
     throw new Error("Auth storage cleanup verification failed");
   }
   console.log(`[BL-DIAG] [Auth] clearAuth verification SUCCEEDED: credentials absent.`);
+  notifyWorkspaceChanged();
 }

@@ -17,6 +17,7 @@ import {
 } from "@/lib/recipeTypes";
 import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, detectYeastType, sortRecipePhases } from "@/lib/recipeUtils";
 import { safeParse, storageMutex, getOwnerStorageKey, getWorkspaceGeneration } from "@/lib/storageUtils";
+import { isNlaOwner } from "@/lib/nlaBoundary";
 
 async function resolveOwner(): Promise<string> {
   let token: string | null = null;
@@ -37,6 +38,16 @@ async function resolveOwner(): Promise<string> {
 export interface WorkspaceOperationContext {
   owner: string;
   generation: number;
+}
+
+/**
+ * The workspace (owner + generation) in effect right now. Screens that hold device-local state
+ * capture this when they load or create that state, then compare it before writing.
+ * Fails closed (throws) if the owner cannot be resolved.
+ */
+export async function getWorkspaceIdentity(): Promise<WorkspaceOperationContext> {
+  const owner = await resolveOwner();
+  return { owner, generation: getWorkspaceGeneration() };
 }
 
 async function assertWorkspaceOperationCurrent(context: WorkspaceOperationContext): Promise<void> {
@@ -330,6 +341,27 @@ async function verifyRemoteAbsence(type: 'recipe' | 'bake' | 'feed', id: string,
   return false;
 }
 
+/**
+ * Retires the NLA workspace's pending deletion intents without any network call. Safe to call while the
+ * NLA workspace is active (or under the transition lock). Account-owned tombstones are never touched.
+ */
+export async function retireNlaTombstones(context?: WorkspaceOperationContext): Promise<void> {
+  const ctx = context ?? { owner: await resolveOwner(), generation: getWorkspaceGeneration() };
+  if (!isNlaOwner(ctx.owner)) return;
+  for (const id of await getRecipeTombstone()) {
+    await assertWorkspaceOperationCurrent(ctx);
+    await removeFromRecipeTombstone(id, ctx);
+  }
+  for (const id of await getBakeTombstone()) {
+    await assertWorkspaceOperationCurrent(ctx);
+    await removeFromBakeTombstone(id, ctx);
+  }
+  for (const id of await getFeedTombstone()) {
+    await assertWorkspaceOperationCurrent(ctx);
+    await removeFromFeedTombstone(id, ctx);
+  }
+}
+
 let isProcessingDeletions = false;
 
 export async function processPendingDeletions(): Promise<void> {
@@ -343,6 +375,16 @@ export async function processPendingDeletions(): Promise<void> {
     const owner = await resolveOwner();
     const generation = getWorkspaceGeneration();
     const context: WorkspaceOperationContext = { owner, generation };
+
+    // NLA knows nothing about Supabase: it never calls delete/verify. Its pending deletions are retired
+    // locally (the record was already removed from the device when the baker deleted it).
+    // Authenticated accounts continue below, unchanged.
+    if (isNlaOwner(owner)) {
+      await assertWorkspaceOperationCurrent(context);
+      await retireNlaTombstones(context);
+      return;
+    }
+
     const deviceId = await getDeviceId();
     const token = owner === "anonymous" ? null : owner;
 

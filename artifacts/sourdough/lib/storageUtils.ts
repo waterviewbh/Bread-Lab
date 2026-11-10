@@ -72,7 +72,20 @@ function validateArrayStorageKey(raw: string | null, keyLabel: string): void {
  * Genuinely non-mutating operation that validates relevant operational storage reads,
  * JSON shapes, migration pending markers, and ownership conditions without modifying or removing any storage keys.
  */
-export async function validateOperationalData(currentUserId?: string | null): Promise<void> {
+export interface ValidateOperationalDataOptions {
+  /**
+   * Active Feed work is device-local and is discarded (unread) at a workspace transition, so a
+   * transition gate must not inspect or block on it. Callers that gate a transition pass true.
+   */
+  discardActiveFeed?: boolean;
+  /** Same for an active bake, when the transition discards it (the NLA departure only). */
+  discardActiveBake?: boolean;
+}
+
+export async function validateOperationalData(
+  currentUserId?: string | null,
+  options: ValidateOperationalDataOptions = {}
+): Promise<void> {
   console.log(`[BL-DIAG] [StorageUtils] validateOperationalData starting for currentUserId: ${currentUserId}`);
   let recipeRaw: string | null = null;
   let bakeHistRaw: string | null = null;
@@ -207,7 +220,7 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
   validateArrayStorageKey(delBakeRaw, "deleted bake IDs");
   validateArrayStorageKey(delFeedRaw, "deleted feed IDs");
 
-  if (activeBakeCheck !== null) {
+  if (activeBakeCheck !== null && !options.discardActiveBake) {
     try {
       const parsed = JSON.parse(activeBakeCheck);
       const bakesList = Array.isArray(parsed) ? parsed : [parsed];
@@ -226,7 +239,7 @@ export async function validateOperationalData(currentUserId?: string | null): Pr
     }
   }
 
-  if (activeFeedCheck !== null) {
+  if (activeFeedCheck !== null && !options.discardActiveFeed) {
     try {
       const parsed = JSON.parse(activeFeedCheck);
       const owner = parsed?.userId ?? parsed?.user_id;
@@ -408,18 +421,16 @@ export async function quarantineOperationalData(departingUserId?: string | null)
   let bakeHistRaw: string | null = null;
   let feedHistRaw: string | null = null;
   let activeBakeCheck: string | null = null;
-  let activeFeedCheck: string | null = null;
   let delRecipeRaw: string | null = null;
   let delBakeRaw: string | null = null;
   let delFeedRaw: string | null = null;
 
   try {
-    [recipeRaw, bakeHistRaw, feedHistRaw, activeBakeCheck, activeFeedCheck, delRecipeRaw, delBakeRaw, delFeedRaw] = await Promise.all([
+    [recipeRaw, bakeHistRaw, feedHistRaw, activeBakeCheck, delRecipeRaw, delBakeRaw, delFeedRaw] = await Promise.all([
       AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES),
       AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY),
       AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY),
       AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
-      AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
       AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_RECIPE_IDS),
       AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_BAKE_IDS),
       AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_FEED_IDS),
@@ -459,20 +470,6 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     }
   };
 
-  const parseActiveFeedOrThrow = (raw: string | null): any => {
-    if (raw === null || raw === undefined) return null;
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed !== null && (typeof parsed !== "object" || Array.isArray(parsed))) {
-        throw new Error("Active feed record must be a non-null object.");
-      }
-      return parsed;
-    } catch (e: any) {
-      if (e.message?.includes("Active feed")) throw e;
-      throw new Error(`Quarantine failed: active feed storage contains malformed JSON or invalid shape: ${e.message}`);
-    }
-  };
-
   function validateQuarantinedStore(store: unknown, qKey: string): QuarantinedStore {
     if (!store || typeof store !== "object" || Array.isArray(store)) {
       throw new Error(`Quarantine validation failed: bucket ${qKey} has invalid root shape (expected object).`);
@@ -494,7 +491,6 @@ export async function quarantineOperationalData(departingUserId?: string | null)
   const bakes = parseOrThrow(bakeHistRaw, "bake history");
   const feeds = parseOrThrow(feedHistRaw, "feed history");
   const activeBakes = parseActiveBakeOrThrow(activeBakeCheck);
-  const activeFeed = parseActiveFeedOrThrow(activeFeedCheck);
   const delRecipes = parseOrThrow(delRecipeRaw, "deleted recipe IDs");
   const delBakes = parseOrThrow(delBakeRaw, "deleted bake IDs");
   const delFeeds = parseOrThrow(delFeedRaw, "deleted feed IDs");
@@ -531,9 +527,9 @@ export async function quarantineOperationalData(departingUserId?: string | null)
   for (const ab of activeBakes) {
     addToBucket(getOwnerKey(ab), "activeBakes", [ab]);
   }
-  if (activeFeed) {
-    addToBucket(getOwnerKey(activeFeed), "activeFeed", activeFeed);
-  }
+  // Active Feed work is device-local and does not survive a workspace transition. It is not read,
+  // validated or bucketed here: the final multiRemove discards it, so a corrupt or unstamped active
+  // Feed can never block a transition, is never parked in a quarantine bucket, and is never restored.
 
   // Tombstone ownership association (nu-1: flat tombstones lack per-entry ownership; route to unknown/inert quarantine)
   const tombstoneOwner = "unknown";
@@ -573,7 +569,6 @@ export async function quarantineOperationalData(departingUserId?: string | null)
       bakeHistory: mergeList(existing.bakeHistory, bucketStore.bakeHistory),
       feedHistory: mergeList(existing.feedHistory, bucketStore.feedHistory),
       activeBakes: mergeList(existing.activeBakes, bucketStore.activeBakes),
-      activeFeed: bucketStore.activeFeed ?? existing.activeFeed,
       deletedRecipeIds: mergeList(existing.deletedRecipeIds, bucketStore.deletedRecipeIds),
       deletedBakeIds: mergeList(existing.deletedBakeIds, bucketStore.deletedBakeIds),
       deletedFeedIds: mergeList(existing.deletedFeedIds, bucketStore.deletedFeedIds),
@@ -646,14 +641,11 @@ export async function restoreOperationalData(incomingUserId: string): Promise<vo
     await restoreListKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS, storedQ.deletedBakeIds);
     await restoreListKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, storedQ.deletedFeedIds);
 
-    if (storedQ.activeFeed) {
-      const activeFeedRaw = await AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED);
-      if (!activeFeedRaw) {
-        await AsyncStorage.setItem(APP_STORAGE_KEYS.ACTIVE_FEED, JSON.stringify(storedQ.activeFeed));
-      }
-    }
+    // Active Feed work is never restored: it is device-local and discarded at every transition.
+    // (Buckets written by older versions may still carry an activeFeed; it is ignored here.)
 
     console.log(`[BL-DIAG] [Quarantine] restoreOperationalData completed for incomingUserId: ${incomingUserId}`);
+    notifyWorkspaceChanged();
   } catch (err) {
     console.error(`[BL-DIAG] [Quarantine] restoreOperationalData failed:`, err);
     throw err;
@@ -750,6 +742,28 @@ export function getWorkspaceGeneration(): number {
 export function advanceWorkspaceGeneration(): number {
   workspaceGeneration++;
   return workspaceGeneration;
+}
+
+// Screens that hold device-local state (for example a mounted Feed screen) subscribe here so they
+// reset the moment the workspace changes, instead of waiting for a focus or a failed write.
+// Fired AFTER a credential change has been persisted and after a restore; never polled.
+const workspaceChangeListeners = new Set<() => void>();
+
+export function subscribeToWorkspaceChange(listener: () => void): () => void {
+  workspaceChangeListeners.add(listener);
+  return () => {
+    workspaceChangeListeners.delete(listener);
+  };
+}
+
+export function notifyWorkspaceChanged(): void {
+  for (const listener of Array.from(workspaceChangeListeners)) {
+    try {
+      listener();
+    } catch (e) {
+      console.warn("[StorageUtils] workspace-change listener threw", e);
+    }
+  }
 }
 
 /**

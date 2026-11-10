@@ -169,6 +169,25 @@ describe("API Ownership & Signout Real Implementation", () => {
     ).rejects.toThrow(/Owner\/Session mismatch/);
   });
 
+  it("a finished Feed upsert carrying Account A's identity is refused under any other session, and nothing is written", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    const body = { id: "feed-1", deviceId: "dev", userId: "user-A", savedAt: 1, startedAt: 1, updatedAt: 1, inProgress: false, data: {} };
+    mockUpsert.mockClear();
+
+    // Account B is signed in when the completion upload fires
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "user-B" } } }, error: null });
+    await expect(api.history.feed.upsert(body)).rejects.toThrow(/Owner\/Session mismatch/);
+
+    // The baker signed out (NLA) before it fired
+    getSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+    await expect(api.history.feed.upsert(body)).rejects.toThrow(/Authentication required/);
+
+    // An NLA payload (no owner) while Account B is signed in
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: "user-B" } } }, error: null });
+    await expect(api.history.feed.upsert({ ...body, userId: undefined })).rejects.toThrow(/omitted explicit user ownership/);
+
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
   it("enforces correct ownership filtering for list operations", async () => {
     await api.recipes.list("dev-1", "user-A");
     expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-A");

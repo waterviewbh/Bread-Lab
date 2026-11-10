@@ -4,6 +4,7 @@ import { HistorySection } from '../log';
 import * as recipeStorage from '@/lib/recipeStorage';
 import { api } from '@/lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NlaSupabaseBoundaryError } from '@/lib/nlaBoundary';
 
 let mockStore: Record<string, string> = {};
 
@@ -60,10 +61,15 @@ jest.mock('@/contexts/MigrationToastContext', () => ({
   useMigrationToast: () => ({ isMigrationActive: false, startMigration: jest.fn(), finishMigration: jest.fn() }),
 }));
 
+const ACCT = 'acct-1';
+
 describe('HistorySection Component Integration (JA Assignment — Strengthen History Deletion-Failure Test)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockStore = {};
+    mockStore = {
+      bread_lab_auth_token_v1: ACCT,
+      bread_lab_auth_user_v1: JSON.stringify({ id: ACCT, firstName: 'A', starterName: 'S' }),
+    };
     (api.history.feed.delete as jest.Mock).mockResolvedValue(true);
     (api.history.feed.verifyAbsent as jest.Mock).mockResolvedValue(true);
     (api.history.bakes.delete as jest.Mock).mockResolvedValue(true);
@@ -83,7 +89,7 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
 
     await waitFor(() => {
       expect(screen.getByText('Calendar')).toBeTruthy();
-      expect(api.history.feed.delete).toHaveBeenCalledWith('feed-tomb-focus-1', expect.any(String), undefined);
+      expect(api.history.feed.delete).toHaveBeenCalledWith('feed-tomb-focus-1', expect.any(String), ACCT);
     });
 
     const tombstones = await recipeStorage.getFeedTombstone();
@@ -121,7 +127,7 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
     // 4. Assert delete call count increased by exactly one and included the seeded ID
     await waitFor(() => {
       expect((api.history.feed.delete as jest.Mock).mock.calls.length).toBe(initialCallCount + 1);
-      expect(api.history.feed.delete).toHaveBeenCalledWith('feed-tomb-refresh-2', expect.any(String), undefined);
+      expect(api.history.feed.delete).toHaveBeenCalledWith('feed-tomb-refresh-2', expect.any(String), ACCT);
     });
 
     // 5. Assert tombstone is removed after successful processing
@@ -151,13 +157,13 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
         .toHaveBeenCalledWith(
           tombstoneId,
           expect.any(String),
-          undefined
+          ACCT
         );
       expect(api.history.feed.verifyAbsent)
         .toHaveBeenCalledWith(
           tombstoneId,
           expect.any(String),
-          undefined
+          ACCT
         );
     });
 
@@ -183,5 +189,54 @@ describe('HistorySection Component Integration (JA Assignment — Strengthen His
       expect(screen.getByText('Calendar')).toBeTruthy();
       expect(api.history.feed.delete).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('HistorySection — NLA workspace (no Supabase)', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockStore = {};
+    (api.history.feed.list as jest.Mock).mockResolvedValue([]);
+    (api.history.bakes.list as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('N1 — Screen focus retires NLA pending deletions locally and never calls delete or verify', async () => {
+    await act(async () => {
+      await recipeStorage.addToFeedTombstone('nla-feed-tomb');
+      await recipeStorage.addToBakeTombstone('nla-bake-tomb');
+    });
+
+    await act(async () => {
+      render(<HistorySection />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Calendar')).toBeTruthy();
+    });
+
+    expect(api.history.feed.delete).not.toHaveBeenCalled();
+    expect(api.history.feed.verifyAbsent).not.toHaveBeenCalled();
+    expect(api.history.bakes.delete).not.toHaveBeenCalled();
+    expect(api.history.bakes.verifyAbsent).not.toHaveBeenCalled();
+    expect(await recipeStorage.getFeedTombstone()).toEqual([]);
+    expect(await recipeStorage.getBakeTombstone()).toEqual([]);
+  });
+
+  it('N2 — A REFUSED remote list (the NLA boundary) is not an empty dataset: local history is kept on the device', async () => {
+    const local = [{ id: 'local-feed-1', userId: 'anonymous', savedAt: Date.now(), completedAt: Date.now(), readings: [] }];
+    mockStore['sourdough_feed_history_v1'] = JSON.stringify(local);
+    (api.history.feed.list as jest.Mock).mockRejectedValue(new NlaSupabaseBoundaryError('history.feed.list'));
+
+    await act(async () => {
+      render(<HistorySection />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Calendar')).toBeTruthy();
+      expect(api.history.feed.list).toHaveBeenCalled();
+    });
+
+    // The failed remote merge never overwrote local storage with an empty result.
+    expect(JSON.parse(mockStore['sourdough_feed_history_v1'])).toEqual(local);
   });
 });

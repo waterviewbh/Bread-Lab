@@ -1,6 +1,7 @@
 // artifacts/sourdough/lib/api.ts — Supabase-backed data layer.
 import { supabase } from "./supabase";
 import { getStoredToken } from "./auth";
+import { NlaSupabaseBoundaryError } from "./nlaBoundary";
 import {
   computeVitalityAnalytics,
   updateAllTimeAnalytics,
@@ -613,6 +614,9 @@ export const api = {
     feed: {
       list: async (deviceId?: string, userId?: string): Promise<ApiFeedSession[]> => {
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
+        // NLA (no account) must not communicate with Supabase: refuse before any request. Callers treat this
+        // like being offline and keep showing their local data (it is never an empty remote result).
+        if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.list");
         if (!supabase) return [];
         const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return [];
@@ -623,6 +627,8 @@ export const api = {
 
       upsert: async (body: any): Promise<ApiFeedSession> => {
         const resolvedUserId = await resolveAndVerifyOwner(body.userId);
+        // No account => NLA: refuse before any write. (Authenticated behaviour is unchanged.)
+        if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.upsert");
         const { data, error } = await supabase!.from("feed_sessions").upsert({
           id: body.id, device_id: body.deviceId, user_id: resolvedUserId, saved_at: body.savedAt,
           started_at: body.startedAt ?? null, updated_at: body.updatedAt ?? Date.now(),
@@ -633,8 +639,9 @@ export const api = {
       },
 
       active: async (deviceId?: string, userId?: string) => {
-        if (!supabase) return null;
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
+        if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.active");
+        if (!supabase) return null;
         const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return null;
         const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).eq("in_progress", true).order("updated_at", { ascending: false }).limit(1).returns<FeedSessionRow[]>().maybeSingle();
@@ -643,6 +650,8 @@ export const api = {
       },
 
       get: async (id: string) => {
+        const token = await getStoredToken();
+        if (!token) throw new NlaSupabaseBoundaryError("history.feed.get");
         if (!supabase) return null;
         const { data, error } = await supabase.from("feed_sessions").select("*").eq("id", id).returns<FeedSessionRow[]>().maybeSingle();
         if (error) throw error;
@@ -723,6 +732,52 @@ export const api = {
         return data === null;
       },
     },
+  },
+
+  /**
+   * fetchRowsByIds — READ-ONLY read-back used to verify an Import. Returns the raw persisted rows for exactly
+   * the supplied ids so the caller can reconcile ids, ownership and critical fields.
+   *
+   * - Requires an authenticated destination account whose live session matches `ownerId`.
+   * - Queries only the explicitly supplied ids, in batches, and completes every batch (a failed batch throws;
+   *   it never returns a partial result).
+   * - Does not filter by owner: foreign-owned or duplicate rows are RETURNED so the verifier can fail on them.
+   * - Changes no existing endpoint.
+   */
+  fetchRowsByIds: async (
+    kind: "recipes" | "bakes" | "feed",
+    ids: string[],
+    ownerId: string
+  ): Promise<{ requested: number; rows: Array<Record<string, any>> }> => {
+    if (!ownerId || typeof ownerId !== "string" || ownerId.trim() === "") {
+      throw new NlaSupabaseBoundaryError("fetchRowsByIds");
+    }
+    const table = kind === "recipes" ? "recipes" : kind === "bakes" ? "bake_sessions" : kind === "feed" ? "feed_sessions" : null;
+    if (!table) throw new Error(`fetchRowsByIds: unknown kind ${String(kind)}`);
+    if (!Array.isArray(ids) || ids.some((i) => typeof i !== "string" || i.trim() === "")) {
+      throw new Error("fetchRowsByIds: ids must be a list of non-empty strings.");
+    }
+    if (new Set(ids).size !== ids.length) throw new Error("fetchRowsByIds: duplicate ids supplied.");
+    if (!supabase) throw new Error("Supabase not configured");
+
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const sessionUserId = sessionData?.session?.user?.id ?? null;
+    if (sessionUserId !== ownerId) {
+      throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match destination (${ownerId}).`);
+    }
+
+    const BATCH = 100;
+    const rows: Array<Record<string, any>> = [];
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const batch = ids.slice(i, i + BATCH);
+      const { data, error } = await supabase.from(table).select("*").in("id", batch);
+      if (error) throw error;
+      const got = (data ?? []) as Array<Record<string, any>>;
+      if (got.length > batch.length) throw new Error("fetchRowsByIds: more rows returned than ids requested.");
+      rows.push(...got);
+    }
+    return { requested: ids.length, rows };
   },
 
   analytics: {

@@ -37,8 +37,8 @@ export namespace UDL {
     };
   }
 
-  export async function verifyReadiness(incomingOwnerId: string): Promise<void> {
-    await validateOperationalData(incomingOwnerId);
+  export async function verifyReadiness(ownerId: string, options: { discardActiveBake?: boolean } = {}): Promise<void> {
+    await validateOperationalData(ownerId, { discardActiveFeed: true, discardActiveBake: options.discardActiveBake });
     const pending = await inspectPendingItems();
     if (pending.hasPending) {
       throw new Error(`UDL readiness verification failed: pending items detected (${pending.details.join(", ")}).`);
