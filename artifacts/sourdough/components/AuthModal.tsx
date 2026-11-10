@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,7 @@ import { saveAuth, getStoredToken, clearAuth, type AuthUser } from "@/lib/auth";
 import { clearAllAppData, clearOperationalData, validateOperationalData, quarantineOperationalData, restoreOperationalData, safeParse } from "@/lib/storageUtils";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, setMigrationPending } from "@/lib/migrate";
+import { confirmActiveFeedTransition } from "@/lib/activeWork";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 
@@ -84,7 +85,21 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     user: AuthUser;
   } | null>(initialTransitionData ?? null);
 
+  // Active Feed work is device-local and is discarded when the workspace changes. The baker is told
+  // once per transition attempt, and may always continue.
+  const activeFeedAckRef = useRef(false);
+  const ensureActiveFeedAck = async (): Promise<boolean> => {
+    if (activeFeedAckRef.current) return true;
+    const ok = await confirmActiveFeedTransition();
+    if (ok) activeFeedAckRef.current = true;
+    return ok;
+  };
+  useEffect(() => {
+    if (!visible) activeFeedAckRef.current = false;
+  }, [visible]);
+
   const reset = () => {
+    activeFeedAckRef.current = false;
     setFirstName("");
     setStarterName("");
     setLoading(false);
@@ -98,15 +113,14 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   const checkHasAnonymousRecords = async (): Promise<boolean> => {
     try {
-      const [recipesRaw, bakesRaw, historyRaw, activeBakeRaw, activeFeedRaw] = await Promise.all([
+      const [recipesRaw, bakesRaw, historyRaw, activeBakeRaw] = await Promise.all([
         AsyncStorage.getItem("bread_lab_recipes_v1").catch(() => "__ERROR__"),
         AsyncStorage.getItem("bread_lab_bake_history_v1").catch(() => "__ERROR__"),
         AsyncStorage.getItem("sourdough_feed_history_v1").catch(() => "__ERROR__"),
         AsyncStorage.getItem("bread_lab_bake_v2").catch(() => "__ERROR__"),
-        AsyncStorage.getItem("sourdough_feed_session_v1").catch(() => "__ERROR__"),
       ]);
 
-      if (recipesRaw === "__ERROR__" || bakesRaw === "__ERROR__" || historyRaw === "__ERROR__" || activeBakeRaw === "__ERROR__" || activeFeedRaw === "__ERROR__") {
+      if (recipesRaw === "__ERROR__" || bakesRaw === "__ERROR__" || historyRaw === "__ERROR__" || activeBakeRaw === "__ERROR__") {
         return true;
       }
 
@@ -130,7 +144,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         return false;
       };
 
-      return hasAnon(recipesRaw) || hasAnon(bakesRaw) || hasAnon(historyRaw) || hasAnon(activeBakeRaw) || hasAnon(activeFeedRaw);
+      return hasAnon(recipesRaw) || hasAnon(bakesRaw) || hasAnon(historyRaw) || hasAnon(activeBakeRaw);
     } catch {
       return true;
     }
@@ -140,6 +154,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   const handleChoiceImport = async () => {
     if (!transitionPendingData) return;
+    if (!(await ensureActiveFeedAck())) return;
     setLoading(true);
     try {
       const { token, user } = transitionPendingData;
@@ -181,6 +196,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   const handleChoiceProceedWithoutImport = async () => {
     if (!transitionPendingData) return;
+    if (!(await ensureActiveFeedAck())) return;
     setLoading(true);
     try {
       const { token, user } = transitionPendingData;
@@ -238,6 +254,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       Alert.alert("Fill in both fields.");
       return;
     }
+    if (!(await ensureActiveFeedAck())) return;
     setLoading(true);
     try {
       // 1. Verify active Supabase session (Account A) — fail closed on lookup errors
@@ -272,7 +289,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       }
 
       // 3. Non-mutating pre-validation pass before authenticating B
-      await validateOperationalData(currentToken);
+      await validateOperationalData(currentToken, { discardActiveFeed: true });
 
       // 4. Authenticate Account B FIRST before clearing operational data
       const isSignUp = mode === "name";
@@ -388,6 +405,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   const handleClearIdentity = async () => {
     const performClear = async () => {
+      if (!(await ensureActiveFeedAck())) return;
       try {
         let activeSession: any = null;
         try {
@@ -400,7 +418,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         const currentToken = sessionUserId ?? await getStoredToken();
 
         // Enforce transition cleanliness gate before sign-out
-        await validateOperationalData(currentToken);
+        await validateOperationalData(currentToken, { discardActiveFeed: true });
 
         if (currentToken) {
           const migrationResult = await migrateLocalDataToAccount(currentToken);

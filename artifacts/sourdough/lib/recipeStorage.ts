@@ -39,6 +39,16 @@ export interface WorkspaceOperationContext {
   generation: number;
 }
 
+/**
+ * The workspace (owner + generation) in effect right now. Screens that hold device-local state
+ * capture this when they load or create that state, then compare it before writing.
+ * Fails closed (throws) if the owner cannot be resolved.
+ */
+export async function getWorkspaceIdentity(): Promise<WorkspaceOperationContext> {
+  const owner = await resolveOwner();
+  return { owner, generation: getWorkspaceGeneration() };
+}
+
 async function assertWorkspaceOperationCurrent(context: WorkspaceOperationContext): Promise<void> {
   const gen = getWorkspaceGeneration();
   const curOwner = await resolveOwner();

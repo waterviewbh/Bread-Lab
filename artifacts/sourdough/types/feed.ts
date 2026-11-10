@@ -27,6 +27,8 @@ export interface FeedSession {
     fedPhoto: string | null;
     savedAt: number;
     updatedAt?: number;       // ← bumped on every local mutation
+    /* Workspace owner: the account id, or "anonymous" for a signed-out (NLA) baker. Stamped when the session is created. */
+    userId?: string;
     completedAt?: number;
     savedToHistory?: boolean;
     peak?: PeakData;

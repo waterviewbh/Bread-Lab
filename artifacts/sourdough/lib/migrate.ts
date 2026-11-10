@@ -351,7 +351,7 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
   const bakeHistoryToMigrate = bakeHistory.filter(isAnonymousOrOwnedGuard);
   const activeBakesToMigrate = activeBakes.filter(isAnonymousOrOwnedGuard);
   const feedHistoryToMigrate = feedHistory.filter(isAnonymousOrOwnedGuard);
-  const activeFeedToMigrate = activeFeed && isAnonymousOrOwnedGuard(activeFeed) ? activeFeed : null;
+  // Active Feed work is device-local: it is never migrated or uploaded. Only finished feed history is.
 
   // Ensure active bakes without IDs get durable IDs assigned and persisted back to storage in original shape (array vs object)
   let activeBakesUpdated = false;
@@ -387,20 +387,6 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
       }
     } catch (error) {
       throw new Error(`Failed to persist assigned active bake ID: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  if (activeFeedToMigrate) {
-    if (typeof activeFeedToMigrate !== "object") {
-      throw new Error("Invalid active feed record: expected object");
-    }
-    if (!activeFeedToMigrate.id || typeof activeFeedToMigrate.id !== "string" || activeFeedToMigrate.id.trim() === "") {
-      activeFeedToMigrate.id = generateSecureUUID();
-      try {
-        await AsyncStorage.setItem(ACTIVE_FEED_KEY, JSON.stringify(activeFeedToMigrate));
-      } catch (error) {
-        throw new Error(`Failed to persist assigned active feed ID: ${error instanceof Error ? error.message : String(error)}`);
-      }
     }
   }
 
@@ -466,14 +452,6 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     const key = `feed:${feed.id}`;
     if (!ledger[key]) {
       ledger[key] = feed.id;
-    }
-    typeMapping.set(key, ledger[key]);
-  }
-
-  if (activeFeedToMigrate) {
-    const key = `feed:${activeFeedToMigrate.id}`;
-    if (!ledger[key]) {
-      ledger[key] = activeFeedToMigrate.id;
     }
     typeMapping.set(key, ledger[key]);
   }
@@ -632,43 +610,15 @@ export async function migrateLocalDataToAccount(token: string): Promise<Migratio
     }
   }
 
-  if (activeFeedToMigrate) {
-    const key = `feed:${activeFeedToMigrate.id}`;
-    const targetId = ledger[key];
-    const ownerVal = activeFeedToMigrate.userId ?? activeFeedToMigrate.user_id ?? "missing";
-
-    console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=active_feed, localId=${activeFeedToMigrate.id}, targetId=${targetId}, owner=${ownerVal}, inProgress=true`);
-    try {
-      const { inProgress: _, ...feedData } = activeFeedToMigrate as any;
-      await api.history.feed.upsert({
-        id: targetId,
-        deviceId,
-        userId: token,
-        savedAt: activeFeedToMigrate.savedAt || Date.now(),
-        startedAt: (activeFeedToMigrate as any).startedAt ?? null,
-        updatedAt: (activeFeedToMigrate as any).updatedAt ?? null,
-        inProgress: true,
-        data: feedData,
-      });
-      feedOk++;
-      console.log(`[BL-DIAG-ASYNC] [Migration] SUCCESS category=active_feed, localId=${activeFeedToMigrate.id}, targetId=${targetId}, retainedLocally=true`);
-    } catch (error) {
-      const errDiag = formatErrorDiagnostic(error);
-      console.log(`[BL-DIAG-ASYNC] [Migration] FAILED/UNRESOLVED category=active_feed, localId=${activeFeedToMigrate.id}, targetId=${targetId}, owner=${ownerVal}, error=${errDiag}, retainedLocally=true, contributingToUnresolvedCount=true`);
-      console.warn(`[Migration] Failed to sync active feed session (local ID: ${activeFeedToMigrate.id}):`, errDiag);
-      feedFailed++;
-    }
-  }
-
   console.log(`[BL-DIAG-ASYNC] [Migration] SUMMARY RECONCILIATION: recipes(ok=${recipesOk}, failed=${recipesFailed}), bakes(ok=${bakesOk}, failed=${bakesFailed}), feeds(ok=${feedOk}, failed=${feedFailed})`);
 
   const unresolvedRecipes = Math.max(0, recipesToMigrate.length - recipesOk - recipesFailed);
   const unresolvedBakes = Math.max(0, (bakeHistoryToMigrate.length + activeBakesToMigrate.length) - bakesOk - bakesFailed);
-  const unresolvedFeeds = Math.max(0, (feedHistoryToMigrate.length + (activeFeedToMigrate ? 1 : 0)) - feedOk - feedFailed);
+  const unresolvedFeeds = Math.max(0, feedHistoryToMigrate.length - feedOk - feedFailed);
 
   const excludedRecipes = Math.max(0, recipes.length - recipesToMigrate.length);
   const excludedBakes = Math.max(0, (bakeHistory.length + activeBakes.length) - (bakeHistoryToMigrate.length + activeBakesToMigrate.length));
-  const excludedFeeds = Math.max(0, (feedHistory.length + (activeFeed ? 1 : 0)) - (feedHistoryToMigrate.length + (activeFeedToMigrate ? 1 : 0)));
+  const excludedFeeds = Math.max(0, (feedHistory.length + (activeFeed ? 1 : 0)) - feedHistoryToMigrate.length);
 
   console.log(`[BL-DIAG-ASYNC] [Migration] ACCOUNTING BREAKDOWN: recipes(ok=${recipesOk}, failed=${recipesFailed}, excluded=${excludedRecipes}, unresolved=${unresolvedRecipes}), bakes(ok=${bakesOk}, failed=${bakesFailed}, excluded=${excludedBakes}, unresolved=${unresolvedBakes}), feeds(ok=${feedOk}, failed=${feedFailed}, excluded=${excludedFeeds}, unresolved=${unresolvedFeeds})`);
 

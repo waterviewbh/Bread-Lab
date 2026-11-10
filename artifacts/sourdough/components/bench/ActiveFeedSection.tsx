@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
-import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
+import { getStoredUser, type AuthUser } from "@/lib/auth";
 import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
 
@@ -22,11 +22,9 @@ import { Ionicons } from "@expo/vector-icons"; // Added for Day 2 button icon
 import { useFocusEffect } from "expo-router";
 import {
   processPendingDeletions,
-  addToFeedTombstone,
-  getFeedTombstone,
-  removeFromFeedTombstone,
+  getWorkspaceIdentity,
+  type WorkspaceOperationContext,
 } from "@/lib/recipeStorage";
-import { getWorkspaceGeneration } from "@/lib/storageUtils";
 
 const STORAGE_KEY = "sourdough_feed_session_v1";
 const HISTORY_KEY = "sourdough_feed_history_v1";
@@ -74,62 +72,58 @@ export function ActiveFeedSection({
   const sessionRef = useRef<FeedSession | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
 
-  // Sessions the baker has abandoned in this mount. Checked synchronously so a sync that is
-  // already in flight cannot re-create the record the baker just chose to delete.
-  const abandonedIdsRef = useRef<Set<string>>(new Set());
-  // Syncs currently running; Abandon waits for these before asking the cloud to delete.
-  const inFlightSyncsRef = useRef<Set<Promise<void>>>(new Set());
+  // --- Workspace isolation (active Feed work is device-local and never synced) ---
+  // The workspace (account + generation) the in-memory session was loaded or created in. A session
+  // is only ever persisted while it still belongs to the current workspace; otherwise it is
+  // dropped from view and nothing is written. It is never relabelled into the new workspace.
+  const identityRef = useRef<WorkspaceOperationContext | null>(null);
+  // Counts successful local writes so a slow init() cannot overwrite a newer local edit.
+  const localEditsRef = useRef(0);
+  const initRef = useRef<(() => Promise<void>) | null>(null);
 
-  // Returns the pending Feed deletion IDs, or null if they cannot be read (callers fail closed).
-  const readFeedTombstones = async (): Promise<Set<string> | null> => {
+  const sessionBelongsHere = async (): Promise<boolean> => {
+    const held = identityRef.current;
+    if (!held) return false;
     try {
-      return new Set(await getFeedTombstone());
+      const now = await getWorkspaceIdentity();
+      return now.owner === held.owner && now.generation === held.generation;
     } catch (e) {
-      console.warn("[Feed] Could not read pending deletions:", e);
-      return null;
+      console.warn("[Feed] Could not confirm workspace identity; refusing write", e);
+      return false; // fail closed
     }
   };
 
-  // --- Sync Logic ---
-  const runSyncActiveSession = useCallback(async (knownLocal?: FeedSession | null) => {
-    if (starterTutorialMode) return; // Skip remote sync in tutorial mode
+  // Drops the in-memory session only. It never touches storage: the active-session key may now
+  // hold the destination workspace's data. Then reloads whatever this workspace actually has.
+  const dropStaleSession = () => {
+    identityRef.current = null;
+    sessionRef.current = null;
+    setSession(null);
+    void initRef.current?.();
+  };
 
-    const local = knownLocal !== undefined ? knownLocal : sessionRef.current;
-    try {
-      const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
-      if (local) {
-        const remoteCopy = await api.history.feed.get(local.id).catch(() => null);
-        if (remoteCopy && remoteCopy.inProgress === false) {
-          await AsyncStorage.removeItem(STORAGE_KEY);
-          setSession(null);
-          return;
-        }
-        // Never upsert a session the baker abandoned (or one we cannot prove is still wanted).
-        const pending = await readFeedTombstones();
-        if (abandonedIdsRef.current.has(local.id) || !pending || pending.has(local.id)) return;
-        reportSyncStart();
-        await api.history.feed.upsert({
-          id: local.id,
-          deviceId,
-          userId: userId ?? undefined,
-          savedAt: local.savedAt,
-          startedAt: local.savedAt,
-          updatedAt: local.updatedAt ?? local.savedAt,
-          inProgress: true,
-          data: local as any,
-        });
-        reportSyncSuccess();
-      }
-    } catch (e) { reportSyncFailure(); }
-  }, [reportSyncStart, reportSyncSuccess, reportSyncFailure, starterTutorialMode]);
-
-  const syncActiveSession = useCallback((knownLocal?: FeedSession | null): Promise<void> => {
-    const run = runSyncActiveSession(knownLocal);
-    inFlightSyncsRef.current.add(run);
-    const forget = () => { inFlightSyncsRef.current.delete(run); };
-    run.then(forget, forget);
-    return run;
-  }, [runSyncActiveSession]);
+  // Runs `write` only if `sessionId` is still the session on screen AND it still belongs to the
+  // current workspace. Handlers created for an earlier session (for example one rendered for
+  // Account A) are therefore refused even after Account B's own session has loaded.
+  // Pass null when creating a brand-new session (nothing is on screen to compare against yet).
+  const fencedPersist = async (sessionId: string | null, write: () => Promise<void>): Promise<boolean> => {
+    if (sessionId !== null && sessionRef.current?.id !== sessionId) {
+      return false; // that session is no longer the one on screen; touch nothing
+    }
+    // Belt and braces: the session's own stamp must name the workspace it is held in.
+    const stamp = sessionId !== null ? sessionRef.current?.userId : undefined;
+    if (stamp && stamp !== identityRef.current?.owner) {
+      dropStaleSession();
+      return false;
+    }
+    if (!(await sessionBelongsHere())) {
+      dropStaleSession();
+      return false;
+    }
+    await write();
+    localEditsRef.current += 1;
+    return true;
+  };
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -140,6 +134,17 @@ export function ActiveFeedSection({
       console.warn("[Feed] background deletion sync failed:", e);
     }
 
+    const editsAtStart = localEditsRef.current;
+
+    // Capture which workspace we are loading for before reading anything from storage.
+    let identity: WorkspaceOperationContext;
+    try {
+      identity = await getWorkspaceIdentity();
+    } catch (e) {
+      console.warn("[Feed] Could not resolve workspace identity; not loading active session", e);
+      return;
+    }
+
     const [stored, histRaw, bakeHistRaw, user, declined] = await Promise.all([
       AsyncStorage.getItem(STORAGE_KEY),
       AsyncStorage.getItem(HISTORY_KEY),
@@ -148,58 +153,51 @@ export function ActiveFeedSection({
       AsyncStorage.getItem(DECLINED_TUTORIAL_KEY),
     ]);
 
+    // If the workspace changed while we were reading, what we read may belong to the other one.
+    try {
+      const after = await getWorkspaceIdentity();
+      if (after.owner !== identity.owner || after.generation !== identity.generation) return;
+    } catch {
+      return;
+    }
+
     if (declined === "true") setHasDeclinedTutorial(true);
 
-    // A session the baker abandoned must never come back as live, whether it is still in local
-    // storage (a failed clear) or still in the cloud (a deletion that has not completed yet).
-    const pendingFeedDeletions = await readFeedTombstones();
-    const isAbandoned = (id?: string) =>
-      !!id && (abandonedIdsRef.current.has(id) || !!pendingFeedDeletions?.has(id));
-
+    // The active session lives only on this device. This workspace's storage is the source of truth.
     let currentSession: FeedSession | null = null;
     if (stored) {
-      const parsedSession: FeedSession = JSON.parse(stored);
-      if (isAbandoned(parsedSession?.id)) {
-        try {
-          await AsyncStorage.removeItem(STORAGE_KEY);
-        } catch (e) {
-          console.warn("[Feed] Could not clear abandoned local session; will retry", e);
-        }
-      } else {
-        currentSession = parsedSession;
-      }
-    } else if (pendingFeedDeletions) {
-      // HYDRATION: Fetch from Supabase if local is empty
       try {
-        const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
-        const remote = await api.history.feed.active(deviceId, userId ?? undefined);
-        const remoteSession = remote ? (remote.data as unknown as FeedSession) : null;
-        if (remoteSession && !isAbandoned(remoteSession.id)) {
-          currentSession = remoteSession;
-          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(currentSession));
-        }
+        currentSession = JSON.parse(stored);
       } catch (e) {
-        console.warn("[Feed] Failed to hydrate remote active session", e);
+        console.warn("[Feed] Failed to parse active session", e);
       }
+    }
+
+    // A stored session stamped for a different workspace is never adopted (and storage is left
+    // alone). An unstamped one predates stamping; it is adopted and stamped on its next change.
+    if (currentSession && currentSession.userId && currentSession.userId !== identity.owner) {
+      console.warn("[Feed] Stored active session belongs to a different workspace; not adopting it");
+      currentSession = null;
     }
 
     let historyArray: FeedSession[] = [];
     if (histRaw) {
       try {
         const parsed = JSON.parse(histRaw);
-        if (Array.isArray(parsed)) {
-          historyArray = parsed;
-          setHistoryData(parsed);
-        }
+        if (Array.isArray(parsed)) historyArray = parsed;
       } catch (e) {
         console.warn("[Feed] Failed to parse history", e);
       }
     }
-    if (user) setCurrentUser(user);
+    setHistoryData(historyArray);
+    setCurrentUser(user ?? null);
 
-    if (currentSession) {
+    // Reset the screen to this workspace. An empty workspace must show no session. Skip only if
+    // the baker edited the session locally while we were loading (that edit is newer than our read).
+    if (localEditsRef.current === editsAtStart) {
+      identityRef.current = currentSession ? identity : null;
+      sessionRef.current = currentSession;
       setSession(currentSession);
-      syncActiveSession(currentSession);
     }
 
     // --- NEW: Robust Onboarding Check ---
@@ -243,7 +241,9 @@ export function ActiveFeedSection({
     }
 
     setIsLoaded(true);
-  }, [syncActiveSession, starterTutorialMode, setStarterTutorialMode, setTutorialDay]);
+  }, [starterTutorialMode, setStarterTutorialMode, setTutorialDay]);
+
+  useEffect(() => { initRef.current = init; }, [init]);
 
   useFocusEffect(
     useCallback(() => {
@@ -278,10 +278,22 @@ export function ActiveFeedSection({
       updatedAt: now,
       readings: [],
     };
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newSession));
-    setSession(newSession);
+
+    // A new session belongs to the workspace it is created in, and is stamped with that owner.
+    let identity: WorkspaceOperationContext;
+    try {
+      identity = await getWorkspaceIdentity();
+    } catch (e) {
+      console.warn("[Feed] Could not resolve workspace identity; not starting feed", e);
+      return;
+    }
+    identityRef.current = identity;
+    const stamped: FeedSession = { ...newSession, userId: identity.owner };
+    const persisted = await fencedPersist(null, () => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(stamped)));
+    if (!persisted) return;
+    sessionRef.current = stamped;
+    setSession(stamped);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    syncActiveSession(newSession);
   };
 
   const handleConfirmStir = async () => {
@@ -302,51 +314,97 @@ export function ActiveFeedSection({
       updatedAt: now,
       readings: [],
     };
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(stirSession));
-    setSession(stirSession);
+    let identity: WorkspaceOperationContext;
+    try {
+      identity = await getWorkspaceIdentity();
+    } catch (e) {
+      console.warn("[Feed] Could not resolve workspace identity; not starting stir phase", e);
+      return;
+    }
+    identityRef.current = identity;
+    const stamped: FeedSession = { ...stirSession, userId: identity.owner };
+    const persisted = await fencedPersist(null, () => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(stamped)));
+    if (!persisted) return;
+    sessionRef.current = stamped;
+    setSession(stamped);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const logReading = async (r: Reading, sessionId: string) => {
+    const current = sessionRef.current;
+    if (!current || current.id !== sessionId) return;
+    const updated: FeedSession = {
+      ...current,
+      userId: current.userId ?? identityRef.current?.owner,
+      readings: [...(current.readings || []), r],
+      updatedAt: Date.now(),
+    };
+    const persisted = await fencedPersist(sessionId, () => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated)));
+    if (!persisted) return;
+    sessionRef.current = updated;
+    setSession(updated);
+  };
+
+  // Completing a Feed is the one point where it becomes a finished record eligible for the cloud.
+  // Active (in-progress) work is never uploaded.
   const handleSavePeak = async (peak: PeakData) => {
     if (!session) return;
+    const held = identityRef.current;
 
-    const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
+    const deviceId = await getDeviceId();
 
-    // Save to local history as a snapshot
+    const completedAt = Date.now();
+    // The finished record is stamped with the workspace the session belongs to, not a freshly
+    // resolved one.
     const completed = {
       ...session,
-      userId: (session as any).userId ?? userId ?? "anonymous",
+      userId: session.userId ?? held?.owner ?? "anonymous",
       peak,
-      completedAt: Date.now(),
-      updatedAt: Date.now(),
+      completedAt,
+      updatedAt: completedAt,
       isTutorialSnapshot: starterTutorialMode
     };
+    const tutorialUpdated: FeedSession = { ...session, userId: session.userId ?? held?.owner, peak, updatedAt: completedAt };
 
-    const stored = await AsyncStorage.getItem(HISTORY_KEY);
-    let existing = [];
-    try {
-      const parsed = stored ? JSON.parse(stored) : [];
-      existing = Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      console.warn("[Feed] Failed to parse history during save", e);
-    }
+    let historyTrimmed: any[] = [];
+    const persisted = await fencedPersist(session.id, async () => {
+      // Save to local history as a snapshot
+      const stored = await AsyncStorage.getItem(HISTORY_KEY);
+      let existing: any[] = [];
+      try {
+        const parsed = stored ? JSON.parse(stored) : [];
+        existing = Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        console.warn("[Feed] Failed to parse history during save", e);
+      }
+      existing.unshift(completed);
+      historyTrimmed = existing.slice(0, 500);
+      await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(historyTrimmed));
 
-    existing.unshift(completed);
-    const historyTrimmed = existing.slice(0, 500);
+      if (!starterTutorialMode) {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+      } else {
+        // Tutorial Mode: Keep session active until manual progression
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(tutorialUpdated));
+      }
+    });
+    if (!persisted) return;
+
     setHistoryData(historyTrimmed);
-    await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(historyTrimmed));
 
     if (!starterTutorialMode) {
-      // Normal Mode: Persist to remote and clear active session
-      await AsyncStorage.removeItem(STORAGE_KEY);
+      identityRef.current = null;
+      sessionRef.current = null;
       setSession(null);
 
+      // Normal Mode: persist the FINISHED record to the cloud. The same ID replaces any legacy
+      // in-progress row, because every column (inProgress, data, timestamps) is rewritten.
       try {
         reportSyncStart();
         await api.history.feed.upsert({
           id: completed.id,
           deviceId,
-          userId: userId ?? undefined,
+          userId: held && held.owner !== "anonymous" ? held.owner : undefined,
           savedAt: completed.savedAt,
           startedAt: completed.savedAt,
           updatedAt: completed.updatedAt,
@@ -358,54 +416,33 @@ export function ActiveFeedSection({
         reportSyncFailure();
       }
     } else {
-      // Tutorial Mode: Keep session active until manual progression
-      const updated = { ...session, peak, updatedAt: Date.now() };
-      setSession(updated);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      sessionRef.current = tutorialUpdated;
+      setSession(tutorialUpdated);
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  // Abandon = permanently delete the active Feed session. Deletion intent is persisted first;
-  // the cloud delete is then owned by processPendingDeletions (retried until acknowledged).
+  // Abandon = discard the active Feed session on this device. Active work is device-local, so
+  // there is no cloud copy to delete and no tombstone to write.
   const abandonFeed = async (target: FeedSession) => {
-    const targetId = target.id;
     // Something else replaced or ended this session while the dialog was open: do nothing.
-    if (sessionRef.current?.id !== targetId) return;
+    if (sessionRef.current?.id !== target.id) return;
 
-    const generation = getWorkspaceGeneration();
-    abandonedIdsRef.current.add(targetId);
-
+    let cleared = false;
     try {
-      await addToFeedTombstone(targetId);
+      cleared = await fencedPersist(target.id, () => AsyncStorage.removeItem(STORAGE_KEY));
     } catch (e) {
-      console.warn("[Feed] Could not record abandon request; keeping session", e);
-      abandonedIdsRef.current.delete(targetId);
+      console.warn("[Feed] Could not clear the active session", e);
+      // Do not claim success: the session is still on this device, so keep showing it.
       Alert.alert("Couldn't abandon this feed", "Your feed is still here. Please try again in a moment.");
       return;
     }
+    if (!cleared) return; // stale session was dropped without touching storage
 
-    // The workspace changed while the tombstone was being written, so it may sit in the wrong
-    // workspace. Take it back out and leave the session alone.
-    if (getWorkspaceGeneration() !== generation) {
-      abandonedIdsRef.current.delete(targetId);
-      await removeFromFeedTombstone(targetId).catch(() => {});
-      return;
-    }
-
-    // Intent is durable. Now clear the live local copy. If this fails the tombstone keeps the
-    // session from being treated as live; the next load retries the clear.
-    try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } catch (e) {
-      console.warn("[Feed] Could not clear abandoned local session yet; will retry on next load", e);
-    }
-    if (sessionRef.current?.id === targetId) setSession(null);
+    identityRef.current = null;
+    sessionRef.current = null;
+    setSession(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    // Let any in-flight save finish first so it cannot land after the cloud delete.
-    await Promise.allSettled([...inFlightSyncsRef.current]);
-    await processPendingDeletions();
   };
 
   const handleProgressDay = async () => {
@@ -419,8 +456,12 @@ export function ActiveFeedSection({
     }
 
     const nextDay = tutorialDay + 1;
+    if (!session) return;
+    const cleared = await fencedPersist(session.id, () => AsyncStorage.removeItem(STORAGE_KEY));
+    if (!cleared) return;
     setTutorialDay(nextDay);
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    identityRef.current = null;
+    sessionRef.current = null;
     setSession(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
@@ -461,17 +502,7 @@ export function ActiveFeedSection({
           historyData={historyData}
           refreshing={refreshing}
           onRefresh={refresh}
-          onLogReading={(r) => {
-            if (!session) return;
-            const updated = {
-              ...session,
-              readings: [...(session.readings || []), r],
-              updatedAt: Date.now(),
-            };
-            setSession(updated);
-            AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-            syncActiveSession(updated);
-          }}
+          onLogReading={(r) => logReading(r, session.id)}
           onSavePeak={handleSavePeak}
           onClearSession={() => {
             // Bind to exactly the session the baker is looking at when the dialog opens.
@@ -504,7 +535,7 @@ export function ActiveFeedSection({
         )
       )}
 
-      <AuthModal visible={showAuthModal} currentUser={currentUser} onClose={() => setShowAuthModal(false)} onAuthChange={setCurrentUser} />
+      <AuthModal visible={showAuthModal} currentUser={currentUser} onClose={() => setShowAuthModal(false)} onAuthChange={(u) => { setCurrentUser(u); void initRef.current?.(); }} />
 
       <Modal visible={showGraduationModal} animationType="slide" transparent={true}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 }}>

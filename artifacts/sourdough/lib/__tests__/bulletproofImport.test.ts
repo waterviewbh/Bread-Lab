@@ -57,6 +57,11 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       return Promise.resolve();
     });
     (AsyncStorage.getItem as jest.Mock).mockImplementation((key) => Promise.resolve(mockStorage[key] ?? null));
+    // Earlier tests replace multiRemove with a rejecting/no-op mock and never restore it; start each test with the working one.
+    (AsyncStorage.multiRemove as jest.Mock).mockImplementation((keys: string[]) => {
+      keys.forEach((k) => delete mockStorage[k]);
+      return Promise.resolve();
+    });
   });
 
   it("handles out-of-order recipe dependencies and cross-table ID collisions with typed composite keys", async () => {
@@ -147,14 +152,33 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
   it("generates valid secure UUID v4 when global crypto.randomUUID is unavailable but expo-crypto is present", async () => {
     const originalCrypto = global.crypto;
     (global as any).crypto = undefined;
+    try {
+      // An active BAKE without an id still gets a generated id and is migrated.
+      // (Active Feed work is device-local and is never migrated; see the next test.)
+      const activeBakeWithoutId = { userId: "anonymous", recipeName: "UUID Bake", startedAt: 1234, phases: [] };
+      mockStorage["bread_lab_bake_v2"] = JSON.stringify(activeBakeWithoutId);
 
-    const activeFeedWithoutId = { savedAt: 1234, userId: "anonymous", data: { pH: "4.0" } };
-    mockStorage["sourdough_feed_session_v1"] = JSON.stringify(activeFeedWithoutId);
+      const result = await migrateLocalDataToAccount("expo-crypto-uuid-token");
+      expect(result.bakes.ok).toBe(1);
+    } finally {
+      (global as any).crypto = originalCrypto;
+    }
+  });
 
-    const result = await migrateLocalDataToAccount("expo-crypto-uuid-token");
+  it("never migrates or uploads an active Feed session (active Feed work is device-local)", async () => {
+    mockStorage["sourdough_feed_session_v1"] = JSON.stringify({ id: "active-feed-1", userId: "anonymous", savedAt: 1, data: { pH: "4.0" } });
+    mockStorage["sourdough_feed_history_v1"] = JSON.stringify([{ id: "finished-feed-1", userId: "anonymous", savedAt: 2 }]);
+
+    const result = await migrateLocalDataToAccount("device-local-active-feed-token");
+
+    // The finished record is uploaded; the active session is not.
     expect(result.feed.ok).toBe(1);
-
-    (global as any).crypto = originalCrypto;
+    expect(result.feed.unresolved).toBe(0);
+    const feedUploads = (api.history.feed.upsert as jest.Mock).mock.calls.map((c) => c[0]);
+    expect(feedUploads.some((u) => u.inProgress === true)).toBe(false);
+    expect(feedUploads.some((u) => u.id === "active-feed-1")).toBe(false);
+    // And it is left in place locally for the baker (the transition, not the migration, discards it).
+    expect(mockStorage["sourdough_feed_session_v1"]).toBeDefined();
   });
 
   it("correctly handles outcome compatibility variants (new wrappers, legacy wrappers, ordinary objects)", () => {
@@ -882,18 +906,21 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       expect(mockStorage[QUARANTINE_KEY("user-auth")]).toBeUndefined();
     });
 
-    it("3. Active bake and active feed shape validation rejects invalid shapes", async () => {
-      const { quarantineOperationalData, APP_STORAGE_KEYS } = require("../storageUtils");
+    it("3. Active bake shape validation rejects invalid shapes; an active Feed is device-local and never blocks a transition", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS, UNKNOWN_QUARANTINE_KEY, QUARANTINE_KEY } = require("../storageUtils");
       mockStorage[APP_STORAGE_KEYS.ACTIVE_BAKE] = JSON.stringify("not-an-object-bake");
 
       await expect(quarantineOperationalData("user-1")).rejects.toThrow(/Active bake record must be a non-null object/);
       expect(mockStorage[APP_STORAGE_KEYS.ACTIVE_BAKE]).toBeDefined();
 
+      // Active Feed work is discarded unread at a transition, so a corrupt one cannot block it.
       mockStorage[APP_STORAGE_KEYS.ACTIVE_BAKE] = null;
       mockStorage[APP_STORAGE_KEYS.ACTIVE_FEED] = JSON.stringify(["array-instead-of-object-feed"]);
 
-      await expect(quarantineOperationalData("user-1")).rejects.toThrow(/Active feed record must be a non-null object/);
-      expect(mockStorage[APP_STORAGE_KEYS.ACTIVE_FEED]).toBeDefined();
+      await expect(quarantineOperationalData("user-1")).resolves.toBeUndefined();
+      expect(mockStorage[APP_STORAGE_KEYS.ACTIVE_FEED]).toBeUndefined();
+      expect(mockStorage[UNKNOWN_QUARANTINE_KEY]).toBeUndefined();
+      expect(mockStorage[QUARANTINE_KEY("user-1")]).toBeUndefined();
     });
 
     it("4. Existing quarantine bucket schema validation rejects invalid field types", async () => {
