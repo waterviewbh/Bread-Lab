@@ -20,7 +20,13 @@ import { calcRatioStr, checkGraduationEligibility } from "@/lib/feedUtils";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { Ionicons } from "@expo/vector-icons"; // Added for Day 2 button icon
 import { useFocusEffect } from "expo-router";
-import { processPendingDeletions } from "@/lib/recipeStorage";
+import {
+  processPendingDeletions,
+  addToFeedTombstone,
+  getFeedTombstone,
+  removeFromFeedTombstone,
+} from "@/lib/recipeStorage";
+import { getWorkspaceGeneration } from "@/lib/storageUtils";
 
 const STORAGE_KEY = "sourdough_feed_session_v1";
 const HISTORY_KEY = "sourdough_feed_history_v1";
@@ -68,8 +74,24 @@ export function ActiveFeedSection({
   const sessionRef = useRef<FeedSession | null>(null);
   useEffect(() => { sessionRef.current = session; }, [session]);
 
+  // Sessions the baker has abandoned in this mount. Checked synchronously so a sync that is
+  // already in flight cannot re-create the record the baker just chose to delete.
+  const abandonedIdsRef = useRef<Set<string>>(new Set());
+  // Syncs currently running; Abandon waits for these before asking the cloud to delete.
+  const inFlightSyncsRef = useRef<Set<Promise<void>>>(new Set());
+
+  // Returns the pending Feed deletion IDs, or null if they cannot be read (callers fail closed).
+  const readFeedTombstones = async (): Promise<Set<string> | null> => {
+    try {
+      return new Set(await getFeedTombstone());
+    } catch (e) {
+      console.warn("[Feed] Could not read pending deletions:", e);
+      return null;
+    }
+  };
+
   // --- Sync Logic ---
-  const syncActiveSession = useCallback(async (knownLocal?: FeedSession | null) => {
+  const runSyncActiveSession = useCallback(async (knownLocal?: FeedSession | null) => {
     if (starterTutorialMode) return; // Skip remote sync in tutorial mode
 
     const local = knownLocal !== undefined ? knownLocal : sessionRef.current;
@@ -82,6 +104,9 @@ export function ActiveFeedSection({
           setSession(null);
           return;
         }
+        // Never upsert a session the baker abandoned (or one we cannot prove is still wanted).
+        const pending = await readFeedTombstones();
+        if (abandonedIdsRef.current.has(local.id) || !pending || pending.has(local.id)) return;
         reportSyncStart();
         await api.history.feed.upsert({
           id: local.id,
@@ -97,6 +122,14 @@ export function ActiveFeedSection({
       }
     } catch (e) { reportSyncFailure(); }
   }, [reportSyncStart, reportSyncSuccess, reportSyncFailure, starterTutorialMode]);
+
+  const syncActiveSession = useCallback((knownLocal?: FeedSession | null): Promise<void> => {
+    const run = runSyncActiveSession(knownLocal);
+    inFlightSyncsRef.current.add(run);
+    const forget = () => { inFlightSyncsRef.current.delete(run); };
+    run.then(forget, forget);
+    return run;
+  }, [runSyncActiveSession]);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -117,16 +150,32 @@ export function ActiveFeedSection({
 
     if (declined === "true") setHasDeclinedTutorial(true);
 
+    // A session the baker abandoned must never come back as live, whether it is still in local
+    // storage (a failed clear) or still in the cloud (a deletion that has not completed yet).
+    const pendingFeedDeletions = await readFeedTombstones();
+    const isAbandoned = (id?: string) =>
+      !!id && (abandonedIdsRef.current.has(id) || !!pendingFeedDeletions?.has(id));
+
     let currentSession: FeedSession | null = null;
     if (stored) {
-      currentSession = JSON.parse(stored);
-    } else {
+      const parsedSession: FeedSession = JSON.parse(stored);
+      if (isAbandoned(parsedSession?.id)) {
+        try {
+          await AsyncStorage.removeItem(STORAGE_KEY);
+        } catch (e) {
+          console.warn("[Feed] Could not clear abandoned local session; will retry", e);
+        }
+      } else {
+        currentSession = parsedSession;
+      }
+    } else if (pendingFeedDeletions) {
       // HYDRATION: Fetch from Supabase if local is empty
       try {
         const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
         const remote = await api.history.feed.active(deviceId, userId ?? undefined);
-        if (remote) {
-          currentSession = remote.data as unknown as FeedSession;
+        const remoteSession = remote ? (remote.data as unknown as FeedSession) : null;
+        if (remoteSession && !isAbandoned(remoteSession.id)) {
+          currentSession = remoteSession;
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(currentSession));
         }
       } catch (e) {
@@ -317,6 +366,48 @@ export function ActiveFeedSection({
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  // Abandon = permanently delete the active Feed session. Deletion intent is persisted first;
+  // the cloud delete is then owned by processPendingDeletions (retried until acknowledged).
+  const abandonFeed = async (target: FeedSession) => {
+    const targetId = target.id;
+    // Something else replaced or ended this session while the dialog was open: do nothing.
+    if (sessionRef.current?.id !== targetId) return;
+
+    const generation = getWorkspaceGeneration();
+    abandonedIdsRef.current.add(targetId);
+
+    try {
+      await addToFeedTombstone(targetId);
+    } catch (e) {
+      console.warn("[Feed] Could not record abandon request; keeping session", e);
+      abandonedIdsRef.current.delete(targetId);
+      Alert.alert("Couldn't abandon this feed", "Your feed is still here. Please try again in a moment.");
+      return;
+    }
+
+    // The workspace changed while the tombstone was being written, so it may sit in the wrong
+    // workspace. Take it back out and leave the session alone.
+    if (getWorkspaceGeneration() !== generation) {
+      abandonedIdsRef.current.delete(targetId);
+      await removeFromFeedTombstone(targetId).catch(() => {});
+      return;
+    }
+
+    // Intent is durable. Now clear the live local copy. If this fails the tombstone keeps the
+    // session from being treated as live; the next load retries the clear.
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.warn("[Feed] Could not clear abandoned local session yet; will retry on next load", e);
+    }
+    if (sessionRef.current?.id === targetId) setSession(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Let any in-flight save finish first so it cannot land after the cloud delete.
+    await Promise.allSettled([...inFlightSyncsRef.current]);
+    await processPendingDeletions();
+  };
+
   const handleProgressDay = async () => {
     // Mandate volume for Day 5+
     if (starterTutorialMode && tutorialDay >= 5) {
@@ -383,19 +474,11 @@ export function ActiveFeedSection({
           }}
           onSavePeak={handleSavePeak}
           onClearSession={() => {
-            const doClear = async () => {
-              if (session) {
-                const [deviceId, userId] = await Promise.all([getDeviceId(), getStoredToken().catch(() => null)]);
-                api.history.feed.delete(session.id, deviceId, userId ?? undefined).catch(() => {});
-              }
-              setSession(null);
-              AsyncStorage.removeItem(STORAGE_KEY);
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            };
-
+            // Bind to exactly the session the baker is looking at when the dialog opens.
+            const target = session;
             Alert.alert("Abandon Feed?", "This will remove the current active tracker.", [
               { text: "Cancel", style: "cancel" },
-              { text: "Discard", style: "destructive", onPress: doClear }
+              { text: "Discard", style: "destructive", onPress: () => abandonFeed(target) }
             ]);
           }}
           onProgressDay={handleProgressDay}
