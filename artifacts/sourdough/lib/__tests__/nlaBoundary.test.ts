@@ -54,6 +54,7 @@ interface Expected { calls: string[]; classification: Classification; note: stri
 const EXPECTED: Record<string, Expected> = {
   "components/AuthModal.tsx": { calls: ["auth.getSession", "auth.identify", "auth.linkDevice", "auth.signout"], classification: "auth-entry-exit", note: "how a baker leaves NLA" },
   "lib/transitionCoordinator.ts": { calls: ["auth.signout"], classification: "auth-entry-exit", note: "recovery" },
+  "lib/remoteSessionGuard.ts": { calls: ["auth.getSession", "auth.signout"], classification: "auth-entry-exit", note: "closes a leftover remote session and confirms it; no data call" },
   "components/bench/ActiveFeedSection.tsx": { calls: ["history.feed.upsert"], classification: "feed-tracker-guarded", note: "finished-feed upload is skipped for NLA (isNlaOwner)" },
   "lib/nlaImport.ts": { calls: ["fetchRowsByIds"], classification: "import-under-session", note: "read-back under the destination account" },
   "lib/migrate.ts": { calls: ["history.bakes.upsert", "history.feed.upsert", "recipes.upsert"], classification: "account-only", note: "requires a destination token; used by Import and by account sync" },

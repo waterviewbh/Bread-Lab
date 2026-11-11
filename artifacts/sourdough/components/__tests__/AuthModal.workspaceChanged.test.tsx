@@ -232,7 +232,7 @@ describe("AuthModal: offline workspace changes after the baker's choice (fail cl
       expect(onClose).not.toHaveBeenCalled();
       expect(Haptics.notificationAsync).not.toHaveBeenCalled();
       expect(getCoordinatorState()).toBe("IDLE");
-      await screen.findByText(CHANGED_MESSAGE);
+      await screen.findByText(new RegExp(CHANGED_MESSAGE)); // shown together with the recovery status
       expect(screen.getByText(TWO_RECIPES)).toBeTruthy(); // refreshed, so the next choice is about what is really there
 
       // Cancel runs the cleanup again (sign-out works this time) and returns to the start.

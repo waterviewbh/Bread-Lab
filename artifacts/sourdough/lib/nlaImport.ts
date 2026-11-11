@@ -406,6 +406,9 @@ export function reportToMigrationResult(report: ImportReport): MigrationResult {
 const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** Neutral, factual description of an import result. */
+/** Said when an import fails and recovery closed the account session; the UI omits it when that is not confirmed. */
+export const IMPORT_STILL_OFFLINE_SENTENCE = "You are still in your offline workspace and can try again.";
+
 export function describeImportReport(report: ImportReport): string {
   const parts: string[] = [];
   if (report.ok) {
@@ -420,7 +423,7 @@ export function describeImportReport(report: ImportReport): string {
   } else {
     const planned = report.planned.recipes + report.planned.bakes + report.planned.feeds;
     const verified = report.verified.recipes + report.verified.bakes + report.verified.feeds;
-    parts.push("Nothing on this device was changed. You are still in your offline workspace and can try again.");
+    parts.push(`Nothing on this device was changed. ${IMPORT_STILL_OFFLINE_SENTENCE}`);
     parts.push(`${verified} of ${planned} records were confirmed in your account${report.planned.drafts ? `; ${n(report.planned.drafts, "recipe draft", "recipe drafts")} not yet moved` : ""}.`);
     const counts = new Map<string, number>();
     for (const f of report.failures) counts.set(f.reason, (counts.get(f.reason) ?? 0) + 1);

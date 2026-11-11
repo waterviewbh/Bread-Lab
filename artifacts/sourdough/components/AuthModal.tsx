@@ -20,7 +20,7 @@ import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { getStoredToken, type AuthUser } from "@/lib/auth";
 import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
-import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError, NlaWorkspaceChangedError } from "@/lib/transitionCoordinator";
+import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, clearMigrationPending } from "@/lib/migrate";
 import { confirmActiveFeedTransition, NLA_LOCAL_WORK_TITLE, NLA_LOCAL_WORK_PARAGRAPHS } from "@/lib/activeWork";
@@ -36,7 +36,9 @@ import {
   describeImportReport,
   reportToMigrationResult,
   ImportNotVerifiedError,
+  IMPORT_STILL_OFFLINE_SENTENCE,
 } from "@/lib/nlaImport";
+import { closeOrphanRemoteSession } from "@/lib/remoteSessionGuard";
 import { processPendingDeletions } from "@/lib/recipeStorage";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
@@ -98,6 +100,15 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   // What is on this device in the offline (NLA) workspace, shown on the choice screen.
   const [nlaInventory, setNlaInventory] = useState<NlaInventory | null>(null);
   const [choiceMessage, setChoiceMessage] = useState<string | null>(null);
+  // Set when a failed choice could not confirm that BOTH the account session and the local sign-in are closed. The
+  // old choices were made about a workspace/session that is no longer certain, so they are void: only Cancel (which
+  // retries the cleanup) remains. A ref as well as state, so a stale button handler cannot slip past the check.
+  const [recoveryIncomplete, setRecoveryIncomplete] = useState(false);
+  const recoveryIncompleteRef = useRef(false);
+  const markRecoveryIncomplete = (incomplete: boolean) => {
+    recoveryIncompleteRef.current = incomplete;
+    setRecoveryIncomplete(incomplete);
+  };
   const [transitionPendingData, setTransitionPendingData] = useState<{
     token: string;
     user: AuthUser;
@@ -131,6 +142,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     setTransitionPendingData(null);
     setNlaInventory(null);
     setChoiceMessage(null);
+    markRecoveryIncomplete(false);
   };
 
   const refreshInventory = async () => {
@@ -145,39 +157,35 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     ? `${currentUser.firstName}'s ${currentUser.starterName}`
     : "";
 
-  // Shared failure path for the two choices: fail closed (the new account's session is signed out and the
-  // baker stays in the offline workspace with everything intact), and say so plainly.
-  // Returns true only when BOTH the remote session and the local credentials are confirmed closed.
+  // Shared failure path for the two choices: fail closed (the new account's session is signed out), and say so plainly.
+  // Only when BOTH the remote session and the local sign-in are confirmed closed is the baker told they are back in the
+  // offline workspace and returned to the start. Otherwise the destination is uncertain: the old choices are void, the
+  // counts are refreshed, and only the cleanup retry (Cancel) is offered. Returns true when fully closed.
   const failChoice = async (title: string, err: unknown): Promise<boolean> => {
     const recovery = await executeFailClosedRecovery(onAuthChange);
+    const closed = recovery.remoteSignout && recovery.localClear;
+    let detail = err instanceof Error ? err.message : String(err);
+    if (!closed) detail = detail.replace(IMPORT_STILL_OFFLINE_SENTENCE, "").replace(/\s{2,}/g, " ").trim();
     const statusDetails = [
       recovery.remoteSignout ? "Your account session was closed." : "Closing your account session could not be confirmed.",
-      recovery.localClear ? "You are still in your offline workspace." : "Local sign-in cleanup could not be verified.",
-    ].join(" ");
-    const msg = `${err instanceof Error ? err.message : String(err)} ${statusDetails}`;
+      recovery.localClear ? (closed ? "You are still in your offline workspace." : "") : "Local sign-in cleanup could not be verified.",
+      closed ? "" : "Your account status is uncertain, so the earlier choices no longer apply. Choose Cancel Transition to try closing it again.",
+    ].filter(Boolean).join(" ");
+    const msg = `${detail} ${statusDetails}`;
     if (Platform.OS === "web") {
       window.alert(`${title}: ${msg}`);
     } else {
       Alert.alert(title, msg);
     }
-    const closed = recovery.remoteSignout && recovery.localClear;
     if (closed) {
       setTransitionPendingData(null);
       setNlaInventory(null);
+    } else {
+      markRecoveryIncomplete(true);
+      await refreshInventory();
+      setChoiceMessage(msg);
     }
     return closed;
-  };
-
-  // The offline workspace changed after the baker chose. Nothing was imported-and-purged or purged, but the choice
-  // was made about a workspace that no longer exists, so it is void: fail closed like every other failure. When the
-  // account session is confirmed closed the baker starts over (fresh sign-in, fresh inventory, new choice); if
-  // closing it could not be confirmed, the screen stays (so Cancel can retry the cleanup) with refreshed counts.
-  const failWorkspaceChanged = async (title: string, err: NlaWorkspaceChangedError) => {
-    const closed = await failChoice(title, err);
-    if (!closed) {
-      await refreshInventory();
-      setChoiceMessage(err.message);
-    }
   };
 
   const noteLeftovers = (note: string, leftovers: boolean) => {
@@ -187,7 +195,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   };
 
   const handleChoiceImport = async () => {
-    if (!transitionPendingData) return;
+    if (!transitionPendingData || recoveryIncompleteRef.current) return;
     setLoading(true);
     setChoiceMessage(null);
     try {
@@ -214,11 +222,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       onClose();
       noteLeftovers(describeImportReport(report), report.cannotImport.length + report.unresolved.length + report.draftsRenamed.length > 0);
     } catch (err: any) {
-      if (err instanceof NlaWorkspaceChangedError) {
-        // Refused before the purge; records already confirmed in the account stay there (a retry is idempotent).
-        await failWorkspaceChanged("Import didn't complete", err);
-        return;
-      }
+      // (A changed workspace is refused before the purge; records already confirmed in the account stay there and a
+      // retry is idempotent. It fails closed like every other failure.)
       await failChoice("Import didn't complete", err);
     } finally {
       setLoading(false);
@@ -226,7 +231,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   };
 
   const handleChoiceProceedWithoutImport = async () => {
-    if (!transitionPendingData) return;
+    if (!transitionPendingData || recoveryIncompleteRef.current) return;
     setLoading(true);
     setChoiceMessage(null);
     try {
@@ -255,10 +260,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       onClose();
       noteLeftovers(describeInventory(summarizeInventory(inventory)), left > 0);
     } catch (err: any) {
-      if (err instanceof NlaWorkspaceChangedError) {
-        await failWorkspaceChanged("Couldn't continue", err);
-        return;
-      }
       await failChoice("Couldn't continue", err);
     } finally {
       setLoading(false);
@@ -303,11 +304,19 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       } catch (err) {
         throw new Error(`Supabase session lookup failed: ${err instanceof Error ? err.message : String(err)}`);
       }
-      const sessionUserId = activeSession?.user?.id ?? null;
+      let sessionUserId = activeSession?.user?.id ?? null;
       const storedToken = await getStoredToken();
 
       if (sessionUserId && storedToken && sessionUserId !== storedToken) {
         throw new Error("Identity consistency conflict: stored local user ID does not match active Supabase session.");
+      }
+
+      // A remote session with no local sign-in behind it is not "an account we are in": an earlier sign-out may have
+      // failed before the app closed, and the Supabase client keeps its own persisted session. Close it and confirm
+      // that before deciding anything; if that cannot be confirmed, stop (throws) rather than guess.
+      if (sessionUserId && !storedToken) {
+        await closeOrphanRemoteSession();
+        sessionUserId = null;
       }
 
       const currentToken = sessionUserId ?? storedToken;
@@ -552,13 +561,16 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
                   ))}
                 </View>
               ) : null}
+              {recoveryIncomplete ? null : (
               <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 12 }]}>
                 Import & Proceed adds these records to {transitionPendingData.user.firstName}&apos;s account, confirms each one, and then clears them from this device. Proceed Without Importing continues without them and clears them from this device. Nothing in your account is deleted either way.
               </Text>
+              )}
               {choiceMessage ? (
                 <Text style={[s.cardInfo, { color: colors.foreground, marginBottom: 12 }]}>{choiceMessage}</Text>
               ) : null}
               <View style={{ gap: 12 }}>
+                {recoveryIncomplete ? null : (<>
                 <Pressable
                   onPress={handleChoiceImport}
                   disabled={loading}
@@ -580,6 +592,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
                     Proceed Without Importing
                   </Text>
                 </Pressable>
+                </>)}
 
                 <Pressable
                   onPress={handleChoiceCancel}
