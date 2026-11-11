@@ -228,7 +228,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
               const masterId = resolveRootMasterId(sourceRecipe, recipes);
               const deviceId = await getDeviceId();
-              const token = await getStoredToken().catch(() => null);
+              const token = await getStoredToken(); // null = NLA; an uncertain identity throws into the catch below, before anything is written
 
               const outcome = {
                 crumbScore: crumbScore as any,

@@ -13,8 +13,9 @@ import { PortableRecipe, validateRecipeForCommit, normalizePortableRecipe, gener
 import { removeCandidate, updateCandidateExtraction } from '@/lib/candidateStorage';
 import { api } from '@/lib/api';
 import { getDeviceId } from '@/lib/deviceId';
-import { getStoredToken } from '@/lib/auth';
-import { RECIPES_KEY, SavedRecipe, appendRecipeLocal } from '@/lib/recipeStorage';
+import { getStoredUser } from '@/lib/auth';
+import { appendRecipeLocal } from '@/lib/recipeStorage';
+import type { SavedRecipe } from '@/lib/recipeTypes';
 import { textToCheckableLines } from '@/lib/recipeUtils';
 import { safeParse } from '@/lib/storageUtils';
 
@@ -69,7 +70,9 @@ const CandidateReviewControllerRender: React.ForwardRefRenderFunction<CandidateR
 
     // 2. Normalize & Resolve Auth Context
     const deviceId = await getDeviceId().catch(() => '');
-    const user = await getStoredUser().catch(() => null);
+    // null means NLA (both credentials absent). An uncertain identity THROWS and rejects the promotion here, before
+    // anything is written, so the Candidate is kept; it is never read as anonymous.
+    const user = await getStoredUser();
     const userId = user?.id ?? null;
 
     const normalizedPayload = normalizePortableRecipe(portableRecipe, {

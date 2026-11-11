@@ -70,6 +70,7 @@ export function LabHub() {
       setCandidates(list);
     } catch (e) {
       console.error("[LabHub] reloadCandidates failed", e);
+      setCandidates([]); // nothing from a previous workspace stays visible when the identity cannot be confirmed
     }
   }, []);
 
@@ -269,7 +270,7 @@ export function LabHub() {
       reportSyncStart();
       try {
         const deviceId = await getDeviceId();
-        const token = await getStoredToken().catch(() => null);
+        const token = await getStoredToken(); // null = NLA; an uncertain identity throws into the catch below
         const duplicatedApi = await api.recipes.duplicate(
           recipe.id,
           newName,

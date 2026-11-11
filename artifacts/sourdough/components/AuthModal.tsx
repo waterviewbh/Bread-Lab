@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
-import { getStoredToken, type AuthUser } from "@/lib/auth";
+import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
 import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
 import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
@@ -320,7 +320,18 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       }
 
       const currentToken = sessionUserId ?? storedToken;
-      const savedAccountA = currentUser && currentToken ? { token: currentToken, user: currentUser } : null;
+
+      // The outgoing identity is the VALIDATED stored profile, never the `currentUser` prop. This form is only rendered
+      // while the prop is null (a hydrated prop shows the account card instead), and the prop is hydrated asynchronously
+      // with errors swallowed, so a signed-in baker can reach this handler with it still null. Reading the prop here
+      // would then treat a signed-in baker as having no outgoing account. (getStoredToken above already threw if the
+      // stored identity is partial, mismatched, malformed or unreadable.) All of this precedes authenticating the
+      // destination account.
+      const storedUser = storedToken ? await getStoredUser() : null;
+      if (storedToken && (!storedUser || storedUser.id !== storedToken)) {
+        throw new Error("Identity consistency conflict: the stored sign-in could not be confirmed, so nothing was changed.");
+      }
+      const savedAccountA = currentToken && storedUser ? { token: currentToken, user: storedUser } : null;
 
       if (currentToken) {
         // Account -> account: warn about active Feed work. (NLA -> account uses the panel on the choice screen.)

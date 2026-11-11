@@ -787,7 +787,8 @@ export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
 }
 
 export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
-  return Promise.all([getDeviceId(), getStoredToken().catch(() => null)])
+  // null = NLA. An uncertain identity rejects (callers handle failure); it is never sent as a device-id-only write.
+  return Promise.all([getDeviceId(), getStoredToken()])
     .then(([deviceId, userId]) =>
       api.history.bakes.upsert({
         id: bake.id,
@@ -822,7 +823,8 @@ export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
 }
 
 export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
-  return Promise.all([getDeviceId(), getStoredToken().catch(() => null)])
+  // null = NLA. An uncertain identity rejects (callers handle failure); it is never sent as a device-id-only write.
+  return Promise.all([getDeviceId(), getStoredToken()])
     .then(([deviceId, userId]) =>
       api.recipes.upsert({
         id: recipe.id,
@@ -932,7 +934,8 @@ export async function archiveIntermediateIterations(masterId: string): Promise<v
       await AsyncStorage.setItem(recipesKey, JSON.stringify(updatedRecipes));
 
       const deviceId = await getDeviceId();
-      const token = await getStoredToken().catch(() => null);
+      // The remote archive follows the workspace the local archive just wrote to (not a second, separate identity read).
+      const token = isNlaOwner(owner) ? null : owner;
 
       const toArchive = iterations.slice(2);
       for (const r of toArchive) {

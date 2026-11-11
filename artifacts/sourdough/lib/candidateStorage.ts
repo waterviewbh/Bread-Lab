@@ -26,7 +26,9 @@ export const ingestionMutex = new AsyncMutex();
 /**
  * Resolves the appropriate AsyncStorage key for candidate records based on active user identity.
  * Authenticated users use bread_lab_candidates_v1_<user-id>.
- * Unauthenticated / local sessions use bread_lab_candidates_v1_anonymous.
+ * Unauthenticated / local sessions (BOTH credentials absent) use bread_lab_candidates_v1_anonymous.
+ * Partial, mismatched, malformed or unreadable identity THROWS (from getStoredToken); it never falls back to anonymous.
+ * Every Candidate operation calls this FIRST, so nothing is migrated, consumed or written under an uncertain identity.
  */
 export async function getCandidatesKey(): Promise<string> {
   const token = await getStoredToken();
@@ -76,6 +78,10 @@ export async function ingestStagedNativeShares(): Promise<void> {
     if (AppState.currentState !== "active") {
       return;
     }
+
+    // Identity first: if it is uncertain this rejects here, before the legacy migration and before
+    // getAndClearStagedShares() consumes the native staging area (consumed shares could not be put back).
+    await getCandidatesKey();
 
     try {
       await migrateLegacyCandidatesIfNeeded();
@@ -154,6 +160,7 @@ export async function saveCandidate(
   clockOverride?: string | number,
   acquisitionSource: 'share' | 'paste' = 'paste'
 ): Promise<CandidateRecord> {
+  const key = await getCandidatesKey();
   await migrateLegacyCandidatesIfNeeded();
   const sharedAt = clockOverride
     ? new Date(clockOverride).toISOString()
@@ -166,7 +173,6 @@ export async function saveCandidate(
     acquisitionSource,
   };
 
-  const key = await getCandidatesKey();
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(key).catch(() => null);
     const existing = safeParse<CandidateRecord[]>(raw, [], Array.isArray);
@@ -184,8 +190,8 @@ export async function updateCandidateExtraction(
   id: string,
   newExtractionResult: ExtractionResult
 ): Promise<void> {
-  await migrateLegacyCandidatesIfNeeded();
   const key = await getCandidatesKey();
+  await migrateLegacyCandidatesIfNeeded();
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(key).catch(() => null);
     if (!raw) return;
@@ -202,8 +208,8 @@ export async function updateCandidateExtraction(
  * Removes a Candidate record from local storage by ID.
  */
 export async function removeCandidate(id: string): Promise<void> {
-  await migrateLegacyCandidatesIfNeeded();
   const key = await getCandidatesKey();
+  await migrateLegacyCandidatesIfNeeded();
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(key).catch(() => null);
     if (!raw) return;
