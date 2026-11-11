@@ -164,12 +164,12 @@ describe("Candidate storage under each identity state (real accessors)", () => {
       expect((await loadCandidates()).map((c) => c.id)).toEqual([saved.id]);
     });
 
-    it("existing legacy behavior is preserved under a VALID identity (ownerless legacy -> anonymous namespace, source removed)", async () => {
+    it("ownerless legacy Candidates are preserved untouched under a VALID identity (assigned to nobody automatically)", async () => {
       mockStore[LEGACY_GLOBAL_CANDIDATES_KEY] = JSON.stringify([cand("legacy-1")]);
       validPair("acct-A");
       expect(await loadCandidates()).toEqual([]);               // never attributed to the account
-      expect(mockStore[LEGACY_GLOBAL_CANDIDATES_KEY]).toBeUndefined();
-      expect(JSON.parse(mockStore[ANONYMOUS_CANDIDATES_KEY]).map((c: any) => c.id)).toEqual(["legacy-1"]);
+      expect(JSON.parse(mockStore[LEGACY_GLOBAL_CANDIDATES_KEY]).map((c: any) => c.id)).toEqual(["legacy-1"]);
+      expect(mockStore[ANONYMOUS_CANDIDATES_KEY]).toBeUndefined(); // ...and not to NLA either
     });
 
     it("staged shares are consumed and saved under the validated identity's namespace", async () => {

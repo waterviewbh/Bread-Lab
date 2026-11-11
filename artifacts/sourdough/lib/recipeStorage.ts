@@ -16,7 +16,7 @@ import {
   DELETED_FEED_IDS_KEY,
 } from "@/lib/recipeTypes";
 import { textToCheckableLines, resolveRootMasterId, parseIngredientsForMetrics, detectYeastType, sortRecipePhases } from "@/lib/recipeUtils";
-import { safeParse, storageMutex, getOwnerStorageKey, getWorkspaceGeneration } from "@/lib/storageUtils";
+import { safeParse, storageMutex, getOwnerStorageKey, getWorkspaceGeneration, WorkspaceIdentityError, StaleWorkspaceError } from "@/lib/storageUtils";
 import { isNlaOwner } from "@/lib/nlaBoundary";
 
 async function resolveOwner(): Promise<string> {
@@ -24,13 +24,13 @@ async function resolveOwner(): Promise<string> {
   try {
     token = await getStoredToken();
   } catch (e: any) {
-    throw new Error(`Owner resolution failed closed due to credential read error: ${e?.message ?? String(e)}`);
+    throw new WorkspaceIdentityError(`Owner resolution failed closed due to credential read error: ${e?.message ?? String(e)}`);
   }
   if (token === null) {
-    return "anonymous";
+    return "anonymous"; // the ONLY path to NLA: getStoredToken() reports both credentials absent
   }
   if (typeof token !== "string" || token.trim() === "") {
-    throw new Error("Owner resolution failed closed: stored token is malformed or empty.");
+    throw new WorkspaceIdentityError("Owner resolution failed closed: stored token is malformed or empty.");
   }
   return token.trim();
 }
@@ -41,24 +41,43 @@ export interface WorkspaceOperationContext {
 }
 
 /**
- * The workspace (owner + generation) in effect right now. Screens that hold device-local state
- * capture this when they load or create that state, then compare it before writing.
- * Fails closed (throws) if the owner cannot be resolved.
+ * The workspace (owner + generation) in effect right now, captured as ONE consistent pair. Screens and storage
+ * operations that hold device-local state capture this when they begin, then verify it
+ * (assertWorkspaceOperationCurrent) before writing.
+ *
+ * The generation is read before and after the owner lookup (and the owner is read twice). If either changed while
+ * the identity was being captured, the pair would describe no single workspace, so this REJECTS (StaleWorkspaceError)
+ * instead of returning a mixed context. An uncertain identity rejects with WorkspaceIdentityError; it never becomes
+ * "anonymous".
  */
 export async function getWorkspaceIdentity(): Promise<WorkspaceOperationContext> {
+  const generationBefore = getWorkspaceGeneration();
   const owner = await resolveOwner();
-  return { owner, generation: getWorkspaceGeneration() };
+  const ownerAgain = await resolveOwner();
+  const generationAfter = getWorkspaceGeneration();
+  if (generationBefore !== generationAfter) {
+    throw new StaleWorkspaceError("Workspace generation changed while the workspace identity was being captured.");
+  }
+  if (owner !== ownerAgain) {
+    throw new StaleWorkspaceError("Workspace owner changed while the workspace identity was being captured.");
+  }
+  return { owner, generation: generationBefore };
 }
 
-async function assertWorkspaceOperationCurrent(context: WorkspaceOperationContext): Promise<void> {
-  const gen = getWorkspaceGeneration();
+/**
+ * Verifies that a captured context still describes the current workspace: same generation AND same owner. An
+ * A -> B -> A sequence fails the generation check even though the owner matches again. Throws StaleWorkspaceError
+ * when it does not, or WorkspaceIdentityError when the current identity cannot be established.
+ */
+export async function assertWorkspaceOperationCurrent(context: WorkspaceOperationContext): Promise<void> {
+  const generationBefore = getWorkspaceGeneration();
   const curOwner = await resolveOwner();
-  console.log(`[Debug] assertWorkspaceOperationCurrent: context.gen=${context.generation}, globalGen=${gen}, context.owner=${context.owner}, curOwner=${curOwner}`);
-  if (context.generation !== gen) {
-    throw new Error("Workspace generation changed during loadAll(); aborting stale operation.");
+  const generationAfter = getWorkspaceGeneration();
+  if (context.generation !== generationBefore || generationBefore !== generationAfter) {
+    throw new StaleWorkspaceError("Workspace generation changed; aborting stale operation.");
   }
   if (curOwner !== context.owner) {
-    throw new Error("Workspace owner changed during loadAll(); aborting stale operation.");
+    throw new StaleWorkspaceError("Workspace owner changed; aborting stale operation.");
   }
 }
 

@@ -733,6 +733,26 @@ export class AsyncMutex {
 
 export const storageMutex = new AsyncMutex();
 
+/**
+ * The stored identity could not be established: credentials are partial, mismatched, malformed or unreadable.
+ * Never means "NLA". (NLA is exactly "both credentials absent".) Distinct from StaleWorkspaceError and from raw
+ * storage errors so callers can tell the three apart.
+ */
+export class WorkspaceIdentityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkspaceIdentityError";
+  }
+}
+
+/** A captured workspace context (owner + generation) no longer describes the current workspace. */
+export class StaleWorkspaceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StaleWorkspaceError";
+  }
+}
+
 let workspaceGeneration = 0;
 
 export function getWorkspaceGeneration(): number {
