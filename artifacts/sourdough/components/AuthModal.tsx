@@ -147,7 +147,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   // Shared failure path for the two choices: fail closed (the new account's session is signed out and the
   // baker stays in the offline workspace with everything intact), and say so plainly.
-  const failChoice = async (title: string, err: unknown) => {
+  // Returns true only when BOTH the remote session and the local credentials are confirmed closed.
+  const failChoice = async (title: string, err: unknown): Promise<boolean> => {
     const recovery = await executeFailClosedRecovery(onAuthChange);
     const statusDetails = [
       recovery.remoteSignout ? "Your account session was closed." : "Closing your account session could not be confirmed.",
@@ -159,9 +160,23 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     } else {
       Alert.alert(title, msg);
     }
-    if (recovery.remoteSignout && recovery.localClear) {
+    const closed = recovery.remoteSignout && recovery.localClear;
+    if (closed) {
       setTransitionPendingData(null);
       setNlaInventory(null);
+    }
+    return closed;
+  };
+
+  // The offline workspace changed after the baker chose. Nothing was imported-and-purged or purged, but the choice
+  // was made about a workspace that no longer exists, so it is void: fail closed like every other failure. When the
+  // account session is confirmed closed the baker starts over (fresh sign-in, fresh inventory, new choice); if
+  // closing it could not be confirmed, the screen stays (so Cancel can retry the cleanup) with refreshed counts.
+  const failWorkspaceChanged = async (title: string, err: NlaWorkspaceChangedError) => {
+    const closed = await failChoice(title, err);
+    if (!closed) {
+      await refreshInventory();
+      setChoiceMessage(err.message);
     }
   };
 
@@ -200,9 +215,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       noteLeftovers(describeImportReport(report), report.cannotImport.length + report.unresolved.length + report.draftsRenamed.length > 0);
     } catch (err: any) {
       if (err instanceof NlaWorkspaceChangedError) {
-        // Refused before anything changed; the account session is still open and the import is safe to repeat.
-        await refreshInventory();
-        setChoiceMessage(err.message);
+        // Refused before the purge; records already confirmed in the account stay there (a retry is idempotent).
+        await failWorkspaceChanged("Import didn't complete", err);
         return;
       }
       await failChoice("Import didn't complete", err);
@@ -242,8 +256,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       noteLeftovers(describeInventory(summarizeInventory(inventory)), left > 0);
     } catch (err: any) {
       if (err instanceof NlaWorkspaceChangedError) {
-        await refreshInventory();
-        setChoiceMessage(err.message);
+        await failWorkspaceChanged("Couldn't continue", err);
         return;
       }
       await failChoice("Couldn't continue", err);

@@ -208,26 +208,8 @@ describe("AuthModal: NLA -> account choice screen", () => {
   });
 
   describe("safety", () => {
-    it("if the offline workspace changes while the choice is on screen, nothing is deleted and the baker sees the updated counts", async () => {
-      seedRecords();
-      await openChoiceScreen();
-      put("bread_lab_recipes_v1_anonymous", [
-        { id: "r-1", name: "Loaf", userId: "anonymous", phases },
-        { id: "r-late", name: "Added while the screen was open", userId: "anonymous", phases },
-      ]);
-      const before = nlaRaw();
-
-      await fireEvent.press(screen.getByText("Proceed Without Importing"));
-      await screen.findByText("Your offline workspace changed while this was in progress, so nothing was changed. Please try again.");
-
-      expect(nlaRaw()).toEqual(before);
-      expect(onAuthChange).not.toHaveBeenCalled();
-      expect(api.auth.signout).not.toHaveBeenCalled(); // the account session is still open for an immediate retry
-      expect(screen.getByText("Proceed Without Importing")).toBeTruthy();
-      expect(
-        screen.getByText("This device has 3 recipes, 1 bake in your history, 1 feed in your history, 1 recipe draft that are not in an account.")
-      ).toBeTruthy(); // refreshed counts include the new recipe
-    });
+    // The "workspace changed after the choice" cases (both choices, retry, recovery failures) live in
+    // AuthModal.workspaceChanged.test.tsx; the old test here asserted the session stayed open, which was the defect.
 
     it("tells the baker what stayed behind (a conflict is kept and reported, the rest completes)", async () => {
       put("bread_lab_recipes_v1", [{ id: "dup", name: "A" }, { id: "ok", name: "Fine", phases }]);
