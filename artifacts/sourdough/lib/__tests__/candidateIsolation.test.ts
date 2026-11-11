@@ -110,7 +110,7 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     expect(candidatesA[0].id).toBe(recA.id);
   });
 
-  it('5. Legacy global data migration is conservative and happens once into anonymous bucket', async () => {
+  it('5. Legacy global data (ownerless) is preserved untouched and is NOT assigned to any workspace automatically', async () => {
     // Seed legacy global key
     const legacyRecord = {
       id: 'legacy-1',
@@ -126,14 +126,13 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     const candidatesA = await loadCandidates();
     expect(candidatesA.length).toBe(0);
 
-    // Clear auth to check anonymous bucket where legacy data was conservatively migrated
+    // Signed out (NLA): the ownerless legacy records are NOT assigned to the anonymous workspace either.
     await clearAuth();
-    const anonCandidates = await loadCandidates();
-    expect(anonCandidates.length).toBe(1);
-    expect(anonCandidates[0].id).toBe('legacy-1');
+    expect((await loadCandidates()).length).toBe(0);
+    expect(await AsyncStorage.getItem('bread_lab_candidates_v1_anonymous')).toBeNull();
 
-    // Verify global legacy key was removed (migration happens only once)
-    expect(await AsyncStorage.getItem(LEGACY_GLOBAL_CANDIDATES_KEY)).toBeNull();
+    // The legacy source is exactly as it was, awaiting an explicit disposition.
+    expect(JSON.parse((await AsyncStorage.getItem(LEGACY_GLOBAL_CANDIDATES_KEY))!)).toEqual([legacyRecord]);
   });
 
   it('6. Invalid or mismatched identity pair causes loadCandidates() to reject instead of returning []', async () => {
@@ -143,7 +142,7 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     await expect(loadCandidates()).rejects.toThrow(/Identity integrity failure/);
   });
 
-  it('7. loadCandidates validates identity before migration or ingestion and directly proves ingestion is blocked', async () => {
+  it('7. loadCandidates validates identity before ingestion and directly proves ingestion is blocked', async () => {
     const authModule = require('../auth');
     const candidateStorage = require('../candidateStorage');
     const integrityError = new Error('Identity integrity failure: token and profile IDs differ');
@@ -156,7 +155,8 @@ describe('Candidate Data Isolation & Account-Scoped Persistence', () => {
     getItemSpy.mockClear();
     setItemSpy.mockClear();
 
-    await expect(candidateStorage.loadCandidates()).rejects.toThrow(integrityError);
+    // The identity error is surfaced as a WorkspaceIdentityError that carries the original message.
+    await expect(candidateStorage.loadCandidates()).rejects.toThrow(/Identity integrity failure: token and profile IDs differ/);
 
     expect(ingestSpy).not.toHaveBeenCalled();
     const calls = getItemSpy.mock.calls.map(call => call[0]);

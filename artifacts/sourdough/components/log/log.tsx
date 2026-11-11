@@ -243,7 +243,20 @@ export function HistorySection() {
       console.warn("[History] background deletion sync failed:", e);
     }
     const sequenceId = ++loadSequenceRef.current;
-    const token = await getStoredToken().catch(() => null);
+    // null = NLA (both credentials absent). An uncertain identity (partial, mismatched, malformed, unreadable) THROWS and
+    // must not be read as NLA: load nothing, call no remote list, and clear what is shown so nothing owned by another
+    // identity stays on screen.
+    let token: string | null;
+    try {
+      token = await getStoredToken();
+    } catch (e) {
+      console.error("[History] Identity could not be confirmed; history not loaded:", e);
+      if (loadSequenceRef.current === sequenceId) {
+        setHistory([]);
+        setBakeHistory([]);
+      }
+      return;
+    }
 
     const isOwnerMatch = (entry: { userId?: string; user_id?: string }) => {
       const owner = entry?.userId ?? entry?.user_id;

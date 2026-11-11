@@ -307,7 +307,14 @@ export default function HistoryScreen() {
     migrationInFlightRef.current = true;
     try {
       // 1. Get the local token
-      const token = await getStoredToken().catch(() => null);
+      // null = NLA (nothing to sync). An uncertain identity throws: nothing is synced under it (retried on a later focus).
+      let token: string | null;
+      try {
+        token = await getStoredToken();
+      } catch (e) {
+        console.warn("[SYNC] Identity could not be confirmed; migration retry skipped:", e);
+        return;
+      }
       if (!token) return;
 
       // 2. CHECK: Does Supabase actually have a session?
@@ -681,7 +688,16 @@ export default function HistoryScreen() {
 
     try {
       const deviceId = await getDeviceId();
-      const token = await getStoredToken().catch(() => null);
+      // null = NLA. An uncertain identity THROWS and is never read as NLA: load nothing, call no remote list, show nothing.
+      let token: string | null;
+      try {
+        token = await getStoredToken();
+      } catch (e) {
+        console.error("[History] Identity could not be confirmed; history not loaded:", e);
+        setHistory([]);
+        setBakeHistory([]);
+        return;
+      }
 
       const isOwnerMatchGuard = (entry: { userId?: string }) => isOwnerMatch(entry, token);
 

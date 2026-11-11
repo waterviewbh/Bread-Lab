@@ -128,20 +128,26 @@ export default function RecipeScreen() {
   const { subscribeCandidatesChanged } = useShareCandidate();
 
   const reloadCandidates = useCallback(async () => {
-    const key = await getCandidatesKey();
-    const raw = await AsyncStorage.getItem(key);
-    if (raw === null) {
-      const initialFixture: CandidateRecord[] = [
-        {
-          id: "deterministic-fixture",
-          sharedAt: "2026-10-04T08:14:00.000Z",
-          extractionResult: DETERMINISTIC_TEST_CANDIDATE,
-        },
-      ];
-      await AsyncStorage.setItem(key, JSON.stringify(initialFixture));
+    try {
+      const key = await getCandidatesKey();
+      const raw = await AsyncStorage.getItem(key);
+      if (raw === null) {
+        const initialFixture: CandidateRecord[] = [
+          {
+            id: "deterministic-fixture",
+            sharedAt: "2026-10-04T08:14:00.000Z",
+            extractionResult: DETERMINISTIC_TEST_CANDIDATE,
+          },
+        ];
+        await AsyncStorage.setItem(key, JSON.stringify(initialFixture));
+      }
+      const list = await loadCandidates();
+      setCandidates(list);
+    } catch (e) {
+      // An uncertain identity rejects here; nothing from a previous workspace stays visible.
+      console.error("[Recipe] reloadCandidates failed", e);
+      setCandidates([]);
     }
-    const list = await loadCandidates();
-    setCandidates(list);
   }, []);
 
   const handleOpenCandidateReview = (record: CandidateRecord) => {
