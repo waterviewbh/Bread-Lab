@@ -40,6 +40,34 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(getCoordinatorState()).toBe("IDLE");
   });
 
+  it("blocks transition when preflight encounters malformed or indeterminate storage state", async () => {
+    await AsyncStorage.setItem("bread_lab_recipes_v1", "not-json");
+
+    await expect(
+      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
+    ).rejects.toThrow();
+
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+  });
+
+  it("leaves existing records and credentials intact when preflight fails", async () => {
+    const tokenKey = "bread_lab_auth_token_v1";
+    const recipeKey = "bread_lab_recipes_v1";
+    const initialToken = "token-existing";
+    const initialRecipes = JSON.stringify([{ id: "rec-1", userId: "anonymous", name: "Existing Bread" }]);
+
+    await AsyncStorage.setItem(tokenKey, initialToken);
+    await AsyncStorage.setItem(recipeKey, initialRecipes);
+    await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
+
+    await expect(
+      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
+    ).rejects.toThrow();
+
+    expect(await AsyncStorage.getItem(tokenKey)).toBe(initialToken);
+    expect(await AsyncStorage.getItem(recipeKey)).toBe(initialRecipes);
+  });
+
   it("recovers from interrupted state via recoverTransition()", async () => {
     setCoordinatorState("RECOVERY_REQUIRED");
     await expect(recoverTransition()).resolves.toBeUndefined();
