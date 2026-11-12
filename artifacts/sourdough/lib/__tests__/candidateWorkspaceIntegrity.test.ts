@@ -382,4 +382,80 @@ describe("native staged shares", () => {
     expect(list).toHaveLength(1);
     expect(ids(key("acct-A"))).toEqual([list[0].id]);
   });
+
+  it("extraction failure on the first staged item rejects, reports consumed=2, saved=0, unsaved=2, correct failed item ID and index, and saves 0 candidates", async () => {
+    await saveAuth("acct-A", user("acct-A"));
+    mockShares.items = [
+      { id: "item-1-fail", rawContent: "Bad content", sharedAt: 1 },
+      { id: "item-2-good", rawContent: "Good content", sharedAt: 2 },
+    ];
+    let callCount = 0;
+    mockExtract.text = () => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error("Extraction failed");
+      }
+      return { status: "single_candidate", recipe: { name: "Good" } };
+    };
+
+    let err: any = null;
+    try {
+      await ingestStagedNativeShares();
+    } catch (e) {
+      err = e;
+    }
+
+    expect(err).toBeInstanceOf(CandidateStorageError);
+    expect(err.consumedCount).toBe(2);
+    expect(err.savedCount).toBe(0);
+    expect(err.unsavedCount).toBe(2);
+    expect(err.failedItemId).toBe("item-1-fail");
+    expect(err.failedItemIndex).toBe(0);
+
+    expect(ids(key("acct-A"))).toBeNull();
+  });
+
+  it("extraction failure on a later staged item saves earlier valid items, rejects with consumed=2, saved=1, unsaved=1, correct failed item ID/index, and preserves workspace isolation", async () => {
+    await saveAuth("acct-A", user("acct-A"));
+    mockShares.items = [
+      { id: "item-1-good", rawContent: "Good content 1", sharedAt: 1 },
+      { id: "item-2-fail", rawContent: "Bad content 2", sharedAt: 2 },
+    ];
+    let callCount = 0;
+    mockExtract.text = () => {
+      callCount++;
+      if (callCount === 2) {
+        throw new Error("Later extraction failed");
+      }
+      return { status: "single_candidate", recipe: { name: `Good ${callCount}` } };
+    };
+
+    let err: any = null;
+    try {
+      await ingestStagedNativeShares();
+    } catch (e) {
+      err = e;
+    }
+
+    expect(err).toBeInstanceOf(CandidateStorageError);
+    expect(err.consumedCount).toBe(2);
+    expect(err.savedCount).toBe(1);
+    expect(err.unsavedCount).toBe(1);
+    expect(err.failedItemId).toBe("item-2-fail");
+    expect(err.failedItemIndex).toBe(1);
+
+    const saved = ids(key("acct-A"));
+    expect(saved).toHaveLength(1);
+  });
+
+  it("extraction result producing no usable Candidate is treated as a failure", async () => {
+    await saveAuth("acct-A", user("acct-A"));
+    mockShares.items = [
+      { id: "item-no-cand", rawContent: "No candidate text", sharedAt: 1 },
+    ];
+    mockExtract.text = () => ({ status: "no_candidate", reason: "None found" });
+
+    await expect(ingestStagedNativeShares()).rejects.toBeInstanceOf(CandidateStorageError);
+    expect(ids(key("acct-A"))).toBeNull();
+  });
 });

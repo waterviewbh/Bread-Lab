@@ -8,7 +8,7 @@ import {
   flushNativeDiagnosticLogs,
 } from "@/lib/shareDiagnostics";
 import { generateUuid } from "@/lib/recipeImport";
-import { storageMutex, AsyncMutex } from "@/lib/storageUtils";
+import { storageMutex, AsyncMutex, StaleWorkspaceError, WorkspaceIdentityError } from "@/lib/storageUtils";
 import {
   getWorkspaceIdentity,
   assertWorkspaceOperationCurrent,
@@ -45,6 +45,34 @@ export class LegacyCandidateVerificationError extends CandidateStorageError {
   constructor(message: string) {
     super(message);
     this.name = "LegacyCandidateVerificationError";
+  }
+}
+
+export class StagedShareExtractionError extends CandidateStorageError {
+  public readonly consumedCount: number;
+  public readonly savedCount: number;
+  public readonly unsavedCount: number;
+  public readonly failedItemId?: string;
+  public readonly failedItemIndex?: number;
+  public readonly cause?: any;
+
+  constructor(
+    message: string,
+    consumedCount: number,
+    savedCount: number,
+    unsavedCount: number,
+    failedItemId?: string,
+    failedItemIndex?: number,
+    cause?: any
+  ) {
+    super(message);
+    this.name = "StagedShareExtractionError";
+    this.consumedCount = consumedCount;
+    this.savedCount = savedCount;
+    this.unsavedCount = unsavedCount;
+    this.failedItemId = failedItemId;
+    this.failedItemIndex = failedItemIndex;
+    this.cause = cause;
   }
 }
 
@@ -208,10 +236,20 @@ export async function ingestStagedNativeShares(context?: WorkspaceOperationConte
       candidateCount: stagedItems.length,
     });
 
-    let saved = 0;
+    const consumedCount = stagedItems.length;
+    let savedCount = 0;
+    let failingItem: any = null;
+    let failingIndex = 0;
+
     try {
-      for (const item of stagedItems) {
-        if (!item.rawContent || !item.rawContent.trim()) continue;
+      for (let i = 0; i < stagedItems.length; i++) {
+        const item = stagedItems[i];
+        failingItem = item;
+        failingIndex = i;
+
+        if (!item.rawContent || !item.rawContent.trim()) {
+          throw new Error(`Staged share item ${item.id} has empty rawContent`);
+        }
 
         const trimmedInput = item.rawContent.trim();
         const isUrl = /^(https?:\/\/[^\s]+)/i.test(trimmedInput);
@@ -223,8 +261,10 @@ export async function ingestStagedNativeShares(context?: WorkspaceOperationConte
             ? await fetchAndExtractRecipeFromUrl(trimmedInput)
             : extractRecipeFromText(trimmedInput);
         } catch (e: any) {
-          console.error("[candidateStorage] ingestStagedNativeShares extraction failed", e);
-          return;
+          if (e instanceof WorkspaceIdentityError || e instanceof StaleWorkspaceError) {
+            throw e;
+          }
+          throw new Error(`Extraction failed for staged item ${item.id}: ${e?.message || e}`);
         }
 
         if (
@@ -232,16 +272,29 @@ export async function ingestStagedNativeShares(context?: WorkspaceOperationConte
           result.status === "multiple_candidates"
         ) {
           await saveCandidate(result, item.sharedAt, 'share', ctx);
-          saved++;
+          savedCount++;
+        } else {
+          throw new Error(`Extraction produced no usable candidate for item ${item.id} (status: ${result.status})`);
         }
       }
-    } catch (e) {
-      // Identity / stale-workspace / storage failures are NOT swallowed: they propagate, and the loss is reported.
-      console.error(
-        `[candidateStorage] ${stagedItems.length} staged share(s) were consumed but only ${saved} could be saved; the rest are lost (native staging has no acknowledge step).`,
+    } catch (e: any) {
+      const unsavedCount = consumedCount - savedCount;
+      const errorMsg = `[candidateStorage] ${consumedCount} staged share(s) were consumed but only ${savedCount} could be saved; the rest are lost (native staging has no acknowledge step). Failed at item ${failingItem?.id} (index ${failingIndex}): consumed=${consumedCount}, saved=${savedCount}, unsaved=${unsavedCount}. Cause: ${e?.message || e}`;
+      console.error(errorMsg, e);
+
+      if (e instanceof WorkspaceIdentityError || e instanceof StaleWorkspaceError) {
+        throw e;
+      }
+
+      throw new StagedShareExtractionError(
+        errorMsg,
+        consumedCount,
+        savedCount,
+        unsavedCount,
+        failingItem?.id,
+        failingIndex,
         e
       );
-      throw e;
     }
   });
 }
