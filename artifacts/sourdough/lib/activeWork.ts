@@ -13,22 +13,23 @@ export const ACTIVE_FEED_TRANSITION_MESSAGE =
   "You have an active Feed session. We recommend finishing it before signing in or out. " +
   "If you continue, this active session will be discarded and cannot be recovered.";
 
+export const ACTIVE_WORK_REMINDER_TITLE = "A note about work in progress";
+export const ACTIVE_WORK_REMINDER_BODY = "You have an active Bake or Feed running on this device; you may want to finish it before continuing. Active work isn't included in the import and will be lost when you sign in to a remote account.";
+
 /** True if an active Feed session is stored on this device for the current workspace. */
 export async function hasActiveFeed(): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED);
     return raw !== null && raw !== undefined && raw !== "";
   } catch {
-    // The transition itself reads this key and fails closed on a read error.
     return false;
   }
 }
 
 /** Panel shown ONLY on NLA -> account transitions when active Feed or Bake work exists (agreed wording). */
-export const NLA_LOCAL_WORK_TITLE = "Local work on this device";
+export const NLA_LOCAL_WORK_TITLE = ACTIVE_WORK_REMINDER_TITLE;
 export const NLA_LOCAL_WORK_PARAGRAPHS = [
-  "You have active Feed or Bake work on this device.",
-  "This work is not included in your account and will be discarded when you leave the offline workspace.",
+  ACTIVE_WORK_REMINDER_BODY,
   "Your saved recipes, bake history, feed history, and other eligible records will be handled according to your choice below.",
 ] as const;
 
@@ -41,7 +42,7 @@ const hasStoredWork = (raw: string | null | undefined): boolean => {
     if (typeof v === "object") return Object.keys(v).length > 0;
     return true;
   } catch {
-    return true; // unreadable is treated as present: never assume there is nothing to lose
+    return true;
   }
 };
 

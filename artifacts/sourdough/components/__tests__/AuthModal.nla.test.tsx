@@ -118,10 +118,9 @@ describe("AuthModal: NLA -> account choice screen", () => {
   describe("the 'Local work on this device' panel (agreed wording, NLA -> account only)", () => {
     const expectPanel = () => {
       expect(screen.getByText(NLA_LOCAL_WORK_TITLE)).toBeTruthy();
-      expect(NLA_LOCAL_WORK_TITLE).toBe("Local work on this device");
+      expect(NLA_LOCAL_WORK_TITLE).toBe("A note about work in progress");
       expect([...NLA_LOCAL_WORK_PARAGRAPHS]).toEqual([
-        "You have active Feed or Bake work on this device.",
-        "This work is not included in your account and will be discarded when you leave the offline workspace.",
+        "You have an active Bake or Feed running on this device; you may want to finish it before continuing. Active work isn't included in the import and will be lost when you sign in to a remote account.",
         "Your saved recipes, bake history, feed history, and other eligible records will be handled according to your choice below.",
       ]);
       for (const paragraph of NLA_LOCAL_WORK_PARAGRAPHS) expect(screen.getByText(paragraph)).toBeTruthy();

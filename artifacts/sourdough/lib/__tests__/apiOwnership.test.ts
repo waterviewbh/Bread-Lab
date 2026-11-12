@@ -189,21 +189,38 @@ describe("API Ownership & Signout Real Implementation", () => {
     expect(mockUpsert).not.toHaveBeenCalled();
   });
   it("enforces correct ownership filtering for list operations", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-A" } } },
+      error: null,
+    });
     await api.recipes.list("dev-1", "user-A");
     expect(mockOr).toHaveBeenCalledWith("user_id.eq.user-A");
 
     mockOr.mockClear();
+    getSessionMock.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
     await api.recipes.list("dev-1", undefined);
-    // When userId is undefined, api.recipes.list resolves via getStoredToken()
   });
 
   it("deletes records strictly scoped to owner when authenticated or device when anonymous", async () => {
+    const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-A" } } },
+      error: null,
+    });
     await api.recipes.delete("rec-1", "shared-dev", "user-A");
     expect(mockDeleteEq).toHaveBeenCalledWith("id", "rec-1");
     expect(mockDeleteOr).toHaveBeenCalledWith("user_id.eq.user-A");
     expect(mockDeleteOr).not.toHaveBeenCalledWith(expect.stringContaining("device_id.eq.shared-dev"));
 
     mockDeleteOr.mockClear();
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: "user-B" } } },
+      error: null,
+    });
     await api.recipes.delete("rec-1", "shared-dev", "user-B");
     expect(mockDeleteEq).toHaveBeenCalledWith("id", "rec-1");
     expect(mockDeleteOr).toHaveBeenCalledWith("user_id.eq.user-B");
@@ -376,6 +393,11 @@ describe("API Ownership & Signout Real Implementation", () => {
 
     for (const m of readMethods) {
       it(`${m.name}: uses validated owner when userId omitted and valid token present`, async () => {
+        const getSessionMock = (supabase!.auth.getSession as jest.Mock);
+        getSessionMock.mockResolvedValue({
+          data: { session: { user: { id: "user-123" } } },
+          error: null,
+        });
         const authModule = require("../auth");
         jest.spyOn(authModule, "getStoredToken").mockResolvedValue("user-123");
         mockOr.mockClear();

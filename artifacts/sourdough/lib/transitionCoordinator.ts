@@ -87,6 +87,10 @@ export async function executeWorkspaceTransition(
   options: WorkspaceTransitionOptions = {}
 ): Promise<void> {
   return storageMutex.run(async () => {
+    if (currentState === "RECOVERY_REQUIRED") {
+      throw new Error("Transition refused: recovery required due to an incomplete previous transition. Please reconcile session first.");
+    }
+
     const outgoingIsNla = outgoingOwnerId === null || isNlaOwner(outgoingOwnerId);
     const disposition = outgoingIsNla ? options.nlaDisposition : undefined;
 
@@ -162,10 +166,21 @@ export async function recoverTransition(): Promise<void> {
     try {
       await api.auth.signout().catch(() => {});
       await clearAuth().catch(() => {});
+      let sessionActive = false;
+      try {
+        const sessionRes = await api.auth.getSession();
+        sessionActive = !!sessionRes?.data?.session;
+      } catch {
+        sessionActive = false;
+      }
+      if (sessionActive) {
+        throw new Error("Recovery failed: remote session could not be confirmed closed.");
+      }
       setCoordinatorState("IDLE");
       console.log(`[TransitionCoordinator] Recovery protocol completed, state reset to IDLE.`);
     } catch (e) {
       console.error(`[TransitionCoordinator] Recovery protocol failed:`, e);
+      setCoordinatorState("RECOVERY_REQUIRED");
       throw e;
     }
   });

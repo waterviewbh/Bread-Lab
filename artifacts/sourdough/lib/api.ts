@@ -270,8 +270,8 @@ export function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
     deviceId: r.device_id,
     recipeId: r.recipe_id ?? null,
     recipeName: r.recipe_name,
-    savedAt: Number(r.saved_at),
-    startedAt: Number(r.started_at),
+    saved_at: Number(r.saved_at),
+    started_at: Number(r.started_at),
     phases: (r.phases ?? []).map((p: any) => ({
       ...p,
       bulkFermentState: p.bulkFermentState,
@@ -346,7 +346,7 @@ async function resolveAndVerifyOwner(bodyUserId?: string | null): Promise<string
 
   if (targetUserId) {
     if (!sessionUserId) {
-      throw new Error("Authentication required: operation specifies a target user ID but no active session exists.");
+      throw new Error(`Authentication required (Owner/Session mismatch: active session user (null) does not match target user (${targetUserId})).`);
     }
     if (sessionUserId !== targetUserId) {
       throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match target user (${targetUserId}).`);
@@ -356,31 +356,15 @@ async function resolveAndVerifyOwner(bodyUserId?: string | null): Promise<string
   return sessionUserId ?? targetUserId ?? null;
 }
 
-async function verifySessionAgreement(): Promise<void> {
-  if (!supabase || typeof supabase.auth?.getSession !== "function") return;
-  let session: any = null;
-  try {
-    const res = await supabase.auth.getSession();
-    session = res?.data?.session ?? null;
-  } catch {
-    return;
-  }
-  const sessionUserId = session?.user?.id ?? null;
-  const storedToken = await getStoredToken().catch(() => null);
-  if (sessionUserId && storedToken && sessionUserId !== storedToken && (supabase as any)._strictSessionCheck) {
-    throw new Error("Identity consistency conflict: stored local user ID does not match active Supabase session.");
-  }
-}
-
-async function executeWithBoundaryCheck<T>(operation: () => Promise<T>): Promise<T> {
+async function executeWithBoundaryCheck<T>(expectedUserId?: string | null, operation: () => Promise<T>): Promise<T> {
   const genBefore = getWorkspaceGeneration();
-  await verifySessionAgreement();
+  await resolveAndVerifyOwner(expectedUserId);
   const result = await operation();
   const genAfter = getWorkspaceGeneration();
   if (genBefore !== genAfter) {
     throw new StaleWorkspaceError("Workspace generation changed while remote operation was in-flight.");
   }
-  await verifySessionAgreement();
+  await resolveAndVerifyOwner(expectedUserId);
   return result;
 }
 
@@ -493,7 +477,7 @@ export const api = {
     list: async (deviceId?: string, userId?: string): Promise<ApiRecipe[]> => {
       const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
       if (!supabase) return [];
-      return executeWithBoundaryCheck(async () => {
+      return executeWithBoundaryCheck(resolvedUserId, async () => {
         const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return [];
         const { data, error } = await supabase.from("recipes").select("*").or(filter).order("created_at", { ascending: false }).returns<RecipeRow[]>();
@@ -504,103 +488,107 @@ export const api = {
 
     upsert: async (body: any): Promise<ApiRecipe> => {
       const resolvedUserId = await resolveAndVerifyOwner(body.userId);
-
-      const rawCreatedAt = body.createdAt ?? body.created_at;
-      let formattedCreatedAt: string | undefined = undefined;
-      if (rawCreatedAt !== undefined && rawCreatedAt !== null) {
-        const parsedMs = typeof rawCreatedAt === "number" ? rawCreatedAt : new Date(rawCreatedAt).getTime();
-        if (!isNaN(parsedMs) && parsedMs > 0) {
-          formattedCreatedAt = new Date(parsedMs).toISOString();
+      return executeWithBoundaryCheck(resolvedUserId, async () => {
+        const rawCreatedAt = body.createdAt ?? body.created_at;
+        let formattedCreatedAt: string | undefined = undefined;
+        if (rawCreatedAt !== undefined && rawCreatedAt !== null) {
+          const parsedMs = typeof rawCreatedAt === "number" ? rawCreatedAt : new Date(rawCreatedAt).getTime();
+          if (!isNaN(parsedMs) && parsedMs > 0) {
+            formattedCreatedAt = new Date(parsedMs).toISOString();
+          }
         }
-      }
 
-      const { data, error } = await supabase!.from("recipes").upsert({
-        id: body.id, device_id: body.deviceId, user_id: resolvedUserId, name: body.name,
-        overview: body.overview ?? null, yield_value: body.yield_value,
-        phases: flattenPhasesForLegacy(body.phases), recipe_data: body,
-        updated_at: new Date().toISOString(), total_flour_g: body.total_flour_g,
-        hydration_pct: body.hydration_pct, parent_recipe_id: body.parentRecipeId ?? null,
-        version_label: body.versionLabel ?? null, is_archived: body.isArchived ?? false,
-        ...(formattedCreatedAt ? { created_at: formattedCreatedAt } : {}),
-      }).select().returns<RecipeRow[]>().single();
-      if (error) throw error;
-      return rowToApiRecipe(data);
+        const { data, error } = await supabase!.from("recipes").upsert({
+          id: body.id, device_id: body.deviceId, user_id: resolvedUserId, name: body.name,
+          overview: body.overview ?? null, yield_value: body.yield_value,
+          phases: flattenPhasesForLegacy(body.phases), recipe_data: body,
+          updated_at: new Date().toISOString(), total_flour_g: body.total_flour_g,
+          hydration_pct: body.hydration_pct, parent_recipe_id: body.parentRecipeId ?? null,
+          version_label: body.versionLabel ?? null, is_archived: body.isArchived ?? false,
+          ...(formattedCreatedAt ? { created_at: formattedCreatedAt } : {}),
+        }).select().returns<RecipeRow[]>().single();
+        if (error) throw error;
+        return rowToApiRecipe(data);
+      });
     },
 
     duplicate: async (id: string, newName: string, deviceId: string, userId?: string, makeIndependent?: boolean): Promise<ApiRecipe> => {
       const resolvedUserId = await resolveAndVerifyOwner(userId);
-      if (!supabase) throw new Error("Supabase not configured");
-      if (!resolvedUserId) {
-        throw new Error("Authentication required: cloud recipe duplication requires an active user account.");
-      }
+      return executeWithBoundaryCheck(resolvedUserId, async () => {
+        if (!supabase) throw new Error("Supabase not configured");
+        if (!resolvedUserId) {
+          throw new Error("Authentication required: cloud recipe duplication requires an active user account.");
+        }
 
-      const { data: source, error: fetchError } = await supabase
-        .from("recipes")
-        .select("*")
-        .eq("id", id)
-        .single();
+        const { data: source, error: fetchError } = await supabase
+          .from("recipes")
+          .select("*")
+          .eq("id", id)
+          .single();
 
-      if (fetchError || !source) {
-        throw fetchError || new Error("Source recipe not found");
-      }
+        if (fetchError || !source) {
+          throw fetchError || new Error("Source recipe not found");
+        }
 
-      if (source.user_id && resolvedUserId && source.user_id !== resolvedUserId) {
-        throw new Error("Unauthorized: cannot duplicate a recipe owned by another user.");
-      }
+        if (source.user_id && resolvedUserId && source.user_id !== resolvedUserId) {
+          throw new Error("Unauthorized: cannot duplicate a recipe owned by another user.");
+        }
 
-      if (!source.user_id && resolvedUserId) {
-        throw new Error("Unauthorized: cannot duplicate an unassigned recipe into an authenticated account without an explicit claim.");
-      }
+        if (!source.user_id && resolvedUserId) {
+          throw new Error("Unauthorized: cannot duplicate an unassigned recipe into an authenticated account without an explicit claim.");
+        }
 
-      const targetUserId = source.user_id ?? null;
-      const newId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
-      const now = new Date().toISOString();
-      const parentRecipeId = makeIndependent ? null : id;
-      const versionLabel = makeIndependent ? "Master" : "Copy";
+        const targetUserId = source.user_id ?? null;
+        const newId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+        const now = new Date().toISOString();
+        const parentRecipeId = makeIndependent ? null : id;
+        const versionLabel = makeIndependent ? "Master" : "Copy";
 
-      let recipeData = source.recipe_data;
-      if (recipeData && typeof recipeData === 'object') {
-        recipeData = {
-          ...recipeData,
+        let recipeData = source.recipe_data;
+        if (recipeData && typeof recipeData === 'object') {
+          recipeData = {
+            ...recipeData,
+            id: newId,
+            name: newName,
+            parentRecipeId: parentRecipeId ?? undefined,
+            versionLabel: versionLabel,
+          };
+        }
+
+        const newRow = {
           id: newId,
+          device_id: deviceId,
+          user_id: targetUserId,
           name: newName,
-          parentRecipeId: parentRecipeId ?? undefined,
-          versionLabel: versionLabel,
+          overview: source.overview,
+          phases: source.phases,
+          recipe_data: recipeData,
+          yield_value: source.yield_value,
+          total_flour_g: source.total_flour_g,
+          hydration_pct: source.hydration_pct,
+          parent_recipe_id: parentRecipeId,
+          version_label: versionLabel,
+          created_at: now,
+          updated_at: now,
         };
-      }
 
-      const newRow = {
-        id: newId,
-        device_id: deviceId,
-        user_id: targetUserId,
-        name: newName,
-        overview: source.overview,
-        phases: source.phases,
-        recipe_data: recipeData,
-        yield_value: source.yield_value,
-        total_flour_g: source.total_flour_g,
-        hydration_pct: source.hydration_pct,
-        parent_recipe_id: parentRecipeId,
-        version_label: versionLabel,
-        created_at: now,
-        updated_at: now,
-      };
+        const { data: inserted, error: insertError } = await supabase
+          .from("recipes")
+          .insert(newRow)
+          .select()
+          .returns<RecipeRow[]>()
+          .single();
 
-      const { data: inserted, error: insertError } = await supabase
-        .from("recipes")
-        .insert(newRow)
-        .select()
-        .returns<RecipeRow[]>()
-        .single();
-
-      if (insertError) throw insertError;
-      return rowToApiRecipe(inserted);
+        if (insertError) throw insertError;
+        return rowToApiRecipe(inserted);
+      });
     },
 
     delete: async (id: string, deviceId?: string, userId?: string): Promise<boolean> => {
       if (!supabase) return false;
-      return executeWithBoundaryCheck(async () => {
-        const filter = ownerFilter(deviceId, userId);
+      const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
+      return executeWithBoundaryCheck(resolvedUserId, async () => {
+        const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) return false;
         const { error, count } = await supabase.from("recipes").delete({ count: 'exact' }).eq("id", id).or(filter);
         if (error) throw error;
@@ -610,8 +598,9 @@ export const api = {
 
     verifyAbsent: async (id: string, deviceId?: string, userId?: string): Promise<boolean> => {
       if (!supabase) return false;
-      return executeWithBoundaryCheck(async () => {
-        const filter = ownerFilter(deviceId, userId);
+      const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
+      return executeWithBoundaryCheck(resolvedUserId, async () => {
+        const filter = ownerFilter(deviceId, resolvedUserId);
         if (!filter) throw new Error("Cannot verify absence without owner scope");
         const { data, error } = await supabase.from("recipes").select("id").eq("id", id).or(filter).maybeSingle();
         if (error) throw error;
@@ -626,7 +615,7 @@ export const api = {
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.list");
         if (!supabase) return [];
-        return executeWithBoundaryCheck(async () => {
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
           const filter = ownerFilter(deviceId, resolvedUserId);
           if (!filter) return [];
           const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).order("saved_at", { ascending: false }).eq("in_progress", false).limit(500).returns<FeedSessionRow[]>();
@@ -638,20 +627,22 @@ export const api = {
       upsert: async (body: any): Promise<ApiFeedSession> => {
         const resolvedUserId = await resolveAndVerifyOwner(body.userId);
         if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.upsert");
-        const { data, error } = await supabase!.from("feed_sessions").upsert({
-          id: body.id, device_id: body.deviceId, user_id: resolvedUserId, saved_at: body.savedAt,
-          started_at: body.startedAt ?? null, updated_at: body.updatedAt ?? Date.now(),
-          in_progress: body.inProgress ?? false, data: body.data,
-        }).select().returns<FeedSessionRow[]>().single();
-        if (error) throw error;
-        return rowToApiFeedSession(data);
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
+          const { data, error } = await supabase!.from("feed_sessions").upsert({
+            id: body.id, device_id: body.deviceId, user_id: resolvedUserId, saved_at: body.savedAt,
+            started_at: body.startedAt ?? null, updated_at: body.updatedAt ?? Date.now(),
+            in_progress: body.inProgress ?? false, data: body.data,
+          }).select().returns<FeedSessionRow[]>().single();
+          if (error) throw error;
+          return rowToApiFeedSession(data);
+        });
       },
 
       active: async (deviceId?: string, userId?: string) => {
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.active");
         if (!supabase) return null;
-        return executeWithBoundaryCheck(async () => {
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
           const filter = ownerFilter(deviceId, resolvedUserId);
           if (!filter) return null;
           const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).eq("in_progress", true).order("updated_at", { ascending: false }).limit(1).returns<FeedSessionRow[]>().maybeSingle();
@@ -664,7 +655,7 @@ export const api = {
         const token = await getStoredToken();
         if (!token) throw new NlaSupabaseBoundaryError("history.feed.get");
         if (!supabase) return null;
-        return executeWithBoundaryCheck(async () => {
+        return executeWithBoundaryCheck(token, async () => {
           const { data, error } = await supabase.from("feed_sessions").select("*").eq("id", id).returns<FeedSessionRow[]>().maybeSingle();
           if (error) throw error;
           return data ? rowToApiFeedSession(data) : null;
@@ -673,8 +664,9 @@ export const api = {
 
       delete: async (id: string, deviceId?: string, userId?: string) => {
         if (!supabase) return false;
-        return executeWithBoundaryCheck(async () => {
-          const filter = ownerFilter(deviceId, userId);
+        const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
+          const filter = ownerFilter(deviceId, resolvedUserId);
           if (!filter) return false;
           const { error, count } = await supabase.from("feed_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
           if (error) throw error;
@@ -684,8 +676,9 @@ export const api = {
 
       verifyAbsent: async (id: string, deviceId?: string, userId?: string) => {
         if (!supabase) return false;
-        return executeWithBoundaryCheck(async () => {
-          const filter = ownerFilter(deviceId, userId);
+        const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
+          const filter = ownerFilter(deviceId, resolvedUserId);
           if (!filter) throw new Error("Cannot verify absence without owner scope");
           const { data, error } = await supabase.from("feed_sessions").select("id").eq("id", id).or(filter).maybeSingle();
           if (error) throw error;
@@ -698,7 +691,7 @@ export const api = {
       list: async (deviceId?: string, userId?: string): Promise<ApiBakeSession[]> => {
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         if (!supabase) return [];
-        return executeWithBoundaryCheck(async () => {
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
           const filter = ownerFilter(deviceId, resolvedUserId);
           if (!filter) return [];
           const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).order("saved_at", { ascending: false }).limit(200).returns<BakeSessionRow[]>();
@@ -710,7 +703,7 @@ export const api = {
       active: async (deviceId?: string, userId?: string) => {
         if (!supabase) return null;
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
-        return executeWithBoundaryCheck(async () => {
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
           const filter = ownerFilter(deviceId, resolvedUserId);
           if (!filter) return null;
           const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).eq("in_progress", true).order("started_at", { ascending: false }).limit(1).returns<BakeSessionRow[]>().maybeSingle();
@@ -721,23 +714,26 @@ export const api = {
 
       upsert: async (body: any): Promise<ApiBakeSession> => {
         const resolvedUserId = await resolveAndVerifyOwner(body.userId);
-        const storedOutcome = packBakeOutcome(body.outcome, body.estimatorState, body.bulkCheckInHistory);
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
+          const storedOutcome = packBakeOutcome(body.outcome, body.estimatorState, body.bulkCheckInHistory);
 
-        const { data, error } = await supabase!.from("bake_sessions").upsert({
-          id: body.id, device_id: body.deviceId, user_id: resolvedUserId, recipe_id: body.recipeId ?? null,
-          recipe_name: body.recipeName, yield_value: body.yield_value, saved_at: body.savedAt,
-          started_at: body.startedAt, completed_at: body.completedAt ?? null, status: body.status ?? null,
-          outcome: storedOutcome, notes: body.notes ?? null,
-          phases: flattenPhasesForLegacy(body.phases), in_progress: body.inProgress ?? true,
-        }).select().returns<BakeSessionRow[]>().single();
-        if (error) throw error;
-        return rowToApiBakeSession(data);
+          const { data, error } = await supabase!.from("bake_sessions").upsert({
+            id: body.id, device_id: body.deviceId, user_id: resolvedUserId, recipe_id: body.recipeId ?? null,
+            recipe_name: body.recipeName, yield_value: body.yield_value, saved_at: body.savedAt,
+            started_at: body.startedAt, completed_at: body.completedAt ?? null, status: body.status ?? null,
+            outcome: storedOutcome, notes: body.notes ?? null,
+            phases: flattenPhasesForLegacy(body.phases), in_progress: body.inProgress ?? true,
+          }).select().returns<BakeSessionRow[]>().single();
+          if (error) throw error;
+          return rowToApiBakeSession(data);
+        });
       },
 
       delete: async (id: string, deviceId?: string, userId?: string) => {
         if (!supabase) return false;
-        return executeWithBoundaryCheck(async () => {
-          const filter = ownerFilter(deviceId, userId);
+        const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
+          const filter = ownerFilter(deviceId, resolvedUserId);
           if (!filter) return false;
           const { error, count } = await supabase.from("bake_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
           if (error) throw error;
@@ -747,8 +743,9 @@ export const api = {
 
       verifyAbsent: async (id: string, deviceId?: string, userId?: string) => {
         if (!supabase) return false;
-        return executeWithBoundaryCheck(async () => {
-          const filter = ownerFilter(deviceId, userId);
+        const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
+        return executeWithBoundaryCheck(resolvedUserId, async () => {
+          const filter = ownerFilter(deviceId, resolvedUserId);
           if (!filter) throw new Error("Cannot verify absence without owner scope");
           const { data, error } = await supabase.from("bake_sessions").select("id").eq("id", id).or(filter).maybeSingle();
           if (error) throw error;
@@ -774,45 +771,53 @@ export const api = {
     if (new Set(ids).size !== ids.length) throw new Error("fetchRowsByIds: duplicate ids supplied.");
     if (!supabase) throw new Error("Supabase not configured");
 
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    const sessionUserId = sessionData?.session?.user?.id ?? null;
-    if (sessionUserId !== ownerId) {
-      throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match destination (${ownerId}).`);
-    }
+    return executeWithBoundaryCheck(ownerId, async () => {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const sessionUserId = sessionData?.session?.user?.id ?? null;
+      if (sessionUserId !== ownerId) {
+        throw new Error(`Owner/Session mismatch: active session user (${sessionUserId}) does not match destination (${ownerId}).`);
+      }
 
-    const BATCH = 100;
-    const rows: Array<Record<string, any>> = [];
-    for (let i = 0; i < ids.length; i += BATCH) {
-      const batch = ids.slice(i, i + BATCH);
-      const { data, error } = await supabase.from(table).select("*").in("id", batch);
-      if (error) throw error;
-      const got = (data ?? []) as Array<Record<string, any>>;
-      if (got.length > batch.length) throw new Error("fetchRowsByIds: more rows returned than ids requested.");
-      rows.push(...got);
-    }
-    return { requested: ids.length, rows };
+      const BATCH = 100;
+      const rows: Array<Record<string, any>> = [];
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const batch = ids.slice(i, i + BATCH);
+        const { data, error } = await supabase.from(table).select("*").in("id", batch);
+        if (error) throw error;
+        const got = (data ?? []) as Array<Record<string, any>>;
+        if (got.length > batch.length) throw new Error("fetchRowsByIds: more rows returned than ids requested.");
+        rows.push(...got);
+      }
+      return { requested: ids.length, rows };
+    });
   },
 
   analytics: {
     getStarter: async (deviceId: string) => {
       if (!supabase) return null;
-      const { data, error } = await supabase.from("starter_analytics").select("*").eq("device_id", deviceId).returns<StarterAnalyticsRow[]>().maybeSingle();
-      if (error) throw error;
-      return data ? rowToStarterAnalytics(data) : null;
+      const resolvedUserId = await getStoredToken();
+      return executeWithBoundaryCheck(resolvedUserId, async () => {
+        const { data, error } = await supabase.from("starter_analytics").select("*").eq("device_id", deviceId).returns<StarterAnalyticsRow[]>().maybeSingle();
+        if (error) throw error;
+        return data ? rowToStarterAnalytics(data) : null;
+      });
     },
 
     updateStarter: async (deviceId: string, newSession: SessionForAnalytics) => {
       if (!supabase || sessionPoints(newSession).length < 2) return;
-      const [analyticsResult, recentResult] = await Promise.all([
-        supabase.from("starter_analytics").select("*").eq("device_id", deviceId).returns<StarterAnalyticsRow[]>().maybeSingle(),
-        supabase.from("feed_sessions").select("id, saved_at, data").eq("device_id", deviceId).order("saved_at", { ascending: false }).limit(50).returns<FeedSessionAnalyticsRow[]>(),
-      ]);
-      const qualifying5 = (recentResult.data ?? []).map(rowToSessionForAnalytics).filter((s) => sessionPoints(s).length >= 2).slice(0, 5);
-      const current = analyticsResult.data ? rowToStarterAnalytics(analyticsResult.data) : { deviceId, updatedAt: Date.now(), vitalitySessions: 0, vitalityXMax: 120, vitalityPoints: [], allTimeSessions: 0, allTimeXMax: 120, allTimePoints: [] };
-      const vitality = computeVitalityAnalytics(qualifying5);
-      const allTime = updateAllTimeAnalytics(current, newSession);
-      await supabase.from("starter_analytics").upsert({ device_id: deviceId, updated_at: Date.now(), vitality_sessions: vitality.vitalitySessions, vitality_x_max: vitality.vitalityXMax, vitality_points: vitality.vitalityPoints, all_time_sessions: allTime.allTimeSessions, all_time_x_max: allTime.allTimeXMax, all_time_points: allTime.allTimePoints });
+      const resolvedUserId = await getStoredToken();
+      return executeWithBoundaryCheck(resolvedUserId, async () => {
+        const [analyticsResult, recentResult] = await Promise.all([
+          supabase.from("starter_analytics").select("*").eq("device_id", deviceId).returns<StarterAnalyticsRow[]>().maybeSingle(),
+          supabase.from("feed_sessions").select("id, saved_at, data").eq("device_id", deviceId).order("saved_at", { ascending: false }).limit(50).returns<FeedSessionAnalyticsRow[]>(),
+        ]);
+        const qualifying5 = (recentResult.data ?? []).map(rowToSessionForAnalytics).filter((s) => sessionPoints(s).length >= 2).slice(0, 5);
+        const current = analyticsResult.data ? rowToStarterAnalytics(analyticsResult.data) : { deviceId, updatedAt: Date.now(), vitalitySessions: 0, vitalityXMax: 120, vitalityPoints: [], allTimeSessions: 0, allTimeXMax: 120, allTimePoints: [] };
+        const vitality = computeVitalityAnalytics(qualifying5);
+        const allTime = updateAllTimeAnalytics(current, newSession);
+        await supabase.from("starter_analytics").upsert({ device_id: deviceId, updated_at: Date.now(), vitality_sessions: vitality.vitalitySessions, vitality_x_max: vitality.vitalityXMax, vitality_points: vitality.vitalityPoints, all_time_sessions: allTime.allTimeSessions, all_time_x_max: allTime.allTimeXMax, all_time_points: allTime.allTimePoints });
+      });
     },
   },
 };
