@@ -2,6 +2,7 @@
 import { supabase } from "./supabase";
 import { getStoredToken } from "./auth";
 import { NlaSupabaseBoundaryError } from "./nlaBoundary";
+import { getWorkspaceGeneration, StaleWorkspaceError } from "./storageUtils";
 import {
   computeVitalityAnalytics,
   updateAllTimeAnalytics,
@@ -249,7 +250,6 @@ export function packBakeOutcome(outcome: any, estimatorState: any, bulkCheckInHi
 
 export function unpackBakeOutcome(storedOutcome: any): { outcome: any; estimatorState?: any; bulkCheckInHistory?: any[] } {
   if (storedOutcome && typeof storedOutcome === 'object' && !Array.isArray(storedOutcome)) {
-    // 1. Explicitly marked new records
     if (storedOutcome._bread_lab_wrapped === true) {
       return {
         outcome: storedOutcome.outcome !== undefined ? storedOutcome.outcome : null,
@@ -257,14 +257,7 @@ export function unpackBakeOutcome(storedOutcome: any): { outcome: any; estimator
         bulkCheckInHistory: storedOutcome.bulkCheckInHistory,
       };
     }
-    // Trade-off note: Heuristic guessing on unmarked objects is ambiguous because ordinary user outcome
-    // objects can legitimately contain properties named `estimatorState` or `bulkCheckInHistory`.
-    // To prevent silent data loss and misinterpretation of user data, heuristic fallback is intentionally
-    // omitted. Unmarked objects are preserved as ordinary outcomes, relying on the explicit `_bread_lab_wrapped: true`
-    // marker for wrapped records.
   }
-
-  // 2. Fallback: Ordinary outcome objects, strings, nulls, etc., are preserved as ordinary outcomes.
   return {
     outcome: storedOutcome !== undefined ? storedOutcome : null,
   };
@@ -325,8 +318,6 @@ function ownerFilter(
   userId: string | undefined
 ): string | undefined {
   if (userId) {
-    // Authenticated reads are scoped strictly to the authenticated user.
-    // Device ID fallback is disabled for authenticated users to prevent cross-account contamination on shared devices.
     return `user_id.eq.${userId}`;
   }
   if (deviceId) {
@@ -365,6 +356,34 @@ async function resolveAndVerifyOwner(bodyUserId?: string | null): Promise<string
   return sessionUserId ?? targetUserId ?? null;
 }
 
+async function verifySessionAgreement(): Promise<void> {
+  if (!supabase || typeof supabase.auth?.getSession !== "function") return;
+  let session: any = null;
+  try {
+    const res = await supabase.auth.getSession();
+    session = res?.data?.session ?? null;
+  } catch {
+    return;
+  }
+  const sessionUserId = session?.user?.id ?? null;
+  const storedToken = await getStoredToken().catch(() => null);
+  if (sessionUserId && storedToken && sessionUserId !== storedToken && (supabase as any)._strictSessionCheck) {
+    throw new Error("Identity consistency conflict: stored local user ID does not match active Supabase session.");
+  }
+}
+
+async function executeWithBoundaryCheck<T>(operation: () => Promise<T>): Promise<T> {
+  const genBefore = getWorkspaceGeneration();
+  await verifySessionAgreement();
+  const result = await operation();
+  const genAfter = getWorkspaceGeneration();
+  if (genBefore !== genAfter) {
+    throw new StaleWorkspaceError("Workspace generation changed while remote operation was in-flight.");
+  }
+  await verifySessionAgreement();
+  return result;
+}
+
 export const api = {
   auth: {
     getSession: () => supabase?.auth.getSession(),
@@ -373,17 +392,15 @@ export const api = {
       const fn = body.firstName.trim();
       const sn = body.starterName.trim();
 
-      // Modern Email Derivation (Lower + No Spaces)
       const sanitizedFn = fn.toLowerCase().replace(/\s/g, "");
       const sanitizedSn = sn.toLowerCase().replace(/\s/g, "");
       const email = `${sanitizedFn}.${sanitizedSn}@breadlab.user`;
 
       const derivePassword = (source: string) => {
-        const s = source.replace(/^\s+|\s+$/g, ""); // trim outer only
+        const s = source.replace(/^\s+|\s+$/g, "");
         return s.length >= 6 ? s : `${s}breadlab`.slice(0, 10);
       };
 
-      // Strategies: [Password Source, Description]
       const strategies = [
         [sanitizedSn, "Modern (lowercase, no spaces)"],
         [sn.toLowerCase(), "Legacy A (lowercase, with spaces)"],
@@ -395,8 +412,6 @@ export const api = {
 
       for (const [source, desc] of strategies) {
         const password = derivePassword(source);
-        console.log(`[Auth Debug] Trying strategy: ${desc}...`);
-
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
         if (error && error.message.includes("Email not confirmed")) {
@@ -404,26 +419,21 @@ export const api = {
         }
 
         if (!error && data?.user) {
-          console.log(`[Auth Debug] Success with strategy: ${desc}`);
           authData = data;
           break;
         }
 
         lastError = error;
-        console.log(`[Auth Debug] Strategy ${desc} failed:`, error?.message);
       }
 
-      // If all sign-ins failed, check if explicit sign up was requested by the user
       if (!authData?.user) {
         if (body.isSignUp) {
-          console.log("[Auth Debug] Sign-in failed and explicit isSignUp flag is set. Attempting Sign-up as new user...");
           const password = derivePassword(sanitizedSn);
           const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email, password, options: { data: { first_name: fn, starter_name: sn } },
           });
 
           if (signUpError) {
-            console.log("[Auth Debug] Sign-up failed:", signUpError.message);
             if (signUpError.message.includes("User already registered")) {
               throw new Error("Account exists but recovery failed. Please check name spellings.");
             }
@@ -432,7 +442,6 @@ export const api = {
           authData = signUpData;
         } else {
           const failureMsg = lastError?.message || "Invalid login credentials";
-          console.log(`[Auth Debug] Sign-in failed across all strategies (${failureMsg}). Implicit sign-up disabled.`);
           throw new Error(`Account sign-in failed: ${failureMsg}. Check your first name and starter name, or select 'New Account' to register.`);
         }
       }
@@ -451,7 +460,6 @@ export const api = {
         .single();
 
       if (profileError || !userRow) {
-        console.error("[Auth Debug] Profile loading failed:", profileError?.message);
         throw new Error("Profile loading failed: Account authenticated, but profile record could not be loaded.");
       }
 
@@ -470,8 +478,6 @@ export const api = {
     },
 
     linkDevice: async (_deviceId: string, _userId: string): Promise<{ linked: boolean }> => {
-      // Secure remediation: Unsafe anonymous device claiming removed.
-      // Local records are migrated explicitly via migrateLocalDataToAccount.
       return { linked: false };
     },
     claimOrphans: async () => ({ claimed: { feed: 0, bakes: 0, recipes: 0 } }),
@@ -487,11 +493,13 @@ export const api = {
     list: async (deviceId?: string, userId?: string): Promise<ApiRecipe[]> => {
       const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
       if (!supabase) return [];
-      const filter = ownerFilter(deviceId, resolvedUserId);
-      if (!filter) return [];
-      const { data, error } = await supabase.from("recipes").select("*").or(filter).order("created_at", { ascending: false }).returns<RecipeRow[]>();
-      if (error) throw error;
-      return (data ?? []).map(rowToApiRecipe);
+      return executeWithBoundaryCheck(async () => {
+        const filter = ownerFilter(deviceId, resolvedUserId);
+        if (!filter) return [];
+        const { data, error } = await supabase.from("recipes").select("*").or(filter).order("created_at", { ascending: false }).returns<RecipeRow[]>();
+        if (error) throw error;
+        return (data ?? []).map(rowToApiRecipe);
+      });
     },
 
     upsert: async (body: any): Promise<ApiRecipe> => {
@@ -545,10 +553,8 @@ export const api = {
       }
 
       const targetUserId = source.user_id ?? null;
-
       const newId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
       const now = new Date().toISOString();
-
       const parentRecipeId = makeIndependent ? null : id;
       const versionLabel = makeIndependent ? "Master" : "Copy";
 
@@ -593,20 +599,24 @@ export const api = {
 
     delete: async (id: string, deviceId?: string, userId?: string): Promise<boolean> => {
       if (!supabase) return false;
-      const filter = ownerFilter(deviceId, userId);
-      if (!filter) return false;
-      const { error, count } = await supabase.from("recipes").delete({ count: 'exact' }).eq("id", id).or(filter);
-      if (error) throw error;
-      return (count ?? 0) > 0;
+      return executeWithBoundaryCheck(async () => {
+        const filter = ownerFilter(deviceId, userId);
+        if (!filter) return false;
+        const { error, count } = await supabase.from("recipes").delete({ count: 'exact' }).eq("id", id).or(filter);
+        if (error) throw error;
+        return (count ?? 0) > 0;
+      });
     },
 
     verifyAbsent: async (id: string, deviceId?: string, userId?: string): Promise<boolean> => {
       if (!supabase) return false;
-      const filter = ownerFilter(deviceId, userId);
-      if (!filter) throw new Error("Cannot verify absence without owner scope");
-      const { data, error } = await supabase.from("recipes").select("id").eq("id", id).or(filter).maybeSingle();
-      if (error) throw error;
-      return data === null;
+      return executeWithBoundaryCheck(async () => {
+        const filter = ownerFilter(deviceId, userId);
+        if (!filter) throw new Error("Cannot verify absence without owner scope");
+        const { data, error } = await supabase.from("recipes").select("id").eq("id", id).or(filter).maybeSingle();
+        if (error) throw error;
+        return data === null;
+      });
     },
   },
 
@@ -614,20 +624,19 @@ export const api = {
     feed: {
       list: async (deviceId?: string, userId?: string): Promise<ApiFeedSession[]> => {
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
-        // NLA (no account) must not communicate with Supabase: refuse before any request. Callers treat this
-        // like being offline and keep showing their local data (it is never an empty remote result).
         if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.list");
         if (!supabase) return [];
-        const filter = ownerFilter(deviceId, resolvedUserId);
-        if (!filter) return [];
-        const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).order("saved_at", { ascending: false }).eq("in_progress", false).limit(500).returns<FeedSessionRow[]>();
-        if (error) throw error;
-        return (data ?? []).map(rowToApiFeedSession);
+        return executeWithBoundaryCheck(async () => {
+          const filter = ownerFilter(deviceId, resolvedUserId);
+          if (!filter) return [];
+          const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).order("saved_at", { ascending: false }).eq("in_progress", false).limit(500).returns<FeedSessionRow[]>();
+          if (error) throw error;
+          return (data ?? []).map(rowToApiFeedSession);
+        });
       },
 
       upsert: async (body: any): Promise<ApiFeedSession> => {
         const resolvedUserId = await resolveAndVerifyOwner(body.userId);
-        // No account => NLA: refuse before any write. (Authenticated behaviour is unchanged.)
         if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.upsert");
         const { data, error } = await supabase!.from("feed_sessions").upsert({
           id: body.id, device_id: body.deviceId, user_id: resolvedUserId, saved_at: body.savedAt,
@@ -642,38 +651,46 @@ export const api = {
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         if (!resolvedUserId) throw new NlaSupabaseBoundaryError("history.feed.active");
         if (!supabase) return null;
-        const filter = ownerFilter(deviceId, resolvedUserId);
-        if (!filter) return null;
-        const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).eq("in_progress", true).order("updated_at", { ascending: false }).limit(1).returns<FeedSessionRow[]>().maybeSingle();
-        if (error) throw error;
-        return data ? rowToApiFeedSession(data) : null;
+        return executeWithBoundaryCheck(async () => {
+          const filter = ownerFilter(deviceId, resolvedUserId);
+          if (!filter) return null;
+          const { data, error } = await supabase.from("feed_sessions").select("*").or(filter).eq("in_progress", true).order("updated_at", { ascending: false }).limit(1).returns<FeedSessionRow[]>().maybeSingle();
+          if (error) throw error;
+          return data ? rowToApiFeedSession(data) : null;
+        });
       },
 
       get: async (id: string) => {
         const token = await getStoredToken();
         if (!token) throw new NlaSupabaseBoundaryError("history.feed.get");
         if (!supabase) return null;
-        const { data, error } = await supabase.from("feed_sessions").select("*").eq("id", id).returns<FeedSessionRow[]>().maybeSingle();
-        if (error) throw error;
-        return data ? rowToApiFeedSession(data) : null;
+        return executeWithBoundaryCheck(async () => {
+          const { data, error } = await supabase.from("feed_sessions").select("*").eq("id", id).returns<FeedSessionRow[]>().maybeSingle();
+          if (error) throw error;
+          return data ? rowToApiFeedSession(data) : null;
+        });
       },
 
       delete: async (id: string, deviceId?: string, userId?: string) => {
         if (!supabase) return false;
-        const filter = ownerFilter(deviceId, userId);
-        if (!filter) return false;
-        const { error, count } = await supabase.from("feed_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
-        if (error) throw error;
-        return (count ?? 0) > 0;
+        return executeWithBoundaryCheck(async () => {
+          const filter = ownerFilter(deviceId, userId);
+          if (!filter) return false;
+          const { error, count } = await supabase.from("feed_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
+          if (error) throw error;
+          return (count ?? 0) > 0;
+        });
       },
 
       verifyAbsent: async (id: string, deviceId?: string, userId?: string) => {
         if (!supabase) return false;
-        const filter = ownerFilter(deviceId, userId);
-        if (!filter) throw new Error("Cannot verify absence without owner scope");
-        const { data, error } = await supabase.from("feed_sessions").select("id").eq("id", id).or(filter).maybeSingle();
-        if (error) throw error;
-        return data === null;
+        return executeWithBoundaryCheck(async () => {
+          const filter = ownerFilter(deviceId, userId);
+          if (!filter) throw new Error("Cannot verify absence without owner scope");
+          const { data, error } = await supabase.from("feed_sessions").select("id").eq("id", id).or(filter).maybeSingle();
+          if (error) throw error;
+          return data === null;
+        });
       },
     },
 
@@ -681,26 +698,29 @@ export const api = {
       list: async (deviceId?: string, userId?: string): Promise<ApiBakeSession[]> => {
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
         if (!supabase) return [];
-        const filter = ownerFilter(deviceId, resolvedUserId);
-        if (!filter) return [];
-        const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).order("saved_at", { ascending: false }).limit(200).returns<BakeSessionRow[]>();
-        if (error) throw error;
-        return (data ?? []).map(rowToApiBakeSession);
+        return executeWithBoundaryCheck(async () => {
+          const filter = ownerFilter(deviceId, resolvedUserId);
+          if (!filter) return [];
+          const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).order("saved_at", { ascending: false }).limit(200).returns<BakeSessionRow[]>();
+          if (error) throw error;
+          return (data ?? []).map(rowToApiBakeSession);
+        });
       },
 
       active: async (deviceId?: string, userId?: string) => {
         if (!supabase) return null;
         const resolvedUserId = userId !== undefined ? userId : await getStoredToken();
-        const filter = ownerFilter(deviceId, resolvedUserId);
-        if (!filter) return null;
-        const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).eq("in_progress", true).order("started_at", { ascending: false }).limit(1).returns<BakeSessionRow[]>().maybeSingle();
-        if (error) throw error;
-        return data ? rowToApiBakeSession(data) : null;
+        return executeWithBoundaryCheck(async () => {
+          const filter = ownerFilter(deviceId, resolvedUserId);
+          if (!filter) return null;
+          const { data, error } = await supabase.from("bake_sessions").select("*").or(filter).eq("in_progress", true).order("started_at", { ascending: false }).limit(1).returns<BakeSessionRow[]>().maybeSingle();
+          if (error) throw error;
+          return data ? rowToApiBakeSession(data) : null;
+        });
       },
 
       upsert: async (body: any): Promise<ApiBakeSession> => {
         const resolvedUserId = await resolveAndVerifyOwner(body.userId);
-
         const storedOutcome = packBakeOutcome(body.outcome, body.estimatorState, body.bulkCheckInHistory);
 
         const { data, error } = await supabase!.from("bake_sessions").upsert({
@@ -716,34 +736,28 @@ export const api = {
 
       delete: async (id: string, deviceId?: string, userId?: string) => {
         if (!supabase) return false;
-        const filter = ownerFilter(deviceId, userId);
-        if (!filter) return false;
-        const { error, count } = await supabase.from("bake_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
-        if (error) throw error;
-        return (count ?? 0) > 0;
+        return executeWithBoundaryCheck(async () => {
+          const filter = ownerFilter(deviceId, userId);
+          if (!filter) return false;
+          const { error, count } = await supabase.from("bake_sessions").delete({ count: 'exact' }).eq("id", id).or(filter);
+          if (error) throw error;
+          return (count ?? 0) > 0;
+        });
       },
 
       verifyAbsent: async (id: string, deviceId?: string, userId?: string) => {
         if (!supabase) return false;
-        const filter = ownerFilter(deviceId, userId);
-        if (!filter) throw new Error("Cannot verify absence without owner scope");
-        const { data, error } = await supabase.from("bake_sessions").select("id").eq("id", id).or(filter).maybeSingle();
-        if (error) throw error;
-        return data === null;
+        return executeWithBoundaryCheck(async () => {
+          const filter = ownerFilter(deviceId, userId);
+          if (!filter) throw new Error("Cannot verify absence without owner scope");
+          const { data, error } = await supabase.from("bake_sessions").select("id").eq("id", id).or(filter).maybeSingle();
+          if (error) throw error;
+          return data === null;
+        });
       },
     },
   },
 
-  /**
-   * fetchRowsByIds — READ-ONLY read-back used to verify an Import. Returns the raw persisted rows for exactly
-   * the supplied ids so the caller can reconcile ids, ownership and critical fields.
-   *
-   * - Requires an authenticated destination account whose live session matches `ownerId`.
-   * - Queries only the explicitly supplied ids, in batches, and completes every batch (a failed batch throws;
-   *   it never returns a partial result).
-   * - Does not filter by owner: foreign-owned or duplicate rows are RETURNED so the verifier can fail on them.
-   * - Changes no existing endpoint.
-   */
   fetchRowsByIds: async (
     kind: "recipes" | "bakes" | "feed",
     ids: string[],

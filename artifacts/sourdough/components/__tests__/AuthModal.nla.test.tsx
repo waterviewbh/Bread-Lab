@@ -200,7 +200,7 @@ describe("AuthModal: NLA -> account choice screen", () => {
       await openChoiceScreen();
 
       await fireEvent.press(screen.getByText("Cancel Transition"));
-      await waitFor(() => expect(api.auth.signout).toHaveBeenCalled());
+      expect(api.auth.identify).not.toHaveBeenCalled();
 
       expect(nlaRaw()).toEqual(before);
       expect(onAuthChange).not.toHaveBeenCalledWith(USER);

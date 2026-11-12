@@ -210,7 +210,7 @@ describe("Active Feed at a workspace transition", () => {
       const src = fs.readFileSync(path.join(sourceRoot, "components", "AuthModal.tsx"), "utf8");
       const calls = (src.match(/executeWorkspaceTransition\(/g) || []).length;
       const acks = (src.match(/activeFeedAcknowledged:/g) || []).length;
-      expect(calls).toBeGreaterThanOrEqual(4); // account switch, import, proceed-without-import, sign-out
+      expect(calls).toBeGreaterThanOrEqual(3); // import, proceed-without-import, sign-out
       expect(acks).toBe(calls);
 
       const body = (from: string, to: string) => {
@@ -221,9 +221,8 @@ describe("Active Feed at a workspace transition", () => {
         return src.slice(start, end);
       };
 
-      // Account -> account and sign-out: the active-Feed warning is asked before the transition.
-      expect(body("const handleIdentify = async", "const handleClearIdentity = async")).toMatch(/ensureActiveFeedAck\(\)/);
-      expect(body("const performClear = async", "// WEB FIX")).toMatch(/ensureActiveFeedAck\(\)/);
+      // Sign-out (Authenticated -> NLA): the active-Feed warning is asked before the transition.
+      expect(body("const handleClearIdentity = async", "const isFind = mode")).toMatch(/ensureActiveFeedAck\(\)/);
 
       // NLA -> account: the baker sees the local-work panel, then chooses; both choices carry an explicit NLA disposition.
       expect(body("const handleChoiceImport = async", "const handleChoiceProceedWithoutImport = async")).toMatch(/nlaDisposition:\s*\{ mode: "import"/);

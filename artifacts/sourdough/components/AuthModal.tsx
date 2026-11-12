@@ -20,7 +20,7 @@ import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
 import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
-import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError } from "@/lib/transitionCoordinator";
+import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError, setCoordinatorState } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount, clearMigrationPending } from "@/lib/migrate";
 import { confirmActiveFeedTransition, NLA_LOCAL_WORK_TITLE, NLA_LOCAL_WORK_PARAGRAPHS } from "@/lib/activeWork";
@@ -100,9 +100,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   // What is on this device in the offline (NLA) workspace, shown on the choice screen.
   const [nlaInventory, setNlaInventory] = useState<NlaInventory | null>(null);
   const [choiceMessage, setChoiceMessage] = useState<string | null>(null);
-  // Set when a failed choice could not confirm that BOTH the account session and the local sign-in are closed. The
-  // old choices were made about a workspace/session that is no longer certain, so they are void: only Cancel (which
-  // retries the cleanup) remains. A ref as well as state, so a stale button handler cannot slip past the check.
   const [recoveryIncomplete, setRecoveryIncomplete] = useState(false);
   const recoveryIncompleteRef = useRef(false);
   const markRecoveryIncomplete = (incomplete: boolean) => {
@@ -110,12 +107,13 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     setRecoveryIncomplete(incomplete);
   };
   const [transitionPendingData, setTransitionPendingData] = useState<{
-    token: string;
-    user: AuthUser;
-  } | null>(initialTransitionData ?? null);
+    firstName: string;
+    starterName: string;
+    isSignUp: boolean;
+    token?: string;
+    user?: AuthUser;
+  } | null>(initialTransitionData ? { firstName: initialTransitionData.user.firstName, starterName: initialTransitionData.user.starterName, isSignUp: false, token: initialTransitionData.token, user: initialTransitionData.user } : null);
 
-  // Active Feed work is device-local and is discarded when the workspace changes. The baker is told
-  // once per transition attempt, and may always continue.
   const activeFeedAckRef = useRef(false);
   const ensureActiveFeedAck = async (): Promise<boolean> => {
     if (activeFeedAckRef.current) return true;
@@ -126,7 +124,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   useEffect(() => {
     if (!visible) activeFeedAckRef.current = false;
   }, [visible]);
-  // A choice screen opened with preset data (no inventory yet) still shows what is on the device.
+
   useEffect(() => {
     if (transitionPendingData && !nlaInventory) {
       inventoryNlaWorkspace().then(setNlaInventory).catch(() => {});
@@ -149,7 +147,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     try {
       setNlaInventory(await inventoryNlaWorkspace());
     } catch {
-      /* the next attempt re-reads it */
+      /* retry */
     }
   };
 
@@ -157,10 +155,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     ? `${currentUser.firstName}'s ${currentUser.starterName}`
     : "";
 
-  // Shared failure path for the two choices: fail closed (the new account's session is signed out), and say so plainly.
-  // Only when BOTH the remote session and the local sign-in are confirmed closed is the baker told they are back in the
-  // offline workspace and returned to the start. Otherwise the destination is uncertain: the old choices are void, the
-  // counts are refreshed, and only the cleanup retry (Cancel) is offered. Returns true when fully closed.
   const failChoice = async (title: string, err: unknown): Promise<boolean> => {
     const recovery = await executeFailClosedRecovery(onAuthChange);
     const closed = recovery.remoteSignout && recovery.localClear;
@@ -199,9 +193,19 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     setLoading(true);
     setChoiceMessage(null);
     try {
-      const { token, user } = transitionPendingData;
+      let token = transitionPendingData.token;
+      let user = transitionPendingData.user;
+      if (!token || !user) {
+        const result = await api.auth.identify({
+          firstName: transitionPendingData.firstName,
+          starterName: transitionPendingData.starterName,
+          isSignUp: transitionPendingData.isSignUp,
+        });
+        token = result.token;
+        user = result.user;
+      }
+
       startMigration();
-      // upload -> read back -> exact id/ownership/field reconciliation -> drafts re-homed -> verified purge plan
       const outcome = await importNlaWorkspace(token);
       finishMigration(reportToMigrationResult(outcome.report));
       setNlaInventory(outcome.inventory);
@@ -209,9 +213,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         throw new ImportNotVerifiedError(describeImportReport(outcome.report));
       }
 
-      // Only now: purge exactly the verified records (and discard active work) and switch accounts.
       await executeWorkspaceTransition(null, token, token, user, {
-        activeFeedAcknowledged: true, // the baker saw the local-work panel before choosing
+        activeFeedAcknowledged: true,
         nlaDisposition: { mode: "import", plan: outcome.purgePlan, snapshotRaw: outcome.inventory.raw },
       });
 
@@ -222,8 +225,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       onClose();
       noteLeftovers(describeImportReport(report), report.cannotImport.length + report.unresolved.length + report.draftsRenamed.length > 0);
     } catch (err: any) {
-      // (A changed workspace is refused before the purge; records already confirmed in the account stay there and a
-      // retry is idempotent. It fails closed like every other failure.)
       await failChoice("Import didn't complete", err);
     } finally {
       setLoading(false);
@@ -235,9 +236,18 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     setLoading(true);
     setChoiceMessage(null);
     try {
-      const { token, user } = transitionPendingData;
-      // The plan is built from the inventory the baker was shown. If the workspace changed since, the transition
-      // refuses and the baker reviews the updated counts, so nothing unseen is ever removed.
+      let token = transitionPendingData.token;
+      let user = transitionPendingData.user;
+      if (!token || !user) {
+        const result = await api.auth.identify({
+          firstName: transitionPendingData.firstName,
+          starterName: transitionPendingData.starterName,
+          isSignUp: transitionPendingData.isSignUp,
+        });
+        token = result.token;
+        user = result.user;
+      }
+
       const inventory = nlaInventory;
       if (!inventory) {
         await refreshInventory();
@@ -249,7 +259,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       }
       const plan = buildPurgePlan(inventory, "discard");
       await executeWorkspaceTransition(null, token, token, user, {
-        activeFeedAcknowledged: true, // the baker saw the local-work panel before choosing
+        activeFeedAcknowledged: true,
         nlaDisposition: { mode: "discard", plan, snapshotRaw: inventory.raw },
       });
 
@@ -265,25 +275,14 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       setLoading(false);
     }
   };
+
   const handleChoiceCancel = async () => {
     setLoading(true);
     try {
-      const recovery = await executeFailClosedRecovery(onAuthChange);
-      if (!recovery.remoteSignout || !recovery.localClear) {
-        const details = [
-          !recovery.remoteSignout ? "Remote session termination unconfirmed." : "",
-          !recovery.localClear ? "Local credential removal failed." : ""
-        ].filter(Boolean).join(" ");
-        const warningMsg = `Cancellation cleanup incomplete: ${details}. Please retry.`;
-        if (Platform.OS === 'web') {
-          window.alert(warningMsg);
-        } else {
-          Alert.alert("Cancellation Warning", warningMsg);
-        }
-        return;
-      }
+      // Cancel leaves baker in NLA and performs no destination authentication.
       setTransitionPendingData(null);
       reset();
+      onClose();
     } finally {
       setLoading(false);
     }
@@ -296,7 +295,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     }
     setLoading(true);
     try {
-      // 1. Verify active Supabase session (Account A) — fail closed on lookup errors
       let activeSession: any = null;
       try {
         const sessionResponse = await api.auth.getSession();
@@ -311,9 +309,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         throw new Error("Identity consistency conflict: stored local user ID does not match active Supabase session.");
       }
 
-      // A remote session with no local sign-in behind it is not "an account we are in": an earlier sign-out may have
-      // failed before the app closed, and the Supabase client keeps its own persisted session. Close it and confirm
-      // that before deciding anything; if that cannot be confirmed, stop (throws) rather than guess.
       if (sessionUserId && !storedToken) {
         await closeOrphanRemoteSession();
         sessionUserId = null;
@@ -321,108 +316,29 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
       const currentToken = sessionUserId ?? storedToken;
 
-      // The outgoing identity is the VALIDATED stored profile, never the `currentUser` prop. This form is only rendered
-      // while the prop is null (a hydrated prop shows the account card instead), and the prop is hydrated asynchronously
-      // with errors swallowed, so a signed-in baker can reach this handler with it still null. Reading the prop here
-      // would then treat a signed-in baker as having no outgoing account. (getStoredToken above already threw if the
-      // stored identity is partial, mismatched, malformed or unreadable.) All of this precedes authenticating the
-      // destination account.
-      const storedUser = storedToken ? await getStoredUser() : null;
-      if (storedToken && (!storedUser || storedUser.id !== storedToken)) {
-        throw new Error("Identity consistency conflict: the stored sign-in could not be confirmed, so nothing was changed.");
-      }
-      const savedAccountA = currentToken && storedUser ? { token: currentToken, user: storedUser } : null;
-
       if (currentToken) {
-        // Account -> account: warn about active Feed work. (NLA -> account uses the panel on the choice screen.)
-        if (!(await ensureActiveFeedAck())) return;
-      } else {
-        // NLA: its pending deletions are retired locally (no network call), and a stale "import in progress"
-        // marker from an interrupted attempt must not block the choice screen.
-        await processPendingDeletions().catch(() => {});
-        await clearMigrationPending().catch(() => {});
+        throw new Error("Already signed in. Please sign out (return to offline workspace) before signing in to another account.");
       }
 
-      if (currentToken) {
-        // 2. Pre-sync local pending records to Account A before switching
-        startMigration();
-        const preMigrationResult = await migrateLocalDataToAccount(currentToken);
-        finishMigration(preMigrationResult);
+      // NLA -> Authenticated: Inventory NLA data and present choice screen BEFORE destination authentication.
+      await processPendingDeletions().catch(() => {});
+      await clearMigrationPending().catch(() => {});
 
-        const totalFailed = preMigrationResult.feed.failed + preMigrationResult.bakes.failed + preMigrationResult.recipes.failed;
-        const totalUnresolved = preMigrationResult.feed.unresolved + preMigrationResult.bakes.unresolved + preMigrationResult.recipes.unresolved;
-        if (totalFailed > 0 || totalUnresolved > 0) {
-          throw new Error(`Account transition paused: ${totalUnresolved > 0 ? `${totalUnresolved} unresolved local record(s) detected.` : `${totalFailed} sync failure(s).`} Local workspace retained with pre-sync state.`);
-        }
-      }
-
-      // 3. Non-mutating pre-validation pass before authenticating B
-      await validateOperationalData(currentToken, { discardActiveFeed: true, discardActiveBake: !currentToken });
-
-      // 4. Authenticate Account B FIRST before clearing operational data
-      const isSignUp = mode === "name";
-      const result = await api.auth.identify({
+      const inventory = await inventoryNlaWorkspace();
+      setNlaInventory(inventory);
+      setChoiceMessage(null);
+      setTransitionPendingData({
         firstName: firstName.trim(),
         starterName: starterName.trim(),
-        isSignUp,
+        isSignUp: mode === "name",
       });
-
-      // 5. Switching from Account A -> Account B
-      if (currentToken && savedAccountA) {
-        try {
-          await executeWorkspaceTransition(currentToken, result.token, result.token, result.user, {
-            activeFeedAcknowledged: activeFeedAckRef.current,
-          });
-        } catch (switchErr) {
-          if (switchErr instanceof ActiveFeedNotAcknowledgedError) throw switchErr; // nothing changed
-          console.error("Account switch failed", switchErr);
-          const recovery = await executeFailClosedRecovery(onAuthChange);
-          const statusDetails = [
-            recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
-            recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
-          ].join(" ");
-          throw new Error(`Account switch failed: ${switchErr instanceof Error ? switchErr.message : String(switchErr)}. ${statusDetails} Session reset for safety.`);
-        }
-        onAuthChange(result.user);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        reset();
-        onClose();
-        return;
-      }
-
-      // 5. Switching from the offline (NLA) workspace -> an account: ALWAYS offer the three choices, even when
-      //    nothing was detected, so the baker is never surprised and detection can never silently miss data.
-      if (!currentToken) {
-        const inventory = await inventoryNlaWorkspace();
-        setNlaInventory(inventory);
-        setChoiceMessage(null);
-        setTransitionPendingData({ token: result.token, user: result.user });
-        return;
-      }
-      await getDeviceId()
-        .then(async (deviceId) => {
-          let linked = false;
-          for (let attempt = 0; attempt < 3 && !linked; attempt++) {
-            try {
-              await api.auth.linkDevice(deviceId, result.token);
-              linked = true;
-            } catch {
-              if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
-            }
-          }
-        })
-        .catch(() => {});
     } catch (error) {
-      console.error("Auth Identification/Switch Technical Diagnostics:", error);
+      console.error("Auth Identification Technical Diagnostics:", error);
       const errMessage = error instanceof Error ? error.message : String(error);
-
-      let userFriendlyTitle = "Switch Failed";
-      let userFriendlyMessage = errMessage;
-
       if (Platform.OS === 'web') {
-        window.alert(`${userFriendlyTitle}: ${userFriendlyMessage}`);
+        window.alert(`Identification Failed: ${errMessage}`);
       } else {
-        Alert.alert(userFriendlyTitle, userFriendlyMessage);
+        Alert.alert("Identification Failed", errMessage);
       }
     } finally {
       setLoading(false);
@@ -441,42 +357,48 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
           throw new Error(`Supabase session lookup failed: ${err instanceof Error ? err.message : String(err)}`);
         }
         const sessionUserId = activeSession?.user?.id ?? null;
-        const currentToken = sessionUserId ?? await getStoredToken();
+        const storedToken = await getStoredToken();
+        const currentToken = sessionUserId ?? storedToken;
+        if (!currentToken) {
+          throw new Error("No active account found to sign out from.");
+        }
+        const storedUser = await getStoredUser();
+        if (!storedUser || storedUser.id !== currentToken) {
+          throw new Error("Identity consistency conflict: stored sign-in could not be confirmed.");
+        }
 
-        // Enforce transition cleanliness gate before sign-out
+        // 1. Establish and validate outgoing identity, complete required outgoing synchronization and pending-work checks
         await validateOperationalData(currentToken, { discardActiveFeed: true });
-
-        if (currentToken) {
-          const migrationResult = await migrateLocalDataToAccount(currentToken);
-          const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
-          const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
-          if (totalFailed > 0 || totalUnresolved > 0) {
-            throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
-          }
+        const migrationResult = await migrateLocalDataToAccount(currentToken);
+        const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
+        const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
+        if (totalFailed > 0 || totalUnresolved > 0) {
+          throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
         }
 
-        // Remote sign-out first: if it fails, nothing local has changed and the baker is still
-        // signed in with their data intact. The local part below is atomic.
-        const signoutRes = await api.auth.signout();
-        if (!signoutRes.signedOut) {
-          throw new Error("Failed to sign out from cloud session.");
+        // 2. Retire outgoing local workspace through transition machinery (local retirement and credential clearance)
+        await executeWorkspaceTransition(currentToken, null, null, null, {
+          activeFeedAcknowledged: activeFeedAckRef.current,
+        });
+
+        // 3. Verify local credentials are cleared and local workspace is NLA
+        const postClearToken = await getStoredToken();
+        if (postClearToken) {
+          throw new Error("Local credential clearance verification failed.");
         }
+
+        // 4. Sign out of remote Supabase session
         try {
-          if (currentToken) {
-            await executeWorkspaceTransition(currentToken, null, null, null, {
-              activeFeedAcknowledged: activeFeedAckRef.current,
-            });
-          } else {
-            await clearCredentialsExclusive();
+          const signoutRes = await api.auth.signout();
+          if (!signoutRes.signedOut) {
+            throw new Error("Failed to sign out from cloud session.");
           }
-        } catch (localErr) {
-          const recovery = await executeFailClosedRecovery(onAuthChange);
-          const statusDetails = [
-            recovery.remoteSignout ? "Remote session terminated." : "Remote session termination unconfirmed.",
-            recovery.localClear ? "Local credentials cleared." : "Local credentials removal failed/unverified."
-          ].join(" ");
-          throw new Error(`Local sign-out step failed: ${localErr instanceof Error ? localErr.message : String(localErr)}. ${statusDetails}`);
+        } catch (remoteErr) {
+          // If remote sign-out fails after local retirement: remain locally NLA, do not auto-restore, enter recoverable state
+          setCoordinatorState("RECOVERY_REQUIRED");
+          throw new Error(`Local retirement completed successfully, but remote sign-out failed: ${remoteErr instanceof Error ? remoteErr.message : String(remoteErr)}. You remain in the offline workspace; please retry remote sign-out.`);
         }
+
         onAuthChange(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onClose();
@@ -490,7 +412,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       }
     };
 
-    // WEB FIX: Use window.confirm if on web, otherwise use native Alert
     if (Platform.OS === "web") {
       if (window.confirm("Sign out? Your operational records are preserved locally and synced to the cloud.")) {
         await performClear();
@@ -498,7 +419,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       return;
     }
 
-    // Original Mobile Alert logic
     Alert.alert(
       "Sign out?",
       "Your operational records are preserved locally and synced to the cloud.",
@@ -574,7 +494,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
               ) : null}
               {recoveryIncomplete ? null : (
               <Text style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 12 }]}>
-                Import & Proceed adds these records to {transitionPendingData.user.firstName}&apos;s account, confirms each one, and then clears them from this device. Proceed Without Importing continues without them and clears them from this device. Nothing in your account is deleted either way.
+                Import & Proceed adds these records to your account, confirms each one, and then clears them from this device. Proceed Without Importing continues without them and clears them from this device. Nothing in your account is deleted either way.
               </Text>
               )}
               {choiceMessage ? (
