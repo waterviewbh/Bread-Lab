@@ -11,6 +11,7 @@ import {
   candidatesKeyForOwner,
   CandidateStorageError,
   LegacyCandidateVerificationError,
+  StagedShareExtractionError,
   LEGACY_GLOBAL_CANDIDATES_KEY,
   ANONYMOUS_CANDIDATES_KEY,
 } from "../candidateStorage";
@@ -457,5 +458,63 @@ describe("native staged shares", () => {
 
     await expect(ingestStagedNativeShares()).rejects.toBeInstanceOf(CandidateStorageError);
     expect(ids(key("acct-A"))).toBeNull();
+  });
+
+  it("persistence failure (e.g. disk full during save) is not an extraction failure: rejects with original CandidateStorageError, not StagedShareExtractionError", async () => {
+    await saveAuth("acct-A", user("acct-A"));
+    mockShares.items = [
+      { id: "item-save-fail", rawContent: "Valid content", sharedAt: 1 },
+    ];
+    mockExtract.text = () => ({ status: "single_candidate", recipe: { name: "Valid" } });
+    mockSetHook = (k) => { if (k === key("acct-A")) throw new CandidateStorageError("Disk full"); };
+
+    let err: any = null;
+    try {
+      await ingestStagedNativeShares();
+    } catch (e) {
+      err = e;
+    }
+    mockSetHook = null;
+
+    expect(err).toBeInstanceOf(CandidateStorageError);
+    expect(err).not.toBeInstanceOf(StagedShareExtractionError);
+    expect(err.message).toContain("Disk full");
+  });
+
+  it("earlier successful save remains intact when a later item's persistence operation fails", async () => {
+    await saveAuth("acct-A", user("acct-A"));
+    mockShares.items = [
+      { id: "item-1-save-ok", rawContent: "Content 1", sharedAt: 1 },
+      { id: "item-2-save-fail", rawContent: "Content 2", sharedAt: 2 },
+    ];
+    let callCount = 0;
+    mockExtract.text = () => {
+      callCount++;
+      return { status: "single_candidate", recipe: { name: `Recipe ${callCount}` } };
+    };
+    let setCalls = 0;
+    mockSetHook = (k) => {
+      if (k === key("acct-A")) {
+        setCalls++;
+        if (setCalls === 2) {
+          throw new CandidateStorageError("Secondary write failed");
+        }
+      }
+    };
+
+    let err: any = null;
+    try {
+      await ingestStagedNativeShares();
+    } catch (e) {
+      err = e;
+    }
+    mockSetHook = null;
+
+    expect(err).toBeInstanceOf(CandidateStorageError);
+    expect(err).not.toBeInstanceOf(StagedShareExtractionError);
+    expect(err.message).toContain("Secondary write failed");
+
+    const saved = ids(key("acct-A"));
+    expect(saved).toHaveLength(1);
   });
 });

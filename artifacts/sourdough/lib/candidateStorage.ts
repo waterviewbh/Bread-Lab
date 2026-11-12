@@ -248,13 +248,20 @@ export async function ingestStagedNativeShares(context?: WorkspaceOperationConte
         failingIndex = i;
 
         if (!item.rawContent || !item.rawContent.trim()) {
-          throw new Error(`Staged share item ${item.id} has empty rawContent`);
+          throw new StagedShareExtractionError(
+            `[candidateStorage] Staged share item ${item.id} has empty rawContent`,
+            consumedCount,
+            savedCount,
+            consumedCount - savedCount,
+            item.id,
+            i
+          );
         }
 
         const trimmedInput = item.rawContent.trim();
         const isUrl = /^(https?:\/\/[^\s]+)/i.test(trimmedInput);
 
-        // Slow extraction / network work: no lock is held here.
+        // 1. Extraction phase
         let result: ExtractionResult;
         try {
           result = isUrl
@@ -264,37 +271,50 @@ export async function ingestStagedNativeShares(context?: WorkspaceOperationConte
           if (e instanceof WorkspaceIdentityError || e instanceof StaleWorkspaceError) {
             throw e;
           }
-          throw new Error(`Extraction failed for staged item ${item.id}: ${e?.message || e}`);
+          throw new StagedShareExtractionError(
+            `[candidateStorage] Extraction failed for item ${item.id}: ${e?.message || e}`,
+            consumedCount,
+            savedCount,
+            consumedCount - savedCount,
+            item.id,
+            i,
+            e
+          );
         }
 
         if (
-          result.status === "single_candidate" ||
-          result.status === "multiple_candidates"
+          result.status !== "single_candidate" &&
+          result.status !== "multiple_candidates"
         ) {
-          await saveCandidate(result, item.sharedAt, 'share', ctx);
-          savedCount++;
-        } else {
-          throw new Error(`Extraction produced no usable candidate for item ${item.id} (status: ${result.status})`);
+          throw new StagedShareExtractionError(
+            `[candidateStorage] Extraction produced no usable candidate for item ${item.id} (status: ${result.status})`,
+            consumedCount,
+            savedCount,
+            consumedCount - savedCount,
+            item.id,
+            i
+          );
         }
+
+        // 2. Persistence phase
+        await saveCandidate(result, item.sharedAt, 'share', ctx);
+        savedCount++;
       }
     } catch (e: any) {
       const unsavedCount = consumedCount - savedCount;
-      const errorMsg = `[candidateStorage] ${consumedCount} staged share(s) were consumed but only ${savedCount} could be saved; the rest are lost (native staging has no acknowledge step). Failed at item ${failingItem?.id} (index ${failingIndex}): consumed=${consumedCount}, saved=${savedCount}, unsaved=${unsavedCount}. Cause: ${e?.message || e}`;
+      const errorMsg = `[candidateStorage] ${consumedCount} staged share(s) were consumed but only ${savedCount} could be saved; the rest are lost (native staging has no acknowledge step).`;
       console.error(errorMsg, e);
 
       if (e instanceof WorkspaceIdentityError || e instanceof StaleWorkspaceError) {
         throw e;
       }
 
-      throw new StagedShareExtractionError(
-        errorMsg,
-        consumedCount,
-        savedCount,
-        unsavedCount,
-        failingItem?.id,
-        failingIndex,
-        e
-      );
+      if (e instanceof StagedShareExtractionError) {
+        throw e;
+      }
+
+      // Persistence failure (e.g. CandidateStorageError or storage error)
+      throw e;
     }
   });
 }
