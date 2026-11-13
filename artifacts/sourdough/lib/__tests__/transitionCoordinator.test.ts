@@ -1,6 +1,7 @@
 // artifacts/sourdough/lib/__tests__/transitionCoordinator.test.ts
 import { executeWorkspaceTransition, getCoordinatorState, setCoordinatorState, recoverTransition } from "../transitionCoordinator";
 import { UDL } from "../udl";
+import { getWorkspaceGeneration } from "../storageUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 describe("Workspace Transition Coordinator & UDL Contract", () => {
@@ -27,7 +28,7 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
       executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
     ).rejects.toThrow(/UDL readiness verification failed|pending items detected|Operational wipe verification failed/);
 
-    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+    expect(getCoordinatorState()).toBe("IDLE");
   });
 
   it("executes successful transition when prerequisites pass", async () => {
@@ -116,5 +117,24 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     await expect(
       executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
     ).rejects.toThrow();
+  });
+
+  it("when preflight fails before transition starts, state remains IDLE, generation is not advanced, and no mutations occur", async () => {
+    const genBefore = getWorkspaceGeneration();
+    await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
+    const tokenKey = "bread_lab_auth_token_v1";
+    const recipeKey = "bread_lab_recipes_v1_user-A";
+    await AsyncStorage.setItem(tokenKey, "token-A");
+    await AsyncStorage.setItem(recipeKey, JSON.stringify([{ id: "r1", userId: "user-A", name: "Rec", phases: [] }]));
+
+    await expect(
+      executeWorkspaceTransition("user-A", null, null, null)
+    ).rejects.toThrow();
+
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(getWorkspaceGeneration()).toBe(genBefore);
+    expect(await AsyncStorage.getItem("bread_lab_migration_pending_v1")).toBe("1");
+    expect(await AsyncStorage.getItem(tokenKey)).toBe("token-A");
+    expect(await AsyncStorage.getItem(recipeKey)).not.toBeNull();
   });
 });

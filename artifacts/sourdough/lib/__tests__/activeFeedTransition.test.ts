@@ -94,7 +94,7 @@ describe("Active Feed at a workspace transition", () => {
       await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK)).rejects.toThrow(/pending deletion work/);
 
       expect(mockStore[ACTIVE]).toBe(before); // nothing was discarded or moved
-      expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+      expect(getCoordinatorState()).toBe("IDLE");
     });
 
     it("the INCOMING account's own leftover pending deletions do not block entering it", async () => {

@@ -105,6 +105,10 @@ export async function executeWorkspaceTransition(
       if (hasWork) throw new ActiveFeedNotAcknowledgedError();
     }
 
+    if (!disposition) {
+      await UDL.verifyReadiness(outgoingOwnerId ?? "anonymous", { discardActiveBake: false });
+    }
+
     setCoordinatorState("TRANSITIONING");
     advanceWorkspaceGeneration();
 
@@ -114,10 +118,10 @@ export async function executeWorkspaceTransition(
         // copies, so its pending-deletion queues are simply retired (no network).
         await clearMigrationPending();
         await retireNlaTombstonesLocked();
-      }
 
-      // 1. Gate on the DEPARTING workspace: pending deletions or an interrupted migration block.
-      await UDL.verifyReadiness(outgoingOwnerId ?? "anonymous", { discardActiveBake: !!disposition });
+        // 1. Gate on the DEPARTING workspace: pending deletions or an interrupted migration block.
+        await UDL.verifyReadiness(outgoingOwnerId ?? "anonymous", { discardActiveBake: true });
+      }
 
       // 2. Leave the outgoing workspace.
       if (disposition) {
