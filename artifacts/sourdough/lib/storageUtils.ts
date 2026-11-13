@@ -82,32 +82,99 @@ export interface ValidateOperationalDataOptions {
   discardActiveBake?: boolean;
 }
 
+function validateRecordCollection(raw: string | null, keyLabel: string, expectedOwner: string): any[] {
+  if (raw === null || raw === undefined) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e: any) {
+    throw new Error(`Operational wipe pre-validation failed: ${keyLabel} storage contains malformed JSON and cannot be verified: ${e.message}`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Operational wipe pre-validation failed: ${keyLabel} storage has invalid shape (expected array).`);
+  }
+  const cleanExpected = expectedOwner.trim();
+  const isAnonymousExpected = cleanExpected === "anonymous";
+
+  for (const record of parsed) {
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      throw new Error(`Operational wipe pre-validation failed: ${keyLabel} contains malformed or non-object record.`);
+    }
+    const a = record.userId;
+    const b = record.user_id;
+    const sa = a === undefined || a === null ? "" : String(a).trim();
+    const sb = b === undefined || b === null ? "" : String(b).trim();
+    if (sa !== "" && sb !== "" && sa !== sb) {
+      throw new Error(`Operational wipe pre-validation failed: ${keyLabel} record has conflicting ownership stamps.`);
+    }
+    const owner = sa !== "" ? sa : sb;
+
+    if (isAnonymousExpected) {
+      if (owner !== "" && owner !== "anonymous") {
+        throw new Error(`Operational wipe pre-validation failed: ${keyLabel} record has foreign owner '${owner}' in anonymous workspace.`);
+      }
+    } else {
+      if (owner === "") {
+        throw new Error(`Operational wipe pre-validation failed: ${keyLabel} record is missing explicit owner metadata for user '${cleanExpected}'.`);
+      }
+      if (owner !== cleanExpected) {
+        throw new Error(`Operational wipe pre-validation failed: ${keyLabel} record has owner '${owner}' (expected departing owner '${cleanExpected}').`);
+      }
+    }
+  }
+  return parsed as any[];
+}
+
 export async function validateOperationalData(
   currentUserId?: string | null,
   options: ValidateOperationalDataOptions = {}
 ): Promise<void> {
   console.log(`[BL-DIAG] [StorageUtils] validateOperationalData starting for currentUserId: ${currentUserId}`);
+
+  const ownerToInspect = currentUserId && currentUserId.trim() !== "" ? currentUserId.trim() : "anonymous";
+  const recipesKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, ownerToInspect);
+  const bakeHistKey = getOwnerStorageKey(APP_STORAGE_KEYS.BAKE_HISTORY, ownerToInspect);
+  const feedHistKey = getOwnerStorageKey(APP_STORAGE_KEYS.FEED_HISTORY, ownerToInspect);
+  const activeBakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.ACTIVE_BAKE, ownerToInspect);
+  const recTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_RECIPE_IDS, ownerToInspect);
+  const bakeTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS, ownerToInspect);
+  const feedTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, ownerToInspect);
+  const candidateKey = ownerToInspect === "anonymous" ? "bread_lab_candidates_v1_anonymous" : `bread_lab_candidates_v1_${ownerToInspect}`;
+
   let recipeRaw: string | null = null;
   let bakeHistRaw: string | null = null;
   let feedHistRaw: string | null = null;
-  let delRecipeRaw: string | null = null;
-  let delBakeRaw: string | null = null;
-  let delFeedRaw: string | null = null;
-  let activeBakeCheck: string | null = null;
+  let activeBakeRaw: string | null = null;
+  let candidatesRaw: string | null = null;
   let activeFeedCheck: string | null = null;
   let migPendingCheck: string | null = null;
+  let recTombRaw: string | null = null;
+  let bakeTombRaw: string | null = null;
+  let feedTombRaw: string | null = null;
 
   try {
-    [recipeRaw, bakeHistRaw, feedHistRaw, delRecipeRaw, delBakeRaw, delFeedRaw, activeBakeCheck, activeFeedCheck, migPendingCheck] = await Promise.all([
-      AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES),
-      AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY),
-      AsyncStorage.getItem(APP_STORAGE_KEYS.FEED_HISTORY),
-      AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_RECIPE_IDS),
-      AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_BAKE_IDS),
-      AsyncStorage.getItem(APP_STORAGE_KEYS.DELETED_FEED_IDS),
-      AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_BAKE),
+    [
+      recipeRaw,
+      bakeHistRaw,
+      feedHistRaw,
+      activeBakeRaw,
+      candidatesRaw,
+      activeFeedCheck,
+      migPendingCheck,
+      recTombRaw,
+      bakeTombRaw,
+      feedTombRaw,
+    ] = await Promise.all([
+      AsyncStorage.getItem(recipesKey),
+      AsyncStorage.getItem(bakeHistKey),
+      AsyncStorage.getItem(feedHistKey),
+      AsyncStorage.getItem(activeBakeKey),
+      AsyncStorage.getItem(candidateKey),
       AsyncStorage.getItem(APP_STORAGE_KEYS.ACTIVE_FEED),
       AsyncStorage.getItem(APP_STORAGE_KEYS.MIGRATION_PENDING),
+      AsyncStorage.getItem(recTombKey),
+      AsyncStorage.getItem(bakeTombKey),
+      AsyncStorage.getItem(feedTombKey),
     ]);
   } catch (error: any) {
     console.log(`[BL-DIAG] [StorageUtils] validateOperationalData storage read error:`, error);
@@ -119,14 +186,6 @@ export async function validateOperationalData(
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");
   }
 
-  const ownerToInspect = currentUserId && currentUserId.trim() !== "" ? currentUserId.trim() : "anonymous";
-  const recTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_RECIPE_IDS, ownerToInspect);
-  const bakeTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS, ownerToInspect);
-  const feedTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, ownerToInspect);
-
-  let recTombRaw: string | null = null;
-  let bakeTombRaw: string | null = null;
-  let feedTombRaw: string | null = null;
   let unresolvedLegacyRaw: string | null = null;
   const flatLegacyKeys = [
     { key: "bread_lab_deleted_recipe_ids_v1", label: "flat legacy recipe" },
@@ -135,23 +194,17 @@ export async function validateOperationalData(
   ];
 
   try {
-    const res = await Promise.all([
-      AsyncStorage.getItem(recTombKey),
-      AsyncStorage.getItem(bakeTombKey),
-      AsyncStorage.getItem(feedTombKey),
+    const flatRes = await Promise.all([
       AsyncStorage.getItem("bread_lab_unresolved_legacy_tombstones_v1"),
       AsyncStorage.getItem(flatLegacyKeys[0].key),
       AsyncStorage.getItem(flatLegacyKeys[1].key),
       AsyncStorage.getItem(flatLegacyKeys[2].key),
     ]);
-    recTombRaw = res[0];
-    bakeTombRaw = res[1];
-    feedTombRaw = res[2];
-    unresolvedLegacyRaw = res[3];
+    unresolvedLegacyRaw = flatRes[0];
 
     for (let i = 0; i < flatLegacyKeys.length; i++) {
       const { key, label } = flatLegacyKeys[i];
-      const flatRaw = res[4 + i];
+      const flatRaw = flatRes[1 + i];
       if (flatRaw !== null && flatRaw !== undefined) {
         let parsedFlat: unknown;
         try {
@@ -206,23 +259,37 @@ export async function validateOperationalData(
   };
 
   const recTombs = parseTombstones(recTombRaw, "recipe");
-  const bakeTombs = parseTombstones(bakeTombRaw, "bake");
-  const feedTombs = parseTombstones(feedTombRaw, "feed");
+  const bakeTombs = parseTombstones(bakeTombKey ? bakeTombRaw : null, "bake");
+  const feedTombs = parseTombstones(feedTombKey ? feedTombRaw : null, "feed");
 
   if (recTombs.length > 0 || bakeTombs.length > 0 || feedTombs.length > 0) {
     throw new Error(`Transition blocked: workspace has pending deletion work (${recTombs.length} recipes, ${bakeTombs.length} bakes, ${feedTombs.length} feeds pending deletion).`);
   }
 
-  validateArrayStorageKey(recipeRaw, "recipe record");
-  validateArrayStorageKey(bakeHistRaw, "bake history");
-  validateArrayStorageKey(feedHistRaw, "feed history");
-  validateArrayStorageKey(delRecipeRaw, "deleted recipe IDs");
-  validateArrayStorageKey(delBakeRaw, "deleted bake IDs");
-  validateArrayStorageKey(delFeedRaw, "deleted feed IDs");
+  validateRecordCollection(recipeRaw, "recipe record", ownerToInspect);
+  validateRecordCollection(bakeHistRaw, "bake history", ownerToInspect);
+  validateRecordCollection(feedHistRaw, "feed history", ownerToInspect);
 
-  if (activeBakeCheck !== null && !options.discardActiveBake) {
+  if (candidatesRaw !== null && candidatesRaw !== undefined) {
     try {
-      const parsed = JSON.parse(activeBakeCheck);
+      const parsed = JSON.parse(candidatesRaw);
+      if (!Array.isArray(parsed)) {
+        throw new Error("Candidate storage has invalid shape (expected array).");
+      }
+      for (const c of parsed) {
+        if (!c || typeof c !== "object") {
+          throw new Error("Candidate record is not an object.");
+        }
+      }
+    } catch (e: any) {
+      if (e.message?.includes("Candidate storage") || e.message?.includes("Candidate record")) throw e;
+      throw new Error(`Operational wipe pre-validation failed: candidate storage contains malformed JSON: ${e.message}`);
+    }
+  }
+
+  if (activeBakeRaw !== null && !options.discardActiveBake) {
+    try {
+      const parsed = JSON.parse(activeBakeRaw);
       const bakesList = Array.isArray(parsed) ? parsed : [parsed];
       for (const b of bakesList) {
         if (!b) continue;
@@ -230,6 +297,11 @@ export async function validateOperationalData(
         if (!owner || String(owner).trim() === "") {
           console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: active bake missing owner.`);
           throw new Error("Operational wipe verification failed: active bake record has unknown or missing ownership metadata.");
+        }
+        const cleanOwner = String(owner).trim();
+        const cleanExpected = ownerToInspect.trim();
+        if (cleanOwner !== cleanExpected) {
+          throw new Error(`Operational wipe verification failed: active bake has foreign owner '${cleanOwner}' (expected '${cleanExpected}').`);
         }
       }
     } catch (e: any) {
@@ -246,6 +318,11 @@ export async function validateOperationalData(
       if (!owner || String(owner).trim() === "") {
         console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: active feed missing owner.`);
         throw new Error("Operational wipe verification failed: active feed record has unknown or missing ownership metadata.");
+      }
+      const cleanOwner = String(owner).trim();
+      const cleanExpected = ownerToInspect.trim();
+      if (cleanOwner !== cleanExpected) {
+        throw new Error(`Operational wipe verification failed: active feed has foreign owner '${cleanOwner}' (expected '${cleanExpected}').`);
       }
     } catch (e: any) {
       if (e.message?.includes("Operational wipe verification failed")) throw e;

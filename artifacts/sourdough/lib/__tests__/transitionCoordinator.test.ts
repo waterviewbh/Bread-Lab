@@ -73,4 +73,48 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     await expect(recoverTransition()).resolves.toBeUndefined();
     expect(getCoordinatorState()).toBe("IDLE");
   });
+
+  it("inspects owner-scoped records and rejects ownerless records", async () => {
+    const { getOwnerStorageKey, APP_STORAGE_KEYS } = require("../storageUtils");
+    const scopedKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
+
+    await AsyncStorage.setItem(scopedKey, JSON.stringify([{ id: "r1", name: "Ownerless" }]));
+    await expect(
+      executeWorkspaceTransition("user-A", null, null, null)
+    ).rejects.toThrow();
+  });
+
+  it("inspects owner-scoped records and rejects foreign-owned records", async () => {
+    const { getOwnerStorageKey, APP_STORAGE_KEYS } = require("../storageUtils");
+    const scopedKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
+
+    await AsyncStorage.setItem(scopedKey, JSON.stringify([{ id: "r2", userId: "user-B", name: "Foreign" }]));
+    await expect(
+      executeWorkspaceTransition("user-A", null, null, null)
+    ).rejects.toThrow();
+  });
+
+  it("inspects owner-scoped records and permits valid owner records", async () => {
+    const { getOwnerStorageKey, APP_STORAGE_KEYS } = require("../storageUtils");
+    const scopedKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-A");
+
+    await AsyncStorage.setItem(scopedKey, JSON.stringify([{ id: "r3", userId: "user-A", name: "Valid", phases: [] }]));
+    await expect(
+      executeWorkspaceTransition("user-A", null, null, null)
+    ).resolves.toBeUndefined();
+  });
+
+  it("includes candidates and inspects them in preflight", async () => {
+    const candidateKey = "bread_lab_candidates_v1_anonymous";
+    await AsyncStorage.setItem(candidateKey, JSON.stringify([{ id: "c1", extractionResult: { status: "single_candidate" } }]));
+
+    await expect(
+      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
+    ).resolves.toBeUndefined();
+
+    await AsyncStorage.setItem(candidateKey, "not-json");
+    await expect(
+      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
+    ).rejects.toThrow();
+  });
 });
