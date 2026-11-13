@@ -259,7 +259,7 @@ describe("NLA -> account transition (real coordinator)", () => {
         executeWorkspaceTransition(null, TOKEN, TOKEN, USER, { activeFeedAcknowledged: true, nlaDisposition: { mode: "discard", plan: buildPurgePlan(inv, "discard"), snapshotRaw: inv.raw } })
       ).rejects.toThrow(/Transition blocked/);
 
-      expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+      expect(getCoordinatorState()).toBe("IDLE");
       // NLA's own pending deletions were retired (they have no remote copy), but no record was purged.
       const after = Object.fromEntries(NLA_ALL_KEYS.map((k) => [k, mockStore[k] ?? null]));
       expect({ ...after, bread_lab_deleted_feed_ids_v1_anonymous: before.bread_lab_deleted_feed_ids_v1_anonymous }).toEqual(before);

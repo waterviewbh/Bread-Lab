@@ -373,9 +373,11 @@ export async function importNlaWorkspace(token: string): Promise<ImportOutcome> 
       feedHistory: verifiedLocal.feedHistory,
       candidates: rehome.verifiedSourceIds,
     };
+    const plan = buildPurgePlan(inventory, "import", verified);
+    (plan as any).isVerifiedImport = true;
     migrationOk = true;
     report.ok = true;
-    return { report, inventory, purgePlan: buildPurgePlan(inventory, "import", verified) };
+    return { report, inventory, purgePlan: plan };
   } finally {
     // A failed attempt must not leave the "import in progress" marker behind: the baker is still in NLA and
     // may retry (idempotent) or choose Proceed Without Importing.

@@ -37,11 +37,15 @@ export namespace UDL {
     };
   }
 
-  export async function verifyReadiness(ownerId: string, options: { discardActiveBake?: boolean } = {}): Promise<void> {
-    await validateOperationalData(ownerId, { discardActiveFeed: true, discardActiveBake: options.discardActiveBake });
+  export async function verifyReadiness(ownerId: string, options: { discardActiveBake?: boolean; nlaDisposition?: any } = {}): Promise<void> {
+    await validateOperationalData(ownerId, { discardActiveFeed: true, discardActiveBake: options.discardActiveBake, nlaDisposition: options.nlaDisposition });
     const pending = await inspectPendingItems();
     if (pending.hasPending) {
-      throw new Error(`UDL readiness verification failed: pending items detected (${pending.details.join(", ")}).`);
+      const isVerifiedImport = options.nlaDisposition?.mode === "import" && options.nlaDisposition?.plan?.isVerifiedImport === true;
+      const isDiscard = options.nlaDisposition?.mode === "discard";
+      if (!isVerifiedImport && !isDiscard) {
+        throw new Error(`UDL readiness verification failed: pending items detected (${pending.details.join(", ")}).`);
+      }
     }
   }
 

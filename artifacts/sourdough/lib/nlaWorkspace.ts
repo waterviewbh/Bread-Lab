@@ -543,6 +543,33 @@ async function verifyOps(ops: PurgeOp[]): Promise<string[]> {
 
 /** Applies a plan. The caller MUST hold storageMutex (the transition coordinator does). Journaled and repeatable. */
 export async function applyNlaPurgeLocked(plan: PurgePlan): Promise<void> {
+  if (!plan || !Array.isArray(plan.ops)) throw new Error("Invalid purge plan: missing ops array.");
+  for (const op of plan.ops) {
+    if (!op || typeof op !== "object" || !op.key || typeof op.key !== "string") {
+      throw new Error("Invalid purge plan operation: missing or invalid key.");
+    }
+    if (!isNlaScopeKey(op.key)) {
+      throw new Error(`Purge plan security rejection: operation targets out-of-scope key '${op.key}'.`);
+    }
+    if (op.kind === "removeKey") {
+      if (!NLA_TOMBSTONE_KEYS.includes(op.key)) {
+        throw new Error(`Purge plan security rejection: removeKey operation targets unauthorized key '${op.key}'.`);
+      }
+    } else if (op.kind === "residue") {
+      if (op.key !== NLA_SCOPE.residue) {
+        throw new Error(`Purge plan security rejection: residue operation targets unauthorized key '${op.key}'.`);
+      }
+    } else if (op.kind === "filterIds") {
+      if (op.candidates) {
+        if (op.key !== LEGACY_GLOBAL_CANDIDATES_KEY_NLA && op.key !== ANONYMOUS_CANDIDATES_KEY_NLA) {
+          throw new Error(`Purge plan security rejection: candidate filterIds targets unauthorized key '${op.key}'.`);
+        }
+      }
+    } else {
+      throw new Error(`Purge plan security rejection: unknown purge operation kind.`);
+    }
+  }
+
   await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, JSON.stringify({ version: 1, plan }));
   for (const op of plan.ops) {
     await applyOp(op);

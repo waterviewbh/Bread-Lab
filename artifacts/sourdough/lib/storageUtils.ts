@@ -181,7 +181,7 @@ export async function validateOperationalData(
     throw new Error(`Operational wipe pre-validation failed due to storage read error: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  if (migPendingCheck !== null) {
+  if (migPendingCheck !== null && !options.nlaDisposition) {
     console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: migration pending marker present.`);
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");
   }
@@ -262,7 +262,9 @@ export async function validateOperationalData(
   const bakeTombs = parseTombstones(bakeTombKey ? bakeTombRaw : null, "bake");
   const feedTombs = parseTombstones(feedTombKey ? feedTombRaw : null, "feed");
 
-  if (recTombs.length > 0 || bakeTombs.length > 0 || feedTombs.length > 0) {
+  const isNlaDeparture = ownerToInspect === "anonymous";
+  const allowTombstones = isNlaDeparture && !!options.nlaDisposition;
+  if (!allowTombstones && (recTombs.length > 0 || bakeTombs.length > 0 || feedTombs.length > 0)) {
     throw new Error(`Transition blocked: workspace has pending deletion work (${recTombs.length} recipes, ${bakeTombs.length} bakes, ${feedTombs.length} feeds pending deletion).`);
   }
 

@@ -137,4 +137,28 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(await AsyncStorage.getItem(tokenKey)).toBe("token-A");
     expect(await AsyncStorage.getItem(recipeKey)).not.toBeNull();
   });
+
+  it("unverified import disposition blocks transition when migration pending is set", async () => {
+    await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
+    const unverifiedDisposition = {
+      mode: "import" as const,
+      plan: { mode: "import" as const, createdAt: Date.now(), ops: [] },
+      snapshotRaw: {},
+    };
+
+    await expect(
+      executeWorkspaceTransition(null, "token-A", "token-A", { id: "token-A", firstName: "A", starterName: "S" }, { nlaDisposition: unverifiedDisposition })
+    ).rejects.toThrow(/readiness verification failed/);
+  });
+
+  it("rejects out-of-scope purge plan operations in applyNlaPurgeLocked", async () => {
+    const { applyNlaPurgeLocked } = require("../nlaWorkspace");
+    const maliciousPlan = {
+      mode: "import" as const,
+      createdAt: Date.now(),
+      ops: [{ kind: "removeKey", key: "bread_lab_auth_token_v1" }],
+    };
+
+    await expect(applyNlaPurgeLocked(maliciousPlan)).rejects.toThrow(/Purge plan security rejection/);
+  });
 });
