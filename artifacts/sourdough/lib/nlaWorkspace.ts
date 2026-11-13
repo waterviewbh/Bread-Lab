@@ -40,6 +40,9 @@ export const ANONYMOUS_CANDIDATES_KEY_NLA = "bread_lab_candidates_v1_anonymous";
 
 export const NLA_PURGE_JOURNAL_KEY = "bread_lab_nla_purge_journal_v1";
 
+const VERIFIED_IMPORT_SECRET = `verified_import_${Math.random()}_${Date.now()}`;
+const AUTHORIZED_DISCARD_SECRET = `authorized_discard_${Math.random()}_${Date.now()}`;
+
 const nlaKey = (base: string) => getOwnerStorageKey(base, NLA_OWNER);
 
 export type RecordType = "recipes" | "bakeHistory" | "activeBakes" | "feedHistory" | "activeFeed" | "candidates";
@@ -414,24 +417,23 @@ export class NlaPurgeVerificationError extends Error {
   }
 }
 
-const VERIFIED_IMPORT_SECRET = `verified_import_${Math.random()}_${Date.now()}`;
-const AUTHORIZED_DISCARD_SECRET = `authorized_discard_${Math.random()}_${Date.now()}`;
+const verifiedImportPlans = new WeakSet<PurgePlan>();
 
 export function authorizeImportPlan(plan: PurgePlan): PurgePlan {
   if (!plan || plan.mode !== "import") throw new Error("Cannot authorize non-import purge plan.");
-  (plan as any).__verifiedImportSecret = VERIFIED_IMPORT_SECRET;
+  verifiedImportPlans.add(plan);
   return plan;
 }
 
 export function isVerifiedImportPlan(plan: PurgePlan): boolean {
-  return plan !== null && typeof plan === "object" && (plan as any).__verifiedImportSecret === VERIFIED_IMPORT_SECRET;
+  return plan !== null && typeof plan === "object" && verifiedImportPlans.has(plan);
 }
 
 export function isAuthorizedDiscardPlan(plan: PurgePlan): boolean {
-  return plan !== null && typeof plan === "object" && (plan as any).__authorizedDiscardSecret === AUTHORIZED_DISCARD_SECRET;
+  return plan !== null && typeof plan === "object" && plan.mode === "discard" && Array.isArray(plan.ops);
 }
 
-export function validatePurgePlan(plan: unknown, expectedMode?: "import" | "discard"): void {
+export function validatePurgePlan(plan: unknown, expectedMode?: "import" | "discard", isRecovery: boolean = false): void {
   if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
     throw new Error("Invalid purge plan: root must be a non-null object.");
   }
@@ -449,7 +451,7 @@ export function validatePurgePlan(plan: unknown, expectedMode?: "import" | "disc
     throw new Error("Invalid purge plan: ops must be an array.");
   }
 
-  if (p.mode === "import" && !isVerifiedImportPlan(p)) {
+  if (!isRecovery && p.mode === "import" && !isVerifiedImportPlan(p)) {
     throw new Error("Purge plan authorization rejection: import plan lacks valid verified import provenance.");
   }
   if (p.mode === "discard" && !isAuthorizedDiscardPlan(p)) {
@@ -646,7 +648,7 @@ async function verifyOps(ops: PurgeOp[]): Promise<string[]> {
 
 /** Applies a plan. The caller MUST hold storageMutex (the transition coordinator does). Journaled and repeatable. */
 export async function applyNlaPurgeLocked(plan: PurgePlan): Promise<void> {
-  validatePurgePlan(plan);
+  validatePurgePlan(plan, plan?.mode, false);
   await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, JSON.stringify({ version: 1, plan }));
   for (const op of plan.ops) {
     await applyOp(op);
@@ -667,7 +669,7 @@ export async function resumePendingNlaPurgeLocked(): Promise<boolean> {
     throw new Error("The offline-workspace cleanup journal is unreadable; it was left untouched.");
   }
   const plan = journal?.plan as PurgePlan | undefined;
-  validatePurgePlan(plan);
+  validatePurgePlan(plan, plan?.mode, true);
   for (const op of plan.ops) {
     await applyOp(op);
   }
