@@ -161,4 +161,36 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
 
     await expect(applyNlaPurgeLocked(maliciousPlan)).rejects.toThrow(/Purge plan security rejection|Purge plan authorization rejection/);
   });
+
+  it("calling buildPurgePlan alone or with fabricated verified ids cannot authorize Import", async () => {
+    const { inventoryNlaWorkspace, buildPurgePlan, applyNlaPurgeLocked } = require("../nlaWorkspace");
+    const inv = await inventoryNlaWorkspace();
+    const fabricatedPlan = buildPurgePlan(inv, "import", { recipes: ["fake"], bakeHistory: [], feedHistory: [], candidates: [] });
+
+    await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
+    const disposition = {
+      mode: "import" as const,
+      plan: fabricatedPlan,
+      snapshotRaw: inv.raw,
+    };
+
+    await expect(
+      executeWorkspaceTransition(null, "token-A", "token-A", { id: "token-A", firstName: "A", starterName: "S" }, { nlaDisposition: disposition })
+    ).rejects.toThrow();
+
+    await expect(applyNlaPurgeLocked(fabricatedPlan)).rejects.toThrow(/Purge plan authorization rejection/);
+  });
+
+  it("tampered journal or invalid operation keys/shapes fail closed during recovery", async () => {
+    const { resumePendingNlaPurgeLocked, NLA_PURGE_JOURNAL_KEY } = require("../nlaWorkspace");
+    const tamperedPlan = {
+      mode: "import" as const,
+      createdAt: Date.now(),
+      ops: [{ kind: "removeKey", key: "bread_lab_auth_token_v1" }],
+    };
+    await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, JSON.stringify({ version: 1, plan: tamperedPlan }));
+
+    await expect(resumePendingNlaPurgeLocked()).rejects.toThrow(/Purge plan security rejection|Purge plan authorization rejection/);
+    expect(await AsyncStorage.getItem(NLA_PURGE_JOURNAL_KEY)).not.toBeNull();
+  });
 });

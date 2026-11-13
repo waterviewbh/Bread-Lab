@@ -24,6 +24,7 @@ import {
   inventoryNlaWorkspace,
   resumePendingNlaPurge,
   buildPurgePlan,
+  authorizeImportPlan,
   stableStringify,
   type NlaInventory,
   type PurgePlan,
@@ -374,7 +375,7 @@ export async function importNlaWorkspace(token: string): Promise<ImportOutcome> 
       candidates: rehome.verifiedSourceIds,
     };
     const plan = buildPurgePlan(inventory, "import", verified);
-    (plan as any).isVerifiedImport = true;
+    authorizeImportPlan(plan);
     migrationOk = true;
     report.ok = true;
     return { report, inventory, purgePlan: plan };

@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { NlaDisposition } from "./nlaWorkspace";
 
 
 export const APP_STORAGE_KEYS = {
@@ -80,6 +81,7 @@ export interface ValidateOperationalDataOptions {
   discardActiveFeed?: boolean;
   /** Same for an active bake, when the transition discards it (the NLA departure only). */
   discardActiveBake?: boolean;
+  nlaDisposition?: NlaDisposition;
 }
 
 function validateRecordCollection(raw: string | null, keyLabel: string, expectedOwner: string): any[] {

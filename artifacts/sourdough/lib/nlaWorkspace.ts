@@ -392,6 +392,12 @@ export interface PurgePlan {
   ops: PurgeOp[];
 }
 
+export interface NlaDisposition {
+  mode: "import" | "discard";
+  plan: PurgePlan;
+  snapshotRaw: Record<string, string | null>;
+}
+
 export interface VerifiedImportIds {
   recipes: string[];
   bakeHistory: string[];
@@ -410,6 +416,12 @@ export class NlaPurgeVerificationError extends Error {
 
 const VERIFIED_IMPORT_SECRET = `verified_import_${Math.random()}_${Date.now()}`;
 const AUTHORIZED_DISCARD_SECRET = `authorized_discard_${Math.random()}_${Date.now()}`;
+
+export function authorizeImportPlan(plan: PurgePlan): PurgePlan {
+  if (!plan || plan.mode !== "import") throw new Error("Cannot authorize non-import purge plan.");
+  (plan as any).__verifiedImportSecret = VERIFIED_IMPORT_SECRET;
+  return plan;
+}
 
 export function isVerifiedImportPlan(plan: PurgePlan): boolean {
   return plan !== null && typeof plan === "object" && (plan as any).__verifiedImportSecret === VERIFIED_IMPORT_SECRET;
@@ -534,9 +546,7 @@ export function buildPurgePlan(inv: NlaInventory, mode: "import" | "discard", ve
   if (inv.residue.present) ops.push({ kind: "residue", key: NLA_SCOPE.residue });
 
   const plan: PurgePlan = { mode, createdAt: Date.now(), ops };
-  if (mode === "import" && verified) {
-    (plan as any).__verifiedImportSecret = VERIFIED_IMPORT_SECRET;
-  } else if (mode === "discard") {
+  if (mode === "discard") {
     (plan as any).__authorizedDiscardSecret = AUTHORIZED_DISCARD_SECRET;
   }
   return plan;
