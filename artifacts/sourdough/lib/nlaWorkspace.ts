@@ -408,6 +408,92 @@ export class NlaPurgeVerificationError extends Error {
   }
 }
 
+const VERIFIED_IMPORT_SECRET = `verified_import_${Math.random()}_${Date.now()}`;
+const AUTHORIZED_DISCARD_SECRET = `authorized_discard_${Math.random()}_${Date.now()}`;
+
+export function isVerifiedImportPlan(plan: PurgePlan): boolean {
+  return plan !== null && typeof plan === "object" && (plan as any).__verifiedImportSecret === VERIFIED_IMPORT_SECRET;
+}
+
+export function isAuthorizedDiscardPlan(plan: PurgePlan): boolean {
+  return plan !== null && typeof plan === "object" && (plan as any).__authorizedDiscardSecret === AUTHORIZED_DISCARD_SECRET;
+}
+
+export function validatePurgePlan(plan: unknown, expectedMode?: "import" | "discard"): void {
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+    throw new Error("Invalid purge plan: root must be a non-null object.");
+  }
+  const p = plan as PurgePlan;
+  if (p.mode !== "import" && p.mode !== "discard") {
+    throw new Error(`Invalid purge plan: unsupported mode '${p.mode}'.`);
+  }
+  if (expectedMode && p.mode !== expectedMode) {
+    throw new Error(`Purge plan mode mismatch: expected '${expectedMode}', got '${p.mode}'.`);
+  }
+  if (typeof p.createdAt !== "number" || Number.isNaN(p.createdAt)) {
+    throw new Error("Invalid purge plan: missing or invalid createdAt timestamp.");
+  }
+  if (!Array.isArray(p.ops)) {
+    throw new Error("Invalid purge plan: ops must be an array.");
+  }
+
+  if (p.mode === "import" && !isVerifiedImportPlan(p)) {
+    throw new Error("Purge plan authorization rejection: import plan lacks valid verified import provenance.");
+  }
+  if (p.mode === "discard" && !isAuthorizedDiscardPlan(p)) {
+    throw new Error("Purge plan authorization rejection: discard plan lacks valid authorized discard provenance.");
+  }
+
+  for (const op of p.ops) {
+    if (!op || typeof op !== "object" || Array.isArray(op)) {
+      throw new Error("Invalid purge operation: must be a non-null object.");
+    }
+    if (typeof op.key !== "string" || op.key.trim() === "") {
+      throw new Error("Invalid purge operation: missing or invalid storage key.");
+    }
+    if (!isNlaScopeKey(op.key)) {
+      throw new Error(`Purge plan security rejection: operation targets out-of-scope key '${op.key}'.`);
+    }
+
+    if (op.kind === "removeKey") {
+      if (!NLA_TOMBSTONE_KEYS.includes(op.key)) {
+        throw new Error(`Purge plan security rejection: removeKey operation targets unauthorized key '${op.key}'.`);
+      }
+    } else if (op.kind === "residue") {
+      if (op.key !== NLA_SCOPE.residue) {
+        throw new Error(`Purge plan security rejection: residue operation targets unauthorized key '${op.key}'.`);
+      }
+    } else if (op.kind === "filterIds") {
+      if (!Array.isArray(op.ids)) {
+        throw new Error("Invalid purge operation: filterIds requires an ids array.");
+      }
+      for (const id of op.ids) {
+        if (typeof id !== "string" || id.trim() === "") {
+          throw new Error("Invalid purge operation: filterIds contains invalid or non-string record ID.");
+        }
+      }
+      if (op.candidates) {
+        if (op.key !== LEGACY_GLOBAL_CANDIDATES_KEY_NLA && op.key !== ANONYMOUS_CANDIDATES_KEY_NLA) {
+          throw new Error(`Purge plan security rejection: candidate filterIds targets unauthorized key '${op.key}'.`);
+        }
+      } else {
+        const validRecordKeys = [
+          ...NLA_SCOPE.recipes,
+          ...NLA_SCOPE.bakeHistory,
+          ...NLA_SCOPE.activeBakes,
+          ...NLA_SCOPE.feedHistory,
+          ...NLA_SCOPE.activeFeed,
+        ];
+        if (!validRecordKeys.includes(op.key)) {
+          throw new Error(`Purge plan security rejection: filterIds targets unauthorized storage key '${op.key}'.`);
+        }
+      }
+    } else {
+      throw new Error(`Purge plan security rejection: unknown purge operation kind '${(op as any).kind}'.`);
+    }
+  }
+}
+
 /**
  * Builds the purge plan from an inventory.
  *  - "discard"  (Proceed Without Importing): every eligible record is removed.
@@ -446,7 +532,14 @@ export function buildPurgePlan(inv: NlaInventory, mode: "import" | "discard", ve
   }
   for (const key of NLA_TOMBSTONE_KEYS) ops.push({ kind: "removeKey", key });
   if (inv.residue.present) ops.push({ kind: "residue", key: NLA_SCOPE.residue });
-  return { mode, createdAt: Date.now(), ops };
+
+  const plan: PurgePlan = { mode, createdAt: Date.now(), ops };
+  if (mode === "import" && verified) {
+    (plan as any).__verifiedImportSecret = VERIFIED_IMPORT_SECRET;
+  } else if (mode === "discard") {
+    (plan as any).__authorizedDiscardSecret = AUTHORIZED_DISCARD_SECRET;
+  }
+  return plan;
 }
 
 async function applyOp(op: PurgeOp): Promise<void> {
@@ -543,33 +636,7 @@ async function verifyOps(ops: PurgeOp[]): Promise<string[]> {
 
 /** Applies a plan. The caller MUST hold storageMutex (the transition coordinator does). Journaled and repeatable. */
 export async function applyNlaPurgeLocked(plan: PurgePlan): Promise<void> {
-  if (!plan || !Array.isArray(plan.ops)) throw new Error("Invalid purge plan: missing ops array.");
-  for (const op of plan.ops) {
-    if (!op || typeof op !== "object" || !op.key || typeof op.key !== "string") {
-      throw new Error("Invalid purge plan operation: missing or invalid key.");
-    }
-    if (!isNlaScopeKey(op.key)) {
-      throw new Error(`Purge plan security rejection: operation targets out-of-scope key '${op.key}'.`);
-    }
-    if (op.kind === "removeKey") {
-      if (!NLA_TOMBSTONE_KEYS.includes(op.key)) {
-        throw new Error(`Purge plan security rejection: removeKey operation targets unauthorized key '${op.key}'.`);
-      }
-    } else if (op.kind === "residue") {
-      if (op.key !== NLA_SCOPE.residue) {
-        throw new Error(`Purge plan security rejection: residue operation targets unauthorized key '${op.key}'.`);
-      }
-    } else if (op.kind === "filterIds") {
-      if (op.candidates) {
-        if (op.key !== LEGACY_GLOBAL_CANDIDATES_KEY_NLA && op.key !== ANONYMOUS_CANDIDATES_KEY_NLA) {
-          throw new Error(`Purge plan security rejection: candidate filterIds targets unauthorized key '${op.key}'.`);
-        }
-      }
-    } else {
-      throw new Error(`Purge plan security rejection: unknown purge operation kind.`);
-    }
-  }
-
+  validatePurgePlan(plan);
   await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, JSON.stringify({ version: 1, plan }));
   for (const op of plan.ops) {
     await applyOp(op);
@@ -590,9 +657,7 @@ export async function resumePendingNlaPurgeLocked(): Promise<boolean> {
     throw new Error("The offline-workspace cleanup journal is unreadable; it was left untouched.");
   }
   const plan = journal?.plan as PurgePlan | undefined;
-  if (!plan || !Array.isArray(plan.ops)) {
-    throw new Error("The offline-workspace cleanup journal is malformed; it was left untouched.");
-  }
+  validatePurgePlan(plan);
   for (const op of plan.ops) {
     await applyOp(op);
   }

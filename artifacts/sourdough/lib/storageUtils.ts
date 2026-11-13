@@ -181,7 +181,12 @@ export async function validateOperationalData(
     throw new Error(`Operational wipe pre-validation failed due to storage read error: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  if (migPendingCheck !== null && !options.nlaDisposition) {
+  const { isVerifiedImportPlan, isAuthorizedDiscardPlan } = require("./nlaWorkspace");
+  const isAuthorizedImport = options.nlaDisposition?.mode === "import" && isVerifiedImportPlan(options.nlaDisposition?.plan);
+  const isAuthorizedDiscard = options.nlaDisposition?.mode === "discard" && isAuthorizedDiscardPlan(options.nlaDisposition?.plan);
+  const hasValidDisposition = isAuthorizedImport || isAuthorizedDiscard;
+
+  if (migPendingCheck !== null && !hasValidDisposition) {
     console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: migration pending marker present.`);
     throw new Error("Operational wipe verification failed: migration pending marker remains present.");
   }
@@ -263,7 +268,7 @@ export async function validateOperationalData(
   const feedTombs = parseTombstones(feedTombKey ? feedTombRaw : null, "feed");
 
   const isNlaDeparture = ownerToInspect === "anonymous";
-  const allowTombstones = isNlaDeparture && !!options.nlaDisposition;
+  const allowTombstones = isNlaDeparture && hasValidDisposition;
   if (!allowTombstones && (recTombs.length > 0 || bakeTombs.length > 0 || feedTombs.length > 0)) {
     throw new Error(`Transition blocked: workspace has pending deletion work (${recTombs.length} recipes, ${bakeTombs.length} bakes, ${feedTombs.length} feeds pending deletion).`);
   }

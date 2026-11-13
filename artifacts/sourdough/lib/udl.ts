@@ -41,9 +41,13 @@ export namespace UDL {
     await validateOperationalData(ownerId, { discardActiveFeed: true, discardActiveBake: options.discardActiveBake, nlaDisposition: options.nlaDisposition });
     const pending = await inspectPendingItems();
     if (pending.hasPending) {
-      const isVerifiedImport = options.nlaDisposition?.mode === "import" && options.nlaDisposition?.plan?.isVerifiedImport === true;
-      const isDiscard = options.nlaDisposition?.mode === "discard";
-      if (!isVerifiedImport && !isDiscard) {
+      const { isVerifiedImportPlan, isAuthorizedDiscardPlan } = require("./nlaWorkspace");
+      const isVerified = options.nlaDisposition?.mode === "import"
+        ? isVerifiedImportPlan(options.nlaDisposition?.plan)
+        : options.nlaDisposition?.mode === "discard"
+        ? isAuthorizedDiscardPlan(options.nlaDisposition?.plan)
+        : false;
+      if (!isVerified) {
         throw new Error(`UDL readiness verification failed: pending items detected (${pending.details.join(", ")}).`);
       }
     }

@@ -148,7 +148,7 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
 
     await expect(
       executeWorkspaceTransition(null, "token-A", "token-A", { id: "token-A", firstName: "A", starterName: "S" }, { nlaDisposition: unverifiedDisposition })
-    ).rejects.toThrow(/readiness verification failed/);
+    ).rejects.toThrow(/migration pending marker remains present|readiness verification failed/);
   });
 
   it("rejects out-of-scope purge plan operations in applyNlaPurgeLocked", async () => {
@@ -159,6 +159,6 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
       ops: [{ kind: "removeKey", key: "bread_lab_auth_token_v1" }],
     };
 
-    await expect(applyNlaPurgeLocked(maliciousPlan)).rejects.toThrow(/Purge plan security rejection/);
+    await expect(applyNlaPurgeLocked(maliciousPlan)).rejects.toThrow(/Purge plan security rejection|Purge plan authorization rejection/);
   });
 });
