@@ -30,7 +30,7 @@ export namespace UDL {
         details.push("Migration pending marker is present.");
       }
     } catch (e: any) {
-      details.push(f`Failed to inspect pending items: ${e?.message ?? String(e)}`);
+      details.push(`Failed to inspect pending items: ${e?.message ?? String(e)}`);
     }
     return {
       hasPending: details.length > 0,

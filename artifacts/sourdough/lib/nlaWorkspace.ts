@@ -40,9 +40,6 @@ export const ANONYMOUS_CANDIDATES_KEY_NLA = "bread_lab_candidates_v1_anonymous";
 
 export const NLA_PURGE_JOURNAL_KEY = "bread_lab_nla_purge_journal_v1";
 
-const VERIFIED_IMPORT_SECRET = `verified_import_${Math.random()}_${Date.now()}`;
-const AUTHORIZED_DISCARD_SECRET = `authorized_discard_${Math.random()}_${Date.now()}`;
-
 const nlaKey = (base: string) => getOwnerStorageKey(base, NLA_OWNER);
 
 export type RecordType = "recipes" | "bakeHistory" | "activeBakes" | "feedHistory" | "activeFeed" | "candidates";
@@ -368,7 +365,9 @@ export async function inventoryNlaWorkspace(): Promise<NlaInventory> {
 
 /** True when ANY inspected key differs from the inventory's snapshot (something changed while we worked). */
 export async function nlaSnapshotChanged(snapshotRaw: Record<string, string | null>): Promise<boolean> {
-  for (const key of Object.keys(snapshotRaw)) {
+  if (!snapshotRaw || typeof snapshotRaw !== "object" || Array.isArray(snapshotRaw)) return true;
+  for (const key of NLA_ALL_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(snapshotRaw, key)) return true;
     const r = await readRawKey(key);
     if (r.error) return true;
     if ((r.raw ?? null) !== (snapshotRaw[key] ?? null)) return true;
@@ -418,10 +417,18 @@ export class NlaPurgeVerificationError extends Error {
 }
 
 const verifiedImportPlans = new WeakSet<PurgePlan>();
+const authorizedDiscardPlans = new WeakSet<PurgePlan>();
 
 export function authorizeImportPlan(plan: PurgePlan): PurgePlan {
   if (!plan || plan.mode !== "import") throw new Error("Cannot authorize non-import purge plan.");
   verifiedImportPlans.add(plan);
+  return plan;
+}
+
+/** Marks a discard plan only after the user explicitly selects Proceed Without Importing. */
+export function authorizeDiscardPlan(plan: PurgePlan): PurgePlan {
+  if (!plan || plan.mode !== "discard") throw new Error("Cannot authorize non-discard purge plan.");
+  authorizedDiscardPlans.add(plan);
   return plan;
 }
 
@@ -430,10 +437,15 @@ export function isVerifiedImportPlan(plan: PurgePlan): boolean {
 }
 
 export function isAuthorizedDiscardPlan(plan: PurgePlan): boolean {
-  return plan !== null && typeof plan === "object" && plan.mode === "discard" && Array.isArray(plan.ops);
+  return plan !== null && typeof plan === "object" && authorizedDiscardPlans.has(plan);
 }
 
-export function validatePurgePlan(plan: unknown, expectedMode?: "import" | "discard", isRecovery: boolean = false): void {
+export function validatePurgePlan(
+  plan: unknown,
+  expectedMode?: "import" | "discard",
+  isRecovery: boolean = false,
+  recoveryDiscardAuthorization?: unknown
+): asserts plan is PurgePlan {
   if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
     throw new Error("Invalid purge plan: root must be a non-null object.");
   }
@@ -454,7 +466,8 @@ export function validatePurgePlan(plan: unknown, expectedMode?: "import" | "disc
   if (!isRecovery && p.mode === "import" && !isVerifiedImportPlan(p)) {
     throw new Error("Purge plan authorization rejection: import plan lacks valid verified import provenance.");
   }
-  if (p.mode === "discard" && !isAuthorizedDiscardPlan(p)) {
+  const recoveryDiscardAuthorized = isRecovery && isDurableDiscardAuthorization(p, recoveryDiscardAuthorization);
+  if (p.mode === "discard" && !isAuthorizedDiscardPlan(p) && !recoveryDiscardAuthorized) {
     throw new Error("Purge plan authorization rejection: discard plan lacks valid authorized discard provenance.");
   }
 
@@ -508,6 +521,13 @@ export function validatePurgePlan(plan: unknown, expectedMode?: "import" | "disc
   }
 }
 
+function isDurableDiscardAuthorization(plan: PurgePlan, value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const receipt = value as { kind?: unknown; planFingerprint?: unknown };
+  return receipt.kind === "explicit-user-choice" &&
+    receipt.planFingerprint === stableStringify({ mode: plan.mode, createdAt: plan.createdAt, ops: plan.ops });
+}
+
 /**
  * Builds the purge plan from an inventory.
  *  - "discard"  (Proceed Without Importing): every eligible record is removed.
@@ -547,11 +567,7 @@ export function buildPurgePlan(inv: NlaInventory, mode: "import" | "discard", ve
   for (const key of NLA_TOMBSTONE_KEYS) ops.push({ kind: "removeKey", key });
   if (inv.residue.present) ops.push({ kind: "residue", key: NLA_SCOPE.residue });
 
-  const plan: PurgePlan = { mode, createdAt: Date.now(), ops };
-  if (mode === "discard") {
-    (plan as any).__authorizedDiscardSecret = AUTHORIZED_DISCARD_SECRET;
-  }
-  return plan;
+  return { mode, createdAt: Date.now(), ops };
 }
 
 async function applyOp(op: PurgeOp): Promise<void> {
@@ -649,7 +665,10 @@ async function verifyOps(ops: PurgeOp[]): Promise<string[]> {
 /** Applies a plan. The caller MUST hold storageMutex (the transition coordinator does). Journaled and repeatable. */
 export async function applyNlaPurgeLocked(plan: PurgePlan): Promise<void> {
   validatePurgePlan(plan, plan?.mode, false);
-  await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, JSON.stringify({ version: 1, plan }));
+  const discardAuthorization = plan.mode === "discard"
+    ? { kind: "explicit-user-choice", planFingerprint: stableStringify({ mode: plan.mode, createdAt: plan.createdAt, ops: plan.ops }) }
+    : null;
+  await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, JSON.stringify({ version: 1, plan, discardAuthorization }));
   for (const op of plan.ops) {
     await applyOp(op);
   }
@@ -669,7 +688,7 @@ export async function resumePendingNlaPurgeLocked(): Promise<boolean> {
     throw new Error("The offline-workspace cleanup journal is unreadable; it was left untouched.");
   }
   const plan = journal?.plan as PurgePlan | undefined;
-  validatePurgePlan(plan, plan?.mode, true);
+  validatePurgePlan(plan, plan?.mode, true, journal?.discardAuthorization);
   for (const op of plan.ops) {
     await applyOp(op);
   }

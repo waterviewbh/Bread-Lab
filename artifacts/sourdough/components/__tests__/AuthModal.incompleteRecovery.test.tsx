@@ -242,12 +242,13 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
       expect(onAuthChange).not.toHaveBeenCalledWith(USER);
 
       await identify(); // Cancel clears the form, so the baker types their name again
-      expect(api.auth.identify).toHaveBeenCalledTimes(2);
+      expect(api.auth.identify).toHaveBeenCalledTimes(1); // a fresh choice screen appears before the destination is authenticated
       expect(screen.getByText(TWO_RECIPES)).toBeTruthy();
       expect(screen.getByText("Proceed Without Importing")).toBeTruthy(); // available again, but only as a new decision
 
       await fireEvent.press(screen.getByText("Proceed Without Importing"));
       await waitFor(() => expect(onAuthChange).toHaveBeenCalledWith(USER));
+      expect(api.auth.identify).toHaveBeenCalledTimes(2);
       expectNlaPurged();
     });
   });
@@ -274,8 +275,8 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
       await fillAndConnect();
       await screen.findByText("Your offline workspace");
 
-      const order = [(api.auth.signout as jest.Mock).mock.invocationCallOrder[0], (api.auth.identify as jest.Mock).mock.invocationCallOrder[0]];
-      expect(order[0]).toBeLessThan(order[1]);                // leftover closed first
+      expect(api.auth.signout).toHaveBeenCalledTimes(1);       // leftover closed before the choice screen
+      expect(api.auth.identify).not.toHaveBeenCalled();        // destination auth waits for an explicit choice
       expect(fakeServer.calls.filter((c) => c !== "auth.signout")).toEqual([]); // nothing was uploaded to the leftover's account
       expect(nlaRaw()).toEqual(expectedNla);
       expect(screen.getByText("Import & Proceed")).toBeTruthy(); // treated as offline -> account, not account -> account

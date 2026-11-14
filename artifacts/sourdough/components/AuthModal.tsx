@@ -22,11 +22,12 @@ import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
 import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
 import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError, setCoordinatorState } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
-import { migrateLocalDataToAccount, clearMigrationPending } from "@/lib/migrate";
+import { migrateLocalDataToAccount } from "@/lib/migrate";
 import { confirmActiveFeedTransition, NLA_LOCAL_WORK_TITLE, NLA_LOCAL_WORK_PARAGRAPHS } from "@/lib/activeWork";
 import {
   inventoryNlaWorkspace,
   buildPurgePlan,
+  authorizeDiscardPlan,
   summarizeInventory,
   describeInventory,
   type NlaInventory,
@@ -39,7 +40,6 @@ import {
   IMPORT_STILL_OFFLINE_SENTENCE,
 } from "@/lib/nlaImport";
 import { closeOrphanRemoteSession } from "@/lib/remoteSessionGuard";
-import { processPendingDeletions } from "@/lib/recipeStorage";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 
@@ -257,7 +257,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       if (!inventory.readable) {
         throw new Error("Some data on this device could not be read, so nothing was changed.");
       }
-      const plan = buildPurgePlan(inventory, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(inventory, "discard"));
       await executeWorkspaceTransition(null, token, token, user, {
         activeFeedAcknowledged: true,
         nlaDisposition: { mode: "discard", plan, snapshotRaw: inventory.raw },
@@ -279,6 +279,24 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   const handleChoiceCancel = async () => {
     setLoading(true);
     try {
+      if (recoveryIncompleteRef.current) {
+        const recovery = await executeFailClosedRecovery(onAuthChange);
+        if (recovery.remoteSignout && recovery.localClear) {
+          reset();
+          return;
+        }
+        const message = [
+          recovery.remoteSignout ? "Your account session was closed." : "Closing your account session could not be confirmed.",
+          recovery.localClear ? "" : "Local sign-in cleanup could not be verified.",
+          "Your account status is uncertain. Keep this screen open and try Cancel Transition again.",
+        ].filter(Boolean).join(" ");
+        await refreshInventory();
+        setChoiceMessage(message);
+        if (Platform.OS === "web") window.alert(`Transition recovery incomplete: ${message}`);
+        else Alert.alert("Transition recovery incomplete", message);
+        return;
+      }
+
       // Cancel leaves baker in NLA and performs no destination authentication.
       setTransitionPendingData(null);
       reset();
@@ -286,6 +304,16 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRequestClose = () => {
+    if (recoveryIncompleteRef.current) {
+      const message = "Finish transition recovery with Cancel Transition before closing this screen.";
+      if (Platform.OS === "web") window.alert(message);
+      else Alert.alert("Transition recovery required", message);
+      return;
+    }
+    onClose();
   };
 
   const handleIdentify = async () => {
@@ -303,6 +331,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         throw new Error(`Supabase session lookup failed: ${err instanceof Error ? err.message : String(err)}`);
       }
       let sessionUserId = activeSession?.user?.id ?? null;
+      let hasOrphanRemoteSession = false;
       const storedToken = await getStoredToken();
 
       if (sessionUserId && storedToken && sessionUserId !== storedToken) {
@@ -310,7 +339,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       }
 
       if (sessionUserId && !storedToken) {
-        await closeOrphanRemoteSession();
+        hasOrphanRemoteSession = true;
         sessionUserId = null;
       }
 
@@ -321,10 +350,11 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       }
 
       // NLA -> Authenticated: Inventory NLA data and present choice screen BEFORE destination authentication.
-      await processPendingDeletions().catch(() => {});
-      await clearMigrationPending().catch(() => {});
-
       const inventory = await inventoryNlaWorkspace();
+      if (!inventory.readable) {
+        throw new Error("Some data on this device could not be read, so no identity change can proceed.");
+      }
+      if (hasOrphanRemoteSession) await closeOrphanRemoteSession();
       setNlaInventory(inventory);
       setChoiceMessage(null);
       setTransitionPendingData({
@@ -440,7 +470,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleRequestClose}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -465,7 +495,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
               </Text>
             </View>
             <Pressable
-              onPress={onClose}
+              onPress={handleRequestClose}
               style={[s.closeButton, { backgroundColor: colors.card }]}
             >
               <Ionicons name="close" size={20} color={colors.foreground} />

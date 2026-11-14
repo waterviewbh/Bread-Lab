@@ -148,7 +148,7 @@ describe("AuthModal: offline workspace changes after the baker's choice (fail cl
       expect(onAuthChange).not.toHaveBeenCalledWith(USER);
 
       await reidentify();
-      expect(api.auth.identify).toHaveBeenCalledTimes(2);
+      expect(api.auth.identify).toHaveBeenCalledTimes(1); // presenting a new choice does not authenticate the destination
       expect(screen.getByText(TWO_RECIPES)).toBeTruthy(); // fresh inventory includes the late recipe
       expect(onAuthChange).not.toHaveBeenCalledWith(USER); // still nothing decided
 
@@ -198,7 +198,7 @@ describe("AuthModal: offline workspace changes after the baker's choice (fail cl
       expect(screen.queryByText("Import & Proceed")).toBeNull();
 
       await reidentify();
-      expect(api.auth.identify).toHaveBeenCalledTimes(2);
+      expect(api.auth.identify).toHaveBeenCalledTimes(1); // the destination is authenticated only after a fresh choice
       expect(screen.getByText(TWO_RECIPES)).toBeTruthy();
       expect(onAuthChange).not.toHaveBeenCalledWith(USER);
 

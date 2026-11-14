@@ -10,6 +10,13 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     setCoordinatorState("IDLE");
   });
 
+  const explicitDiscard = async () => {
+    const { inventoryNlaWorkspace, buildPurgePlan, authorizeDiscardPlan } = require("../nlaWorkspace");
+    const inventory = await inventoryNlaWorkspace();
+    const plan = authorizeDiscardPlan(buildPurgePlan(inventory, "discard"));
+    return { nlaDisposition: { mode: "discard" as const, plan, snapshotRaw: inventory.raw } };
+  };
+
   it("validates ownership correctly rejecting ownerless records", () => {
     const validRec = { id: "1", userId: "user-1", name: "Bread" };
     const invalidRec1 = { id: "2", userId: "", name: "Bad" };
@@ -21,12 +28,12 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(UDL.validateOwnership(invalidRec2, "user-1")).toBe(false);
   });
 
-  it("blocks transition when pending-item gate fails", async () => {
+  it("requires an explicit NLA disposition before an identity transition", async () => {
     await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
 
     await expect(
       executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
-    ).rejects.toThrow(/UDL readiness verification failed|pending items detected|Operational wipe verification failed/);
+    ).rejects.toThrow(/explicit Import or Discard choice is required/);
 
     expect(getCoordinatorState()).toBe("IDLE");
   });
@@ -35,20 +42,22 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     await AsyncStorage.removeItem("bread_lab_migration_pending_v1");
 
     await expect(
-      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
+      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" }, await explicitDiscard())
     ).resolves.toBeUndefined();
 
     expect(getCoordinatorState()).toBe("IDLE");
   });
 
-  it("blocks transition when preflight encounters malformed or indeterminate storage state", async () => {
+  it("blocks transition when the offline workspace changes after preflight inventory", async () => {
+    const options = await explicitDiscard();
     await AsyncStorage.setItem("bread_lab_recipes_v1", "not-json");
 
     await expect(
-      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
-    ).rejects.toThrow();
+      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" }, options)
+    ).rejects.toThrow(/offline workspace changed/);
 
-    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(await AsyncStorage.getItem("bread_lab_recipes_v1")).toBe("not-json");
   });
 
   it("leaves existing records and credentials intact when preflight fails", async () => {
@@ -110,7 +119,7 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     await AsyncStorage.setItem(candidateKey, JSON.stringify([{ id: "c1", extractionResult: { status: "single_candidate" } }]));
 
     await expect(
-      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" })
+      executeWorkspaceTransition("anonymous", "user-A", "user-A", { id: "user-A", firstName: "A", starterName: "S" }, await explicitDiscard())
     ).resolves.toBeUndefined();
 
     await AsyncStorage.setItem(candidateKey, "not-json");
@@ -148,7 +157,7 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
 
     await expect(
       executeWorkspaceTransition(null, "token-A", "token-A", { id: "token-A", firstName: "A", starterName: "S" }, { nlaDisposition: unverifiedDisposition })
-    ).rejects.toThrow(/migration pending marker remains present|readiness verification failed/);
+    ).rejects.toThrow(/authorization rejection|migration pending marker remains present|readiness verification failed/);
   });
 
   it("rejects out-of-scope purge plan operations in applyNlaPurgeLocked", async () => {
@@ -179,6 +188,14 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     ).rejects.toThrow();
 
     await expect(applyNlaPurgeLocked(fabricatedPlan)).rejects.toThrow(/Purge plan authorization rejection/);
+  });
+
+  it("a fabricated discard plan cannot authorize destructive work", async () => {
+    const { inventoryNlaWorkspace, buildPurgePlan, applyNlaPurgeLocked } = require("../nlaWorkspace");
+    const inventory = await inventoryNlaWorkspace();
+    const fabricatedPlan = buildPurgePlan(inventory, "discard");
+
+    await expect(applyNlaPurgeLocked(fabricatedPlan)).rejects.toThrow(/discard plan lacks valid authorized discard provenance/);
   });
 
   it("tampered journal or invalid operation keys/shapes fail closed during recovery", async () => {

@@ -5,6 +5,9 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 ## 🤖 For AI Agents
 
 > [!IMPORTANT]
+> **Mandatory Operating Instructions**:
+> Read and follow the repository-root **[AGENTS.md](file:///E:/Bread-Lab/AGENTS.md)** for every task.
+>
 > **Orientation & Map**:
 > Use the concise **[🤖 AI Project Map](file:///E:/Bread-Lab/docs/ai_project_map.md)** (<150 lines) to quickly orient yourself to the repository layout and architecture. Do not scan or traverse the rest of the `docs/` folders upon session initialization.
 >

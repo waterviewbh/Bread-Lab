@@ -210,6 +210,17 @@ describe("AuthModal: NLA -> account choice screen", () => {
     // The "workspace changed after the choice" cases (both choices, retry, recovery failures) live in
     // AuthModal.workspaceChanged.test.tsx; the old test here asserted the session stayed open, which was the defect.
 
+    it("does not retire tombstones or clear migration state before the user chooses", async () => {
+      put("bread_lab_deleted_recipe_ids_v1_anonymous", ["deleted-r"]);
+      mockStore["bread_lab_migration_pending_v1"] = "1";
+      await openChoiceScreen();
+
+      expect(mockStore["bread_lab_deleted_recipe_ids_v1_anonymous"]).toBe(JSON.stringify(["deleted-r"]));
+      expect(mockStore["bread_lab_migration_pending_v1"]).toBe("1");
+      expect(api.auth.identify).not.toHaveBeenCalled();
+      expect(screen.getByText("Your offline workspace")).toBeTruthy();
+    });
+
     it("tells the baker what stayed behind (a conflict is kept and reported, the rest completes)", async () => {
       put("bread_lab_recipes_v1", [{ id: "dup", name: "A" }, { id: "ok", name: "Fine", phases }]);
       put("bread_lab_recipes_v1_anonymous", [{ id: "dup", name: "B", userId: "anonymous", phases }]);

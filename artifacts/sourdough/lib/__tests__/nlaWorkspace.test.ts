@@ -7,6 +7,8 @@ import {
   ANONYMOUS_CANDIDATES_KEY_NLA,
   inventoryNlaWorkspace,
   buildPurgePlan,
+  authorizeDiscardPlan,
+  authorizeImportPlan,
   applyNlaPurgeLocked,
   resumePendingNlaPurgeLocked,
   verifyNlaCleanliness,
@@ -217,7 +219,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       seedWorkspace();
       seedProtected();
       const before = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(before, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(before, "discard"));
       const protectedBefore = await snapshotProtectedKeys();
 
       await applyNlaPurgeLocked(plan);
@@ -235,7 +237,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       put("bread_lab_recipes_v1_acct-1", [{ id: "same-id", name: "Account", userId: "acct-1" }]);
       put("bread_lab_quarantine_acct-1", { recipes: [{ id: "same-id", userId: "acct-1" }] });
       const inv = await inventoryNlaWorkspace();
-      await applyNlaPurgeLocked(buildPurgePlan(inv, "discard"));
+      await applyNlaPurgeLocked(authorizeDiscardPlan(buildPurgePlan(inv, "discard")));
       expect(mockStore[K.recipesB]).toBeUndefined();
       expect(get("bread_lab_recipes_v1_acct-1")).toEqual([{ id: "same-id", name: "Account", userId: "acct-1" }]);
       expect(get("bread_lab_quarantine_acct-1")).toEqual({ recipes: [{ id: "same-id", userId: "acct-1" }] });
@@ -249,7 +251,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       ]);
       put(K.recipesB, [{ id: "c", name: "B copy", userId: "anonymous" }]);
       const before = await inventoryNlaWorkspace();
-      await applyNlaPurgeLocked(buildPurgePlan(before, "discard"));
+      await applyNlaPurgeLocked(authorizeDiscardPlan(buildPurgePlan(before, "discard")));
       expect(get(K.recipesA).map((r: any) => r.id).sort()).toEqual(["c", "foreign-1"]);   // conflict + foreign kept
       expect(get(K.recipesB)).toEqual([{ id: "c", name: "B copy", userId: "anonymous" }]); // conflict kept
       const after = await inventoryNlaWorkspace();
@@ -260,7 +262,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
     it("re-checks ownership at removal time: a planned id whose record now belongs to another account is NOT removed", async () => {
       put(K.recipesA, [{ id: "shared-id", name: "was NLA's" }, { id: "plain", name: "still NLA's" }]);
       put(K.bakeHistB, [{ id: "bk", recipeName: "Rye", userId: "anonymous" }]);
-      const plan = buildPurgePlan(await inventoryNlaWorkspace(), "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(await inventoryNlaWorkspace(), "discard"));
       // Between planning and applying (e.g. a resumed purge after a crash) the records changed hands.
       put(K.recipesA, [{ id: "shared-id", name: "now theirs", userId: "acct-9" }, { id: "plain", name: "still NLA's" }]);
       put(K.bakeHistB, [{ id: "bk", recipeName: "Rye", userId: "acct-9" }]);
@@ -277,7 +279,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
         activeFeed: { id: "af", userId: "anonymous" },
       });
       const inv = await inventoryNlaWorkspace();
-      await applyNlaPurgeLocked(buildPurgePlan(inv, "discard"));
+      await applyNlaPurgeLocked(authorizeDiscardPlan(buildPurgePlan(inv, "discard")));
       expect(get(K.residue)).toEqual({ recipes: [{ id: "other", userId: "acct-3" }] });
     });
 
@@ -285,7 +287,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       seedWorkspace();
       seedProtected();
       const inv = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(inv, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(inv, "discard"));
       await applyNlaPurgeLocked(plan);
       const snapshot = { ...mockStore };
       await applyNlaPurgeLocked(plan);
@@ -297,12 +299,12 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
     it("removes only the verified ids plus the discarded active work, tombstones and residue", async () => {
       seedWorkspace();
       const inv = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(inv, "import", {
+      const plan = authorizeImportPlan(buildPurgePlan(inv, "import", {
         recipes: ["r-1", "r-legacy"],          // r-2 was NOT verified
         bakeHistory: ["b-1", "b-2"],
         feedHistory: ["f-1", "f-2"],
         candidates: ["c-1", "c-2"],
-      });
+      }));
       await applyNlaPurgeLocked(plan);
 
       expect(get(K.recipesB).map((r: any) => r.id)).toEqual(["r-2"]);   // unverified record is still on the device
@@ -324,12 +326,15 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       seedWorkspace();
       seedProtected();
       const inv = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(inv, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(inv, "discard"));
       const protectedBefore = await snapshotProtectedKeys();
 
       mockFailOnRemoveKey = K.tombRecipe; // simulated crash part-way through
       await expect(applyNlaPurgeLocked(plan)).rejects.toThrow(/simulated crash/);
       expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeDefined();       // journal survives the crash
+      const persistedJournal = JSON.parse(mockStore[NLA_PURGE_JOURNAL_KEY]);
+      expect(persistedJournal.discardAuthorization.kind).toBe("explicit-user-choice");
+      expect(persistedJournal.discardAuthorization.planFingerprint).toBeTruthy();
       expect(mockStore[K.tombRecipe]).toBeDefined();                 // not finished
 
       mockFailOnRemoveKey = null;
@@ -346,6 +351,16 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       expect(await resumePendingNlaPurgeLocked()).toBe(false);               // nothing left to resume
     });
 
+    it("a discard journal without a matching durable authorization receipt is left untouched", async () => {
+      const { authorizeDiscardPlan: authorize, buildPurgePlan: build } = require("../nlaWorkspace");
+      const inv = await inventoryNlaWorkspace();
+      const plan = authorize(build(inv, "discard"));
+      await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, JSON.stringify({ version: 1, plan }));
+
+      await expect(resumePendingNlaPurgeLocked()).rejects.toThrow(/discard plan lacks valid authorized discard provenance/);
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeDefined();
+    });
+
     it("an unreadable journal is left untouched and surfaced, never guessed at", async () => {
       mockStore[NLA_PURGE_JOURNAL_KEY] = "{broken";
       await expect(resumePendingNlaPurgeLocked()).rejects.toThrow(/journal is unreadable/);
@@ -359,6 +374,13 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       put(K.recipesB, [...get(K.recipesB), { id: "late", name: "Late", userId: "anonymous" }]);
       expect(await nlaSnapshotChanged(inv.raw)).toBe(true);
     });
+
+    it("rejects an incomplete snapshot that omits inventory keys", async () => {
+      const inv = await inventoryNlaWorkspace();
+      const incomplete = { ...inv.raw };
+      delete incomplete[K.activeFeed];
+      expect(await nlaSnapshotChanged(incomplete)).toBe(true);
+    });
   });
 
   describe("final local-cleanliness verification", () => {
@@ -366,7 +388,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       seedWorkspace();
       seedProtected();
       const before = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(before, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(before, "discard"));
       const protectedBefore = await snapshotProtectedKeys();
       await applyNlaPurgeLocked(plan);
       mockStore["bread_lab_quarantine_acct-1"] = JSON.stringify({ recipes: [] }); // someone disturbed another account
@@ -377,7 +399,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
     it("reports planned data that is still there", async () => {
       seedWorkspace();
       const before = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(before, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(before, "discard"));
       const problems = await verifyNlaCleanliness(before, plan, await snapshotProtectedKeys());
       expect(problems.length).toBeGreaterThan(0);
     });

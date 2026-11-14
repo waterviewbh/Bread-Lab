@@ -22,6 +22,7 @@ import {
   verifyNlaCleanliness,
   retireNlaTombstonesLocked,
   NlaPurgeVerificationError,
+  validatePurgePlan,
   type PurgePlan,
 } from "./nlaWorkspace";
 
@@ -94,7 +95,14 @@ export async function executeWorkspaceTransition(
     const outgoingIsNla = outgoingOwnerId === null || isNlaOwner(outgoingOwnerId);
     const disposition = outgoingIsNla ? options.nlaDisposition : undefined;
 
-    // Refuse before anything changes (state stays IDLE) if the offline workspace is no longer what the baker chose about.
+    if (outgoingIsNla && incomingOwnerId !== null && !disposition) {
+      throw new Error("Workspace transition refused: an explicit Import or Discard choice is required for the offline workspace.");
+    }
+    if (disposition) {
+      validatePurgePlan(disposition.plan, disposition.mode);
+    }
+
+    // Refuse before anything changes (state stays IDLE) unless the complete offline inventory still matches the baker's choice.
     if (disposition && (await nlaSnapshotChanged(disposition.snapshotRaw))) {
       throw new NlaWorkspaceChangedError();
     }
