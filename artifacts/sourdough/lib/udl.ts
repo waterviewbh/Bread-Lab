@@ -8,7 +8,7 @@ import {
   restoreOperationalData,
   safeParse,
 } from "./storageUtils";
-import type { NlaDisposition } from "./nlaWorkspace";
+import type { NlaDisposition, NlaTransitionIntent } from "./nlaWorkspace";
 
 export namespace UDL {
   export function validateOwnership(record: any, expectedOwnerId: string): boolean {
@@ -38,8 +38,17 @@ export namespace UDL {
     };
   }
 
-  export async function verifyReadiness(ownerId: string, options: { discardActiveBake?: boolean; nlaDisposition?: NlaDisposition } = {}): Promise<void> {
-    await validateOperationalData(ownerId, { discardActiveFeed: true, discardActiveBake: options.discardActiveBake, nlaDisposition: options.nlaDisposition });
+  export async function verifyReadiness(ownerId: string, options: {
+    discardActiveBake?: boolean;
+    nlaDisposition?: NlaDisposition;
+    nlaTransitionIntent?: NlaTransitionIntent;
+  } = {}): Promise<void> {
+    await validateOperationalData(ownerId, {
+      discardActiveFeed: true,
+      discardActiveBake: options.discardActiveBake,
+      nlaDisposition: options.nlaDisposition,
+      nlaTransitionIntent: options.nlaTransitionIntent,
+    });
     const pending = await inspectPendingItems();
     if (pending.hasPending) {
       const { isVerifiedImportPlan, isAuthorizedDiscardPlan } = require("./nlaWorkspace");

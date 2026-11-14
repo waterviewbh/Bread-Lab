@@ -23,7 +23,9 @@ import {
   retireNlaTombstonesLocked,
   NlaPurgeVerificationError,
   validatePurgePlan,
+  isAuthorizedNlaTransitionIntent,
   type PurgePlan,
+  type NlaTransitionIntent,
 } from "./nlaWorkspace";
 
 export type CoordinatorState = "IDLE" | "TRANSITIONING" | "RECOVERY_REQUIRED";
@@ -68,19 +70,54 @@ export interface NlaDisposition {
   snapshotRaw: Record<string, string | null>;
 }
 
+export interface PreparedIncomingWorkspace {
+  ownerId: string;
+  token: string;
+  user: any;
+  nlaDisposition: NlaDisposition;
+}
+
 export interface WorkspaceTransitionOptions {
   /** True once the baker has been shown the warning about active work and chose to continue. */
   activeFeedAcknowledged?: boolean;
   /** NLA departures only: the verified purge (import) or full purge (discard) to run instead of setting data aside. */
   nlaDisposition?: NlaDisposition;
+  /** Explicit NLA choice captured before authentication; allows preflight before the destination identity exists. */
+  nlaTransitionIntent?: NlaTransitionIntent;
+  /** NLA -> Auth only: run authentication/import after preflight while the coordinator owns the transition lock. */
+  prepareIncoming?: () => Promise<PreparedIncomingWorkspace>;
   /** Outgoing sync after readiness passes, while the transition mutex is held, but before local identity mutation. */
   beforeTransition?: () => Promise<void>;
+  /** Sign-out transitions only: close and independently verify the remote session before returning to IDLE. */
+  closeRemoteSession?: boolean;
+}
+
+/** Request remote sign-out, then require an independent, explicit no-session result. */
+async function closeAndVerifyRemoteSession(): Promise<void> {
+  try {
+    await api.auth.signout();
+  } catch (error) {
+    // The request result is not authoritative; a fresh session lookup decides whether closure completed.
+    console.warn(`[TransitionCoordinator] Remote sign-out request failed; verifying session independently:`, error);
+  }
+
+  const sessionRes = await api.auth.getSession();
+  const data = sessionRes?.data;
+  if (!data || typeof data !== "object" || !Object.prototype.hasOwnProperty.call(data, "session")) {
+    throw new Error("Remote session lookup returned no verifiable session state.");
+  }
+  if (sessionRes?.error) {
+    throw new Error(`Remote session lookup returned an error: ${sessionRes.error.message ?? String(sessionRes.error)}`);
+  }
+  if (data.session !== null) {
+    throw new Error("Remote session could not be confirmed closed.");
+  }
 }
 
 /**
  * @param outgoingOwnerId  the departing workspace (null or "anonymous" = signed-out / NLA)
- * @param incomingOwnerId  the destination workspace; null = signed out (credentials are cleared and
- *                         nothing is restored)
+ * @param incomingOwnerId  the destination workspace; null = signed out, unless prepareIncoming is
+ *                         supplied for a coordinator-owned NLA -> Auth transition
  */
 export async function executeWorkspaceTransition(
   outgoingOwnerId: string | null,
@@ -95,17 +132,31 @@ export async function executeWorkspaceTransition(
     }
 
     const outgoingIsNla = outgoingOwnerId === null || isNlaOwner(outgoingOwnerId);
-    const disposition = outgoingIsNla ? options.nlaDisposition : undefined;
+    const deferredNlaLogin = outgoingIsNla && incomingOwnerId === null && !!options.prepareIncoming;
+    const intent = options.nlaTransitionIntent;
+    let disposition = outgoingIsNla ? options.nlaDisposition : undefined;
 
-    if (outgoingIsNla && incomingOwnerId !== null && !disposition) {
+    if (options.prepareIncoming && !deferredNlaLogin) {
+      throw new Error("Workspace transition refused: deferred authentication is only valid for NLA -> Auth.");
+    }
+    if (deferredNlaLogin && (!intent || !isAuthorizedNlaTransitionIntent(intent))) {
+      throw new Error("Workspace transition refused: an explicit, valid NLA Import or Discard choice is required.");
+    }
+    if (intent && (!deferredNlaLogin || !isAuthorizedNlaTransitionIntent(intent))) {
+      throw new Error("Workspace transition refused: invalid NLA transition authorization.");
+    }
+
+    const hasIncomingAuth = incomingOwnerId !== null || deferredNlaLogin;
+    if (outgoingIsNla && hasIncomingAuth && !disposition && !intent) {
       throw new Error("Workspace transition refused: an explicit Import or Discard choice is required for the offline workspace.");
     }
     if (disposition) {
       validatePurgePlan(disposition.plan, disposition.mode);
     }
 
+    const snapshotRaw = disposition?.snapshotRaw ?? intent?.snapshotRaw;
     // Refuse before anything changes (state stays IDLE) unless the complete offline inventory still matches the baker's choice.
-    if (disposition && (await nlaSnapshotChanged(disposition.snapshotRaw))) {
+    if (snapshotRaw && await nlaSnapshotChanged(snapshotRaw)) {
       throw new NlaWorkspaceChangedError();
     }
 
@@ -115,8 +166,13 @@ export async function executeWorkspaceTransition(
       if (hasWork) throw new ActiveFeedNotAcknowledgedError();
     }
 
-    // Mandatory preflight readiness check for all transitions (including NLA disposition) before any mutations.
-    await UDL.verifyReadiness(outgoingOwnerId ?? "anonymous", { discardActiveBake: !!disposition, nlaDisposition: disposition });
+    // This is the authoritative gate. For deferred NLA login it runs before api.auth.identify,
+    // import, purge, or any credential change, while this coordinator owns the storage mutex.
+    await UDL.verifyReadiness(outgoingOwnerId ?? "anonymous", {
+      discardActiveBake: !!disposition || deferredNlaLogin,
+      nlaDisposition: disposition,
+      nlaTransitionIntent: intent,
+    });
 
     // Outgoing synchronization can write remotely and locally, so run it only after preflight and under this
     // same mutex. If it fails, identity and workspace state have not yet changed and the caller can retry.
@@ -126,6 +182,37 @@ export async function executeWorkspaceTransition(
     advanceWorkspaceGeneration();
 
     try {
+      if (deferredNlaLogin) {
+        const prepared = await options.prepareIncoming!();
+        if (!prepared.ownerId || prepared.token !== prepared.ownerId || prepared.user?.id !== prepared.ownerId) {
+          throw new Error("NLA transition refused: destination token, profile, and workspace owner do not agree.");
+        }
+        if (!prepared.nlaDisposition || prepared.nlaDisposition.mode !== intent!.mode) {
+          throw new Error("NLA transition refused: the prepared operation does not match the baker's explicit choice.");
+        }
+        const sameSnapshot = (a: Record<string, string | null>, b: Record<string, string | null>) => {
+          const keysA = Object.keys(a).sort();
+          const keysB = Object.keys(b).sort();
+          return keysA.length === keysB.length && keysA.every((key, index) => key === keysB[index] && a[key] === b[key]);
+        };
+        if (!sameSnapshot(prepared.nlaDisposition.snapshotRaw, intent!.snapshotRaw)) {
+          throw new NlaWorkspaceChangedError();
+        }
+
+        incomingOwnerId = prepared.ownerId;
+        incomingToken = prepared.token;
+        incomingUser = prepared.user;
+        disposition = prepared.nlaDisposition;
+        validatePurgePlan(disposition.plan, disposition.mode);
+
+        // Import sets a pending marker while it writes. Re-run readiness with the now verified plan
+        // before source cleanup or local credential activation.
+        await UDL.verifyReadiness("anonymous", {
+          discardActiveBake: true,
+          nlaDisposition: disposition,
+        });
+      }
+
       if (disposition) {
         // The baker's explicit choice supersedes an "import in progress" marker, and NLA has no remote
         // copies, so its pending-deletion queues are simply retired (no network).
@@ -133,7 +220,7 @@ export async function executeWorkspaceTransition(
         await retireNlaTombstonesLocked();
       }
 
-      // 2. Leave the outgoing workspace.
+      // Leave the outgoing workspace.
       if (disposition) {
         // NLA is cleaned up, not parked: journaled, repeatable purge of exactly the planned records, then a
         // full verification that the NLA scope is clean and nothing outside it changed.
@@ -149,12 +236,18 @@ export async function executeWorkspaceTransition(
         await UDL.quarantineData(outgoingOwnerId);
       }
 
-      // 3. Bring the incoming workspace's data in, then pivot credentials.
+      // Bring the incoming workspace's data in, then pivot credentials.
       if (incomingOwnerId !== null && incomingToken && incomingUser) {
         await UDL.restoreData(incomingOwnerId);
         await saveAuth(incomingToken, incomingUser);
       } else {
         await clearAuth();
+      }
+
+      // A sign-out is not complete until the remote session is independently confirmed absent.
+      // Keep RECOVERY_REQUIRED on any uncertainty; never expose a transient IDLE state.
+      if (incomingOwnerId === null && options.closeRemoteSession) {
+        await closeAndVerifyRemoteSession();
       }
 
       setCoordinatorState("IDLE");
@@ -174,28 +267,42 @@ export async function clearCredentialsExclusive(): Promise<void> {
   return storageMutex.run(() => clearAuth());
 }
 
-export async function recoverTransition(): Promise<void> {
+export interface TransitionRecoveryResult {
+  /** True only after getSession independently confirms that the remote session is absent. */
+  remoteSignout: boolean;
+  /** True only after clearAuth verifies both local credential keys are absent. */
+  localClear: boolean;
+}
+
+export async function recoverTransition(): Promise<TransitionRecoveryResult> {
   return storageMutex.run(async () => {
+    setCoordinatorState("RECOVERY_REQUIRED");
     console.log(`[TransitionCoordinator] Executing recovery protocol...`);
+    let remoteSignout = false;
+    let localClear = false;
+
     try {
-      await api.auth.signout().catch(() => {});
-      await clearAuth().catch(() => {});
-      let sessionActive = false;
-      try {
-        const sessionRes = await api.auth.getSession();
-        sessionActive = !!sessionRes?.data?.session;
-      } catch {
-        sessionActive = false;
-      }
-      if (sessionActive) {
-        throw new Error("Recovery failed: remote session could not be confirmed closed.");
-      }
-      setCoordinatorState("IDLE");
-      console.log(`[TransitionCoordinator] Recovery protocol completed, state reset to IDLE.`);
-    } catch (e) {
-      console.error(`[TransitionCoordinator] Recovery protocol failed:`, e);
-      setCoordinatorState("RECOVERY_REQUIRED");
-      throw e;
+      await closeAndVerifyRemoteSession();
+      remoteSignout = true;
+    } catch (error) {
+      console.error(`[TransitionCoordinator] Recovery could not confirm remote session closure:`, error);
     }
+
+    try {
+      await clearAuth();
+      localClear = true;
+    } catch (error) {
+      console.error(`[TransitionCoordinator] Recovery could not verify local credential removal:`, error);
+    }
+
+    if (remoteSignout && localClear) {
+      setCoordinatorState("IDLE");
+      console.log(`[TransitionCoordinator] Recovery verified local and remote cleanup; state reset to IDLE.`);
+    } else {
+      setCoordinatorState("RECOVERY_REQUIRED");
+      console.warn(`[TransitionCoordinator] Recovery remains required (remoteSignout=${remoteSignout}, localClear=${localClear}).`);
+    }
+
+    return { remoteSignout, localClear };
   });
 }

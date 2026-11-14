@@ -51,6 +51,7 @@ jest.mock("../deviceId", () => ({
 describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    api.auth.getSession = jest.fn().mockResolvedValue({ data: { session: null }, error: null });
     mockStorage = {};
     (AsyncStorage.setItem as jest.Mock).mockImplementation((key, val) => {
       mockStorage[key] = val;
@@ -439,7 +440,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       id: "anon-feed",
       userId: "anonymous",
     });
-    await expect(clearOperationalData("user-clearing")).resolves.toBeUndefined();
+    await expect(clearOperationalData(null)).resolves.toBeUndefined();
     expect(mockStorage["sourdough_feed_session_v1"]).toBeUndefined();
   });
 
@@ -485,9 +486,18 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     const { clearOperationalData } = require("../storageUtils");
 
     mockStorage["bread_lab_bake_v2"] = "{malformed-bake";
+    const before = { ...mockStorage };
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (AsyncStorage.removeItem as jest.Mock).mockClear();
+    (AsyncStorage.multiSet as jest.Mock).mockClear();
+    (AsyncStorage.multiRemove as jest.Mock).mockClear();
 
     await expect(clearOperationalData("incoming-user")).rejects.toThrow(/malformed/);
-    expect(mockStorage["bread_lab_bake_v2"]).toBe("{malformed-bake");
+    expect(mockStorage).toEqual(before);
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
   });
 
   it("rejects cleanup verification and preserves raw storage when active feed JSON is malformed", async () => {
@@ -506,9 +516,18 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       id: "unknown-owner-bake",
       recipeName: "Unknown Owner Bake",
     });
+    const before = { ...mockStorage };
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (AsyncStorage.removeItem as jest.Mock).mockClear();
+    (AsyncStorage.multiSet as jest.Mock).mockClear();
+    (AsyncStorage.multiRemove as jest.Mock).mockClear();
 
     await expect(clearOperationalData("incoming-user")).rejects.toThrow(/ownership|verification failed/);
-    expect(mockStorage["bread_lab_bake_v2"]).toBeDefined();
+    expect(mockStorage).toEqual(before);
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
   });
 
   it("rejects cleanup verification and preserves storage when active feed has missing or unknown ownership", async () => {
@@ -604,7 +623,6 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       {
         ...healthyCollections(),
         "bread_lab_bake_v2": "{malformed-active-bake",
-        "sourdough_feed_session_v1": JSON.stringify({ id: "af1", userId: "anonymous" }),
       },
       /active bake record is malformed/
     );
@@ -657,15 +675,14 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     );
   });
 
-  it("rejects a workspace with a pending owner-scoped deletion AND a malformed active bake, with zero mutation", async () => {
-    const { getOwnerStorageKey, APP_STORAGE_KEYS } = require("../storageUtils");
+  it("rejects a workspace with a pending flat legacy deletion AND a malformed active bake, with zero mutation", async () => {
     await expectRejectedWithZeroMutation(
       {
         ...healthyCollections(),
         "bread_lab_bake_v2": "{malformed-active-bake",
-        [getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, "user-clearing")]: JSON.stringify(["pending-feed-1"]),
+        "bread_lab_deleted_feed_ids_v1": JSON.stringify(["pending-feed-1"]),
       },
-      /Transition blocked: workspace has pending deletion work \(0 recipes, 0 bakes, 1 feeds pending deletion\)/
+      /Transition blocked: workspace contains nonempty flat legacy feed tombstone queue bread_lab_deleted_feed_ids_v1 \(1 items\)/
     );
   });
 
@@ -751,7 +768,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
   it("validateOperationalData rejects invalid or unreadable storage with zero mutations", async () => {
     const { validateOperationalData } = require("../storageUtils");
 
-    mockStorage["bread_lab_recipes_v1"] = "invalid-json-string";
+    mockStorage["bread_lab_recipes_v1_some-user"] = "invalid-json-string";
 
     (AsyncStorage.setItem as jest.Mock).mockClear();
     (AsyncStorage.removeItem as jest.Mock).mockClear();
@@ -840,6 +857,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     const { api } = require("../api");
 
     api.auth.signout = jest.fn().mockRejectedValue(new Error("Network timeout"));
+    api.auth.getSession = jest.fn().mockResolvedValue({ data: { session: { user: { id: "token-xyz" } } }, error: null });
     mockStorage["bread_lab_auth_token_v1"] = null;
     mockStorage["bread_lab_auth_user_v1"] = null;
     (AsyncStorage.multiRemove as jest.Mock).mockResolvedValue(undefined);
@@ -876,6 +894,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     const { api } = require("../api");
 
     api.auth.signout = jest.fn().mockRejectedValue(new Error("Network offline"));
+    api.auth.getSession = jest.fn().mockResolvedValue({ data: { session: { user: { id: "token-xyz" } } }, error: null });
     mockStorage["bread_lab_auth_token_v1"] = null;
     mockStorage["bread_lab_auth_user_v1"] = null;
     (AsyncStorage.multiRemove as jest.Mock).mockResolvedValue(undefined);

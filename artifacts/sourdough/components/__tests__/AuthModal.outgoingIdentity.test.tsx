@@ -94,20 +94,18 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
   });
   afterEach(async () => { cleanup(); await new Promise((r) => setTimeout(r, 0)); jest.restoreAllMocks(); });
 
-  it("valid stored A, currentUser === null (not yet hydrated): a normal A -> B switch; the stored identity was validated BEFORE B was authenticated", async () => {
+  it("refuses destination identification when stored Auth identity A exists but currentUser is null", async () => {
     storeValid(A);
-    await connectAsB();
-    await waitFor(() => expect(onAuthChange).toHaveBeenCalledWith(B));
+    const before = JSON.parse(JSON.stringify(mockStore));
 
-    const firstCredentialRead = (AsyncStorage.getItem as jest.Mock).mock.invocationCallOrder[
-      (AsyncStorage.getItem as jest.Mock).mock.calls.findIndex(([k]) => k === TOKEN_KEY)
-    ];
-    expect(firstCredentialRead).toBeLessThan((api.auth.identify as jest.Mock).mock.invocationCallOrder[0]);
-    expect(api.auth.identify).toHaveBeenCalledTimes(1);
-    expect(mockStore[TOKEN_KEY]).toBe(B.id);                   // local and remote agree on B
-    expect(JSON.parse(mockStore[USER_KEY])).toEqual(B);
-    expect(remoteSession).toEqual({ user: { id: B.id } });
-    expect(onClose).toHaveBeenCalled();
+    await connectAsB();
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(
+      "Identification Failed",
+      expect.stringMatching(/already signed in/i)
+    ));
+    expectRefusedBeforeDestination(before);
+    expect(screen.queryByText("Proceed Without Importing")).toBeNull();
   });
 
   it("why the prop cannot contradict the stored identity: the connect form exists only while currentUser is null", async () => {
@@ -128,7 +126,7 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Sign out?", expect.any(String), expect.any(Array)));
     const confirmation = alertSpy.mock.calls.find(([title]) => title === "Sign out?");
-    const signOutButton = confirmation?.[2]?.find(({ text }) => text === "Sign out");
+    const signOutButton = confirmation?.[2]?.find((button: { text?: string; onPress?: () => void }) => button.text === "Sign out");
     expect(signOutButton?.onPress).toBeDefined();
 
     await act(async () => {
@@ -168,7 +166,7 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
     await fireEvent.press(screen.getByText("Sign Out / Remove Name"));
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Sign out?", expect.any(String), expect.any(Array)));
     const confirmation = alertSpy.mock.calls.find(([title]) => title === "Sign out?");
-    const signOutButton = confirmation?.[2]?.find(({ text }) => text === "Sign out");
+    const signOutButton = confirmation?.[2]?.find((button: { text?: string; onPress?: () => void }) => button.text === "Sign out");
 
     await act(async () => {
       signOutButton?.onPress?.();
@@ -182,6 +180,35 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
     expect(remoteSession).toBeNull();
     expect(getCoordinatorState()).toBe("IDLE");
     expect(onAuthChange).toHaveBeenCalledWith(null);
+  });
+
+  it("does not report sign-out complete when the remote session remains after the API reports success", async () => {
+    storeValid(A);
+    (api.auth.signout as jest.Mock).mockImplementation(async () => ({ signedOut: true }));
+    const migrate = jest.spyOn(migration, "migrateLocalDataToAccount").mockResolvedValue({
+      feed: { ok: 0, failed: 0, unresolved: 0 },
+      bakes: { ok: 0, failed: 0, unresolved: 0 },
+      recipes: { ok: 0, failed: 0, unresolved: 0 },
+    });
+
+    await render(<AuthModal visible currentUser={A} onClose={onClose} onAuthChange={onAuthChange} />);
+    await fireEvent.press(screen.getByText("Sign Out / Remove Name"));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Sign out?", expect.any(String), expect.any(Array)));
+    const confirmation = alertSpy.mock.calls.find(([title]) => title === "Sign out?");
+    const signOutButton = confirmation?.[2]?.find((button: { text?: string; onPress?: () => void }) => button.text === "Sign out");
+
+    await act(async () => {
+      signOutButton?.onPress?.();
+    });
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Sign-out failed", expect.stringMatching(/could not be confirmed closed/i)));
+    expect(migrate).toHaveBeenCalledTimes(1);
+    expect(api.auth.signout).toHaveBeenCalledTimes(1);
+    expect(remoteSession).toEqual({ user: { id: A.id } });
+    expect(mockStore[TOKEN_KEY]).toBeUndefined();
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+    expect(onAuthChange).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   const invalidStates: Array<{ name: string; arm: () => void }> = [
@@ -199,8 +226,8 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
       await settle();
 
-      expect(alertSpy.mock.calls[0][0]).toBe("Switch Failed");
       expectRefusedBeforeDestination(before);
+      expect(alertSpy.mock.calls[0][0]).toBe("Identification Failed");
     });
   }
 });

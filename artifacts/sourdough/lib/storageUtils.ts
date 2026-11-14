@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { NlaDisposition } from "./nlaWorkspace";
+import type { NlaDisposition, NlaTransitionIntent } from "./nlaWorkspace";
 
 
 export const APP_STORAGE_KEYS = {
@@ -81,10 +81,13 @@ export interface ValidateOperationalDataOptions {
   discardActiveFeed?: boolean;
   /** Same for an active bake, when the transition discards it (the NLA departure only). */
   discardActiveBake?: boolean;
+  /** Validate legacy global keys that clearOperationalData mutates. */
+  cleanupLegacyKeys?: boolean;
   nlaDisposition?: NlaDisposition;
+  nlaTransitionIntent?: NlaTransitionIntent;
 }
 
-function validateRecordCollection(raw: string | null, keyLabel: string, expectedOwner: string): any[] {
+function validateRecordCollection(raw: string | null, keyLabel: string, expectedOwner: string, allowForeignOwners = false): any[] {
   if (raw === null || raw === undefined) return [];
   let parsed: unknown;
   try {
@@ -119,7 +122,7 @@ function validateRecordCollection(raw: string | null, keyLabel: string, expected
       if (owner === "") {
         throw new Error(`Operational wipe pre-validation failed: ${keyLabel} record is missing explicit owner metadata for user '${cleanExpected}'.`);
       }
-      if (owner !== cleanExpected) {
+      if (!allowForeignOwners && owner !== cleanExpected) {
         throw new Error(`Operational wipe pre-validation failed: ${keyLabel} record has owner '${owner}' (expected departing owner '${cleanExpected}').`);
       }
     }
@@ -134,13 +137,16 @@ export async function validateOperationalData(
   console.log(`[BL-DIAG] [StorageUtils] validateOperationalData starting for currentUserId: ${currentUserId}`);
 
   const ownerToInspect = currentUserId && currentUserId.trim() !== "" ? currentUserId.trim() : "anonymous";
-  const recipesKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, ownerToInspect);
-  const bakeHistKey = getOwnerStorageKey(APP_STORAGE_KEYS.BAKE_HISTORY, ownerToInspect);
-  const feedHistKey = getOwnerStorageKey(APP_STORAGE_KEYS.FEED_HISTORY, ownerToInspect);
-  const activeBakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.ACTIVE_BAKE, ownerToInspect);
-  const recTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_RECIPE_IDS, ownerToInspect);
-  const bakeTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS, ownerToInspect);
-  const feedTombKey = getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, ownerToInspect);
+  const storageKey = (baseKey: string) => options.cleanupLegacyKeys
+    ? baseKey
+    : getOwnerStorageKey(baseKey, ownerToInspect);
+  const recipesKey = storageKey(APP_STORAGE_KEYS.RECIPES);
+  const bakeHistKey = storageKey(APP_STORAGE_KEYS.BAKE_HISTORY);
+  const feedHistKey = storageKey(APP_STORAGE_KEYS.FEED_HISTORY);
+  const activeBakeKey = storageKey(APP_STORAGE_KEYS.ACTIVE_BAKE);
+  const recTombKey = storageKey(APP_STORAGE_KEYS.DELETED_RECIPE_IDS);
+  const bakeTombKey = storageKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS);
+  const feedTombKey = storageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS);
   const candidateKey = ownerToInspect === "anonymous" ? "bread_lab_candidates_v1_anonymous" : `bread_lab_candidates_v1_${ownerToInspect}`;
 
   let recipeRaw: string | null = null;
@@ -183,10 +189,12 @@ export async function validateOperationalData(
     throw new Error(`Operational wipe pre-validation failed due to storage read error: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const { isVerifiedImportPlan, isAuthorizedDiscardPlan } = require("./nlaWorkspace");
+  const { isVerifiedImportPlan, isAuthorizedDiscardPlan, isAuthorizedNlaTransitionIntent } = require("./nlaWorkspace");
   const isAuthorizedImport = options.nlaDisposition?.mode === "import" && isVerifiedImportPlan(options.nlaDisposition?.plan);
   const isAuthorizedDiscard = options.nlaDisposition?.mode === "discard" && isAuthorizedDiscardPlan(options.nlaDisposition?.plan);
   const hasValidDisposition = isAuthorizedImport || isAuthorizedDiscard;
+  const hasAuthorizedNlaIntent =
+    ownerToInspect === "anonymous" && isAuthorizedNlaTransitionIntent(options.nlaTransitionIntent);
 
   if (migPendingCheck !== null && !hasValidDisposition) {
     console.log(`[BL-DIAG] [StorageUtils] validateOperationalData failed: migration pending marker present.`);
@@ -270,14 +278,14 @@ export async function validateOperationalData(
   const feedTombs = parseTombstones(feedTombKey ? feedTombRaw : null, "feed");
 
   const isNlaDeparture = ownerToInspect === "anonymous";
-  const allowTombstones = isNlaDeparture && hasValidDisposition;
+  const allowTombstones = isNlaDeparture && (hasValidDisposition || hasAuthorizedNlaIntent);
   if (!allowTombstones && (recTombs.length > 0 || bakeTombs.length > 0 || feedTombs.length > 0)) {
     throw new Error(`Transition blocked: workspace has pending deletion work (${recTombs.length} recipes, ${bakeTombs.length} bakes, ${feedTombs.length} feeds pending deletion).`);
   }
 
-  validateRecordCollection(recipeRaw, "recipe record", ownerToInspect);
-  validateRecordCollection(bakeHistRaw, "bake history", ownerToInspect);
-  validateRecordCollection(feedHistRaw, "feed history", ownerToInspect);
+  validateRecordCollection(recipeRaw, "recipe record", ownerToInspect, options.cleanupLegacyKeys);
+  validateRecordCollection(bakeHistRaw, "bake history", ownerToInspect, options.cleanupLegacyKeys);
+  validateRecordCollection(feedHistRaw, "feed history", ownerToInspect, options.cleanupLegacyKeys);
 
   if (candidatesRaw !== null && candidatesRaw !== undefined) {
     try {
@@ -309,7 +317,7 @@ export async function validateOperationalData(
         }
         const cleanOwner = String(owner).trim();
         const cleanExpected = ownerToInspect.trim();
-        if (cleanOwner !== cleanExpected) {
+        if (!options.cleanupLegacyKeys && cleanOwner !== cleanExpected) {
           throw new Error(`Operational wipe verification failed: active bake has foreign owner '${cleanOwner}' (expected '${cleanExpected}').`);
         }
       }
@@ -330,7 +338,7 @@ export async function validateOperationalData(
       }
       const cleanOwner = String(owner).trim();
       const cleanExpected = ownerToInspect.trim();
-      if (cleanOwner !== cleanExpected) {
+      if (!options.cleanupLegacyKeys && cleanOwner !== cleanExpected) {
         throw new Error(`Operational wipe verification failed: active feed has foreign owner '${cleanOwner}' (expected '${cleanExpected}').`);
       }
     } catch (e: any) {
@@ -351,7 +359,7 @@ export async function validateOperationalData(
  */
 export async function clearOperationalData(currentUserId?: string | null): Promise<void> {
   console.log(`[BL-DIAG] [StorageUtils] clearOperationalData starting for currentUserId: ${currentUserId}`);
-  await validateOperationalData(currentUserId);
+  await validateOperationalData(currentUserId, { cleanupLegacyKeys: true });
 
   let recipeRaw: string | null = null;
   let bakeHistRaw: string | null = null;

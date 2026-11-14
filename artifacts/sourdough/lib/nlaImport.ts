@@ -23,6 +23,7 @@ import {
 import {
   inventoryNlaWorkspace,
   resumePendingNlaPurge,
+  resumePendingNlaPurgeLocked,
   buildPurgePlan,
   authorizeImportPlan,
   stableStringify,
@@ -196,12 +197,16 @@ export interface RehomeResult {
  * NOT uploaded. Identical id+content => already imported; same id with different content => a new id plus an explicit
  * conflict report. The destination is read back and must equal (existing drafts + this import's drafts) exactly.
  */
-export async function rehomeCandidates(ownerId: string, candidates: EligibleRecord[]): Promise<RehomeResult> {
+export async function rehomeCandidates(
+  ownerId: string,
+  candidates: EligibleRecord[],
+  options: { storageMutexHeld?: boolean } = {}
+): Promise<RehomeResult> {
   const result: RehomeResult = { ok: false, alreadyImported: 0, copied: 0, renamed: [], failures: [], verifiedSourceIds: [] };
   if (candidates.length === 0) return { ...result, ok: true };
   const key = candidatesKeyFor(ownerId);
 
-  return storageMutex.run(async () => {
+  const work = async () => {
     let existing: any[] = [];
     try {
       const raw = await AsyncStorage.getItem(key);
@@ -260,19 +265,27 @@ export async function rehomeCandidates(ownerId: string, candidates: EligibleReco
     }
     result.ok = result.failures.length === 0;
     return result;
-  });
+  };
+  return options.storageMutexHeld ? work() : storageMutex.run(work);
 }
 
 // ───────────────────────── orchestration ─────────────────────────
 
 const recipeImportable = (r: any) => typeof r?.name === "string" && r.name.trim() !== "";
 
-export async function importNlaWorkspace(token: string): Promise<ImportOutcome> {
+export async function importNlaWorkspace(
+  token: string,
+  options: { storageMutexHeld?: boolean } = {}
+): Promise<ImportOutcome> {
   const report = emptyReport();
 
   // An interrupted earlier cleanup is finished first so this import sees a consistent device.
   try {
-    await resumePendingNlaPurge();
+    if (options.storageMutexHeld) {
+      await resumePendingNlaPurgeLocked();
+    } else {
+      await resumePendingNlaPurge();
+    }
   } catch (e) {
     report.failures.push({ stage: "plan", reason: `An earlier cleanup could not be finished: ${e instanceof Error ? e.message : String(e)}` });
     return { report, inventory: await inventoryNlaWorkspace(), purgePlan: null };
@@ -358,7 +371,7 @@ export async function importNlaWorkspace(token: string): Promise<ImportOutcome> 
     if (report.failures.length) return { report, inventory, purgePlan: null };
 
     // Candidate drafts: preserved as drafts under the destination account (local only).
-    const rehome = await rehomeCandidates(token, inventory.eligible.candidates);
+    const rehome = await rehomeCandidates(token, inventory.eligible.candidates, options);
     report.draftsAlreadyImported = rehome.alreadyImported;
     report.draftsRenamed = rehome.renamed;
     report.verified.drafts = rehome.verifiedSourceIds.length;

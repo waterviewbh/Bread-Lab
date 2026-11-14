@@ -400,6 +400,31 @@ export interface NlaDisposition {
   snapshotRaw: Record<string, string | null>;
 }
 
+/** Explicit NLA choice captured before destination authentication or workspace mutation. */
+export interface NlaTransitionIntent {
+  mode: "import" | "discard";
+  snapshotRaw: Record<string, string | null>;
+}
+
+const authorizedNlaTransitionIntents = new WeakSet<NlaTransitionIntent>();
+
+/** Create an intent only in the handler for the baker's explicit Import or Discard action. */
+export function authorizeNlaTransitionIntent(
+  mode: "import" | "discard",
+  snapshotRaw: Record<string, string | null>
+): NlaTransitionIntent {
+  const intent = Object.freeze({
+    mode,
+    snapshotRaw: Object.freeze({ ...snapshotRaw }),
+  }) as NlaTransitionIntent;
+  authorizedNlaTransitionIntents.add(intent);
+  return intent;
+}
+
+export function isAuthorizedNlaTransitionIntent(intent: unknown): intent is NlaTransitionIntent {
+  return !!intent && typeof intent === "object" && authorizedNlaTransitionIntents.has(intent as NlaTransitionIntent);
+}
+
 export interface VerifiedImportIds {
   recipes: string[];
   bakeHistory: string[];

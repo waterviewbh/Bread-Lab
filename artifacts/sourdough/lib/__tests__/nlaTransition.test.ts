@@ -8,6 +8,7 @@ import {
 import {
   inventoryNlaWorkspace,
   buildPurgePlan,
+  authorizeDiscardPlan,
   NLA_ALL_KEYS,
   NLA_PURGE_JOURNAL_KEY,
   NlaPurgeVerificationError,
@@ -120,7 +121,7 @@ const runTransition = async (mode: "import" | "discard", extra: Record<string, a
   const inv = await inventoryNlaWorkspace();
   return executeWorkspaceTransition(null, TOKEN, TOKEN, USER, {
     activeFeedAcknowledged: true,
-    nlaDisposition: { mode: "discard", plan: buildPurgePlan(inv, "discard"), snapshotRaw: inv.raw },
+    nlaDisposition: { mode: "discard", plan: authorizeDiscardPlan(buildPurgePlan(inv, "discard")), snapshotRaw: inv.raw },
     ...extra,
   });
 };
@@ -217,7 +218,7 @@ describe("NLA -> account transition (real coordinator)", () => {
       seedNla();
       seedOthers();
       const inv = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(inv, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(inv, "discard"));
       put("bread_lab_recipes_v1_anonymous", [...get("bread_lab_recipes_v1_anonymous"), { id: "late", name: "Added meanwhile", userId: "anonymous" }]);
       const stateBefore = { ...mockStore };
 
@@ -235,7 +236,7 @@ describe("NLA -> account transition (real coordinator)", () => {
       const stateBefore = { ...mockStore };
 
       await expect(
-        executeWorkspaceTransition(null, TOKEN, TOKEN, USER, { nlaDisposition: { mode: "discard", plan: buildPurgePlan(inv, "discard"), snapshotRaw: inv.raw } })
+        executeWorkspaceTransition(null, TOKEN, TOKEN, USER, { nlaDisposition: { mode: "discard", plan: authorizeDiscardPlan(buildPurgePlan(inv, "discard")), snapshotRaw: inv.raw } })
       ).rejects.toBeInstanceOf(ActiveFeedNotAcknowledgedError);
 
       expect(mockStore).toEqual(stateBefore);
@@ -256,7 +257,7 @@ describe("NLA -> account transition (real coordinator)", () => {
       const inv = await inventoryNlaWorkspace();
 
       await expect(
-        executeWorkspaceTransition(null, TOKEN, TOKEN, USER, { activeFeedAcknowledged: true, nlaDisposition: { mode: "discard", plan: buildPurgePlan(inv, "discard"), snapshotRaw: inv.raw } })
+        executeWorkspaceTransition(null, TOKEN, TOKEN, USER, { activeFeedAcknowledged: true, nlaDisposition: { mode: "discard", plan: authorizeDiscardPlan(buildPurgePlan(inv, "discard")), snapshotRaw: inv.raw } })
       ).rejects.toThrow(/Transition blocked/);
 
       expect(getCoordinatorState()).toBe("IDLE");
@@ -273,7 +274,7 @@ describe("NLA -> account transition (real coordinator)", () => {
       seedOthers();
       const others = snapshotOthers();
       const inv = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(inv, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(inv, "discard"));
       mockFailRemoveKey = "bread_lab_quarantine_anonymous"; // fails when the residue is reached
 
       await expect(
@@ -296,7 +297,7 @@ describe("NLA -> account transition (real coordinator)", () => {
     it("recovery never removes a record the baker created after the crash (the journal names exact records)", async () => {
       seedNla();
       const inv = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(inv, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(inv, "discard"));
       mockFailRemoveKey = "bread_lab_quarantine_anonymous";
       await expect(
         executeWorkspaceTransition(null, TOKEN, TOKEN, USER, { activeFeedAcknowledged: true, nlaDisposition: { mode: "discard", plan, snapshotRaw: inv.raw } })
@@ -337,7 +338,7 @@ describe("NLA -> account transition (real coordinator)", () => {
       seedNla();
       seedOthers();
       const inv = await inventoryNlaWorkspace();
-      const plan = buildPurgePlan(inv, "discard");
+      const plan = authorizeDiscardPlan(buildPurgePlan(inv, "discard"));
       // A misbehaving removal that also damages another account's quarantine, during the purge itself.
       mockOnRemove = (key) => {
         if (key === "bread_lab_quarantine_anonymous") mockStore["bread_lab_quarantine_acct-1"] = JSON.stringify({ recipes: [] });

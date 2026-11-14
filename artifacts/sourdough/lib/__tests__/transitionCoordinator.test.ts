@@ -3,9 +3,12 @@ import { executeWorkspaceTransition, getCoordinatorState, setCoordinatorState, r
 import { UDL } from "../udl";
 import { getWorkspaceGeneration } from "../storageUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { api } from "../api";
+import { authorizeNlaTransitionIntent } from "../nlaWorkspace";
 
 describe("Workspace Transition Coordinator & UDL Contract", () => {
   beforeEach(async () => {
+    jest.restoreAllMocks();
     await AsyncStorage.clear();
     setCoordinatorState("IDLE");
   });
@@ -60,6 +63,28 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(await AsyncStorage.getItem("bread_lab_recipes_v1")).toBe("not-json");
   });
 
+  it("runs NLA preflight before invoking destination authentication", async () => {
+    const { inventoryNlaWorkspace } = require("../nlaWorkspace");
+    const inventory = await inventoryNlaWorkspace();
+    const intent = authorizeNlaTransitionIntent("discard", inventory.raw);
+    const prepareIncoming = jest.fn(async () => {
+      throw new Error("destination authentication must not start");
+    });
+    const genBefore = getWorkspaceGeneration();
+    await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
+
+    await expect(executeWorkspaceTransition(null, null, null, null, {
+      activeFeedAcknowledged: true,
+      nlaTransitionIntent: intent,
+      prepareIncoming,
+    })).rejects.toThrow(/migration pending marker remains present/);
+
+    expect(prepareIncoming).not.toHaveBeenCalled();
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(getWorkspaceGeneration()).toBe(genBefore);
+    expect(await AsyncStorage.getItem("bread_lab_migration_pending_v1")).toBe("1");
+  });
+
   it("does not run outgoing synchronization when mandatory preflight fails", async () => {
     await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
     const beforeTransition = jest.fn(async () => {});
@@ -93,10 +118,108 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(await AsyncStorage.getItem(recipeKey)).toBe(initialRecipes);
   });
 
-  it("recovers from interrupted state via recoverTransition()", async () => {
-    setCoordinatorState("RECOVERY_REQUIRED");
-    await expect(recoverTransition()).resolves.toBeUndefined();
+  it("closes and independently verifies the remote session before a sign-out transition returns to IDLE", async () => {
+    const tokenKey = "bread_lab_auth_token_v1";
+    const userKey = "bread_lab_auth_user_v1";
+    await AsyncStorage.setItem(tokenKey, "token-A");
+    await AsyncStorage.setItem(userKey, JSON.stringify({ id: "user-A" }));
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    const getSession = jest.spyOn(api.auth, "getSession").mockImplementation(async () => {
+      expect(getCoordinatorState()).toBe("TRANSITIONING");
+      expect(await AsyncStorage.getItem(tokenKey)).toBeNull();
+      expect(await AsyncStorage.getItem(userKey)).toBeNull();
+      return { data: { session: null }, error: null } as any;
+    });
+
+    await expect(
+      executeWorkspaceTransition("user-A", null, null, null, {
+        activeFeedAcknowledged: true,
+        closeRemoteSession: true,
+      })
+    ).resolves.toBeUndefined();
+
+    expect(api.auth.signout).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledTimes(1);
     expect(getCoordinatorState()).toBe("IDLE");
+  });
+
+  it("keeps a sign-out transition in RECOVERY_REQUIRED when the session remains after a successful sign-out response", async () => {
+    await AsyncStorage.setItem("bread_lab_auth_token_v1", "token-A");
+    await AsyncStorage.setItem("bread_lab_auth_user_v1", JSON.stringify({ id: "user-A" }));
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    jest.spyOn(api.auth, "getSession").mockResolvedValue({
+      data: { session: { user: { id: "user-A" } } },
+      error: null,
+    } as any);
+
+    await expect(
+      executeWorkspaceTransition("user-A", null, null, null, {
+        activeFeedAcknowledged: true,
+        closeRemoteSession: true,
+      })
+    ).rejects.toThrow(/could not be confirmed closed/);
+
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+    expect(await AsyncStorage.getItem("bread_lab_auth_token_v1")).toBeNull();
+  });
+
+  it("returns to IDLE only after local credentials are cleared and remote session absence is confirmed", async () => {
+    const tokenKey = "bread_lab_auth_token_v1";
+    const userKey = "bread_lab_auth_user_v1";
+    await AsyncStorage.setItem(tokenKey, "token-A");
+    await AsyncStorage.setItem(userKey, JSON.stringify({ id: "user-A" }));
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    const getSession = jest.spyOn(api.auth, "getSession").mockResolvedValue({ data: { session: null }, error: null } as any);
+    setCoordinatorState("RECOVERY_REQUIRED");
+
+    const recovery = await recoverTransition();
+
+    expect(recovery).toEqual({ remoteSignout: true, localClear: true });
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(await AsyncStorage.getItem(tokenKey)).toBeNull();
+    expect(await AsyncStorage.getItem(userKey)).toBeNull();
+    expect(getCoordinatorState()).toBe("IDLE");
+  });
+
+  it("remains RECOVERY_REQUIRED when the remote session lookup fails", async () => {
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    jest.spyOn(api.auth, "getSession").mockRejectedValue(new Error("session storage unreadable"));
+    setCoordinatorState("RECOVERY_REQUIRED");
+
+    const recovery = await recoverTransition();
+
+    expect(recovery).toEqual({ remoteSignout: false, localClear: true });
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+  });
+
+  it("does not accept a successful sign-out response while a remote session remains", async () => {
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    jest.spyOn(api.auth, "getSession").mockResolvedValue({ data: { session: { user: { id: "user-A" } } }, error: null } as any);
+    setCoordinatorState("RECOVERY_REQUIRED");
+
+    const recovery = await recoverTransition();
+
+    expect(recovery).toEqual({ remoteSignout: false, localClear: true });
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+  });
+
+  it("does not leave RECOVERY_REQUIRED when local credential removal cannot be verified", async () => {
+    const tokenKey = "bread_lab_auth_token_v1";
+    const userKey = "bread_lab_auth_user_v1";
+    await AsyncStorage.setItem(tokenKey, "token-A");
+    await AsyncStorage.setItem(userKey, JSON.stringify({ id: "user-A" }));
+    (AsyncStorage.multiRemove as jest.Mock).mockImplementationOnce(async () => {});
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    jest.spyOn(api.auth, "getSession").mockResolvedValue({ data: { session: null }, error: null } as any);
+    setCoordinatorState("RECOVERY_REQUIRED");
+
+    const recovery = await recoverTransition();
+
+    expect(recovery).toEqual({ remoteSignout: true, localClear: false });
+    expect(await AsyncStorage.getItem(tokenKey)).toBe("token-A");
+    expect(await AsyncStorage.getItem(userKey)).not.toBeNull();
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+    jest.restoreAllMocks();
   });
 
   it("inspects owner-scoped records and rejects ownerless records", async () => {

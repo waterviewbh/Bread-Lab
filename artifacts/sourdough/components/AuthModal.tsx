@@ -20,7 +20,7 @@ import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
 import { clearAllAppData, clearOperationalData, safeParse } from "@/lib/storageUtils";
-import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError, setCoordinatorState } from "@/lib/transitionCoordinator";
+import { executeWorkspaceTransition, recoverTransition, ActiveFeedNotAcknowledgedError, getCoordinatorState } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount } from "@/lib/migrate";
 import { confirmActiveFeedTransition, NLA_LOCAL_WORK_TITLE, NLA_LOCAL_WORK_PARAGRAPHS } from "@/lib/activeWork";
@@ -28,6 +28,7 @@ import {
   inventoryNlaWorkspace,
   buildPurgePlan,
   authorizeDiscardPlan,
+  authorizeNlaTransitionIntent,
   summarizeInventory,
   describeInventory,
   type NlaInventory,
@@ -38,6 +39,7 @@ import {
   reportToMigrationResult,
   ImportNotVerifiedError,
   IMPORT_STILL_OFFLINE_SENTENCE,
+  type ImportReport,
 } from "@/lib/nlaImport";
 import { closeOrphanRemoteSession } from "@/lib/remoteSessionGuard";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
@@ -55,36 +57,14 @@ interface Props {
 export async function executeFailClosedRecovery(
   onAuthChangeFn: (user: AuthUser | null) => void = () => {}
 ): Promise<{ remoteSignout: boolean; localClear: boolean }> {
-  console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery starting...`);
-  let remoteSignout = false;
-  let localClear = false;
+  console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery delegating to coordinator recovery...`);
+  const recovery = await recoverTransition();
 
-  try {
-    const res = await api.auth.signout();
-    remoteSignout = !!res?.signedOut;
-    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery remote signout result: ${remoteSignout}`);
-  } catch (err) {
-    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery remote signout threw error:`, err);
-    remoteSignout = false;
-  }
-
-  try {
-    await clearCredentialsExclusive();
-    localClear = true;
-    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery local credential clearing verified success.`);
-  } catch (err) {
-    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery local credential clearing FAILED:`, err);
-    localClear = false;
-  }
-
-  if (remoteSignout && localClear) {
-    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery: both remote signout and local clear succeeded. Resetting in-memory identity to null.`);
+  if (recovery.remoteSignout && recovery.localClear) {
     onAuthChangeFn(null);
-  } else {
-    console.log(`[BL-DIAG] [AuthModal] executeFailClosedRecovery: incomplete recovery (remoteSignout=${remoteSignout}, localClear=${localClear}). Preserving fail-closed state.`);
   }
 
-  return { remoteSignout, localClear };
+  return recovery;
 }
 
 export default function AuthModal({ visible, currentUser, onClose, onAuthChange, initialTransitionData }: Props) {
@@ -156,9 +136,16 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     : "";
 
   const failChoice = async (title: string, err: unknown): Promise<boolean> => {
+    let detail = err instanceof Error ? err.message : String(err);
+    if (getCoordinatorState() === "IDLE") {
+      if (Platform.OS === "web") window.alert(`${title}: ${detail}`);
+      else Alert.alert(title, detail);
+      await refreshInventory();
+      setChoiceMessage(detail);
+      return false;
+    }
     const recovery = await executeFailClosedRecovery(onAuthChange);
     const closed = recovery.remoteSignout && recovery.localClear;
-    let detail = err instanceof Error ? err.message : String(err);
     if (!closed) detail = detail.replace(IMPORT_STILL_OFFLINE_SENTENCE, "").replace(/\s{2,}/g, " ").trim();
     const statusDetails = [
       recovery.remoteSignout ? "Your account session was closed." : "Closing your account session could not be confirmed.",
@@ -190,40 +177,60 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   const handleChoiceImport = async () => {
     if (!transitionPendingData || recoveryIncompleteRef.current) return;
+    const inventory = nlaInventory;
+    if (!inventory || !inventory.readable) {
+      await refreshInventory();
+      setChoiceMessage("Please review what is on this device, then choose again.");
+      return;
+    }
     setLoading(true);
     setChoiceMessage(null);
+    const reportRef: { current: ImportReport | null } = { current: null };
+    let destinationUser: AuthUser | null = transitionPendingData.user ?? null;
     try {
-      let token = transitionPendingData.token;
-      let user = transitionPendingData.user;
-      if (!token || !user) {
-        const result = await api.auth.identify({
-          firstName: transitionPendingData.firstName,
-          starterName: transitionPendingData.starterName,
-          isSignUp: transitionPendingData.isSignUp,
-        });
-        token = result.token;
-        user = result.user;
-      }
-
-      startMigration();
-      const outcome = await importNlaWorkspace(token);
-      finishMigration(reportToMigrationResult(outcome.report));
-      setNlaInventory(outcome.inventory);
-      if (!outcome.report.ok || !outcome.purgePlan) {
-        throw new ImportNotVerifiedError(describeImportReport(outcome.report));
-      }
-
-      await executeWorkspaceTransition(null, token, token, user, {
+      const intent = authorizeNlaTransitionIntent("import", inventory.raw);
+      await executeWorkspaceTransition(null, null, null, null, {
         activeFeedAcknowledged: true,
-        nlaDisposition: { mode: "import", plan: outcome.purgePlan, snapshotRaw: outcome.inventory.raw },
+        nlaTransitionIntent: intent,
+        prepareIncoming: async () => {
+          let token = transitionPendingData.token;
+          let user = transitionPendingData.user;
+          if (!token || !user) {
+            const result = await api.auth.identify({
+              firstName: transitionPendingData.firstName,
+              starterName: transitionPendingData.starterName,
+              isSignUp: transitionPendingData.isSignUp,
+            });
+            token = result.token;
+            user = result.user;
+          }
+          destinationUser = user;
+
+          startMigration();
+          const outcome = await importNlaWorkspace(token, { storageMutexHeld: true });
+          reportRef.current = outcome.report;
+          finishMigration(reportToMigrationResult(outcome.report));
+          setNlaInventory(outcome.inventory);
+          if (!outcome.report.ok || !outcome.purgePlan) {
+            throw new ImportNotVerifiedError(describeImportReport(outcome.report));
+          }
+          return {
+            ownerId: token,
+            token,
+            user,
+            nlaDisposition: { mode: "import", plan: outcome.purgePlan, snapshotRaw: outcome.inventory.raw },
+          };
+        },
       });
 
-      onAuthChange(user);
+      const completedReport = reportRef.current;
+      if (!completedReport) throw new Error("Import did not return a verified result.");
+      if (!destinationUser) throw new Error("Destination identity was not prepared.");
+      onAuthChange(destinationUser);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const report = outcome.report;
       reset();
       onClose();
-      noteLeftovers(describeImportReport(report), report.cannotImport.length + report.unresolved.length + report.draftsRenamed.length > 0);
+      noteLeftovers(describeImportReport(completedReport), completedReport.cannotImport.length + completedReport.unresolved.length + completedReport.draftsRenamed.length > 0);
     } catch (err: any) {
       await failChoice("Import didn't complete", err);
     } finally {
@@ -233,39 +240,51 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   const handleChoiceProceedWithoutImport = async () => {
     if (!transitionPendingData || recoveryIncompleteRef.current) return;
+    const inventory = nlaInventory;
+    if (!inventory) {
+      await refreshInventory();
+      setChoiceMessage("Please review what is on this device, then choose again.");
+      return;
+    }
+    if (!inventory.readable) {
+      setChoiceMessage("Some data on this device could not be read, so nothing was changed.");
+      return;
+    }
     setLoading(true);
     setChoiceMessage(null);
+    let destinationUser: AuthUser | null = transitionPendingData.user ?? null;
     try {
-      let token = transitionPendingData.token;
-      let user = transitionPendingData.user;
-      if (!token || !user) {
-        const result = await api.auth.identify({
-          firstName: transitionPendingData.firstName,
-          starterName: transitionPendingData.starterName,
-          isSignUp: transitionPendingData.isSignUp,
-        });
-        token = result.token;
-        user = result.user;
-      }
-
-      const inventory = nlaInventory;
-      if (!inventory) {
-        await refreshInventory();
-        setChoiceMessage("Please review what is on this device, then choose again.");
-        return;
-      }
-      if (!inventory.readable) {
-        throw new Error("Some data on this device could not be read, so nothing was changed.");
-      }
-      const plan = authorizeDiscardPlan(buildPurgePlan(inventory, "discard"));
-      await executeWorkspaceTransition(null, token, token, user, {
+      const intent = authorizeNlaTransitionIntent("discard", inventory.raw);
+      await executeWorkspaceTransition(null, null, null, null, {
         activeFeedAcknowledged: true,
-        nlaDisposition: { mode: "discard", plan, snapshotRaw: inventory.raw },
+        nlaTransitionIntent: intent,
+        prepareIncoming: async () => {
+          let token = transitionPendingData.token;
+          let user = transitionPendingData.user;
+          if (!token || !user) {
+            const result = await api.auth.identify({
+              firstName: transitionPendingData.firstName,
+              starterName: transitionPendingData.starterName,
+              isSignUp: transitionPendingData.isSignUp,
+            });
+            token = result.token;
+            user = result.user;
+          }
+          destinationUser = user;
+          const plan = authorizeDiscardPlan(buildPurgePlan(inventory, "discard"));
+          return {
+            ownerId: token,
+            token,
+            user,
+            nlaDisposition: { mode: "discard", plan, snapshotRaw: inventory.raw },
+          };
+        },
       });
 
-      onAuthChange(user);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const left = inventory.unresolved.length;
+      if (!destinationUser) throw new Error("Destination identity was not prepared.");
+      onAuthChange(destinationUser);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
       noteLeftovers(describeInventory(summarizeInventory(inventory)), left > 0);
@@ -377,8 +396,18 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
   const handleClearIdentity = async () => {
     const performClear = async () => {
-      if (!(await ensureActiveFeedAck())) return;
       try {
+        // A prior sign-out may have cleared local credentials while remote closure remained uncertain.
+        // Retry through coordinator recovery before attempting another identity transition.
+        if (getCoordinatorState() === "RECOVERY_REQUIRED") {
+          const recovery = await executeFailClosedRecovery(onAuthChange);
+          if (recovery.remoteSignout && recovery.localClear) {
+            onClose();
+            return;
+          }
+          throw new Error("Sign-out recovery is still incomplete. Keep this screen open and retry Sign Out / Remove Name.");
+        }
+        if (!(await ensureActiveFeedAck())) return;
         let activeSession: any = null;
         try {
           const sessionResponse = await api.auth.getSession();
@@ -409,25 +438,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
               throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
             }
           },
+          closeRemoteSession: true,
         });
-
-        // 3. Verify local credentials are cleared and local workspace is NLA
-        const postClearToken = await getStoredToken();
-        if (postClearToken) {
-          throw new Error("Local credential clearance verification failed.");
-        }
-
-        // 4. Sign out of remote Supabase session
-        try {
-          const signoutRes = await api.auth.signout();
-          if (!signoutRes.signedOut) {
-            throw new Error("Failed to sign out from cloud session.");
-          }
-        } catch (remoteErr) {
-          // If remote sign-out fails after local retirement: remain locally NLA, do not auto-restore, enter recoverable state
-          setCoordinatorState("RECOVERY_REQUIRED");
-          throw new Error(`Local retirement completed successfully, but remote sign-out failed: ${remoteErr instanceof Error ? remoteErr.message : String(remoteErr)}. You remain in the offline workspace; please retry remote sign-out.`);
-        }
 
         onAuthChange(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

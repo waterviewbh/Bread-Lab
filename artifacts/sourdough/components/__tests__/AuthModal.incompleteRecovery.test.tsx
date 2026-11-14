@@ -57,6 +57,7 @@ const USER = { id: TOKEN, firstName: "Jane", starterName: "Doughy" };
 const RECIPES_KEY = "bread_lab_recipes_v1_anonymous";
 const TOKEN_KEY = "bread_lab_auth_token_v1";
 const phases = [{ key: "mix", name: "Mix", ingredients: ["flour"], instructions: ["stir"] }];
+const ONE_RECIPE = "This device has 1 recipe, 1 bake in your history, 1 feed in your history that are not in an account.";
 const TWO_RECIPES = "This device has 2 recipes, 1 bake in your history, 1 feed in your history that are not in an account.";
 const put = (key: string, value: unknown) => { mockStore[key] = JSON.stringify(value); };
 const nlaRaw = () => Object.fromEntries(NLA_ALL_KEYS.map((k) => [k, mockStore[k] ?? null]));
@@ -68,11 +69,6 @@ const seedRecords = () => {
   put("bread_lab_bake_history_v1_anonymous", [{ id: "b-1", recipeName: "Rye", savedAt: 1, startedAt: 1, phases: [] }]);
   put("sourdough_feed_history_v1", [{ id: "f-1", userId: "anonymous", savedAt: 5, readings: [] }]);
 };
-const addLateRecipe = () => put(RECIPES_KEY, [
-  { id: "r-1", name: "Loaf", userId: "anonymous", phases },
-  { id: "r-late", name: "Added late", userId: "anonymous", phases },
-]);
-
 let onClose: jest.Mock;
 let onAuthChange: jest.Mock;
 let alertSpy: jest.SpyInstance;
@@ -85,6 +81,7 @@ const fillAndConnect = async () => {
 const identify = async () => {
   await fillAndConnect();
   await screen.findByText("Your offline workspace");
+  await waitFor(() => expect(screen.queryByText("Checking what is on this device…")).toBeNull());
 };
 const mountModal = () => render(<AuthModal visible currentUser={null} onClose={onClose} onAuthChange={onAuthChange} />);
 
@@ -92,12 +89,12 @@ const mountModal = () => render(<AuthModal visible currentUser={null} onClose={o
 let remoteSession: { user: { id: string } } | null = null;
 
 /** Common to every state in which the transition did not finish. */
-const expectNothingCompleted = () => {
+const expectNothingCompleted = (expectedCoordinatorState: "IDLE" | "RECOVERY_REQUIRED" = "IDLE") => {
   expect(onAuthChange).not.toHaveBeenCalledWith(USER);
   expect(onClose).not.toHaveBeenCalled();
   expect(Haptics.notificationAsync).not.toHaveBeenCalled();
   expect(mockStore[TOKEN_KEY]).not.toBe(TOKEN);
-  expect(getCoordinatorState()).toBe("IDLE");
+  expect(getCoordinatorState()).toBe(expectedCoordinatorState);
 };
 
 describe("AuthModal: incomplete recovery voids the old choices; surviving remote sessions are not ignored", () => {
@@ -129,15 +126,31 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
     jest.restoreAllMocks();
   });
 
+  it("NLA readiness failure is reported before destination authentication or recovery side effects", async () => {
+    seedRecords();
+    await mountModal();
+    await identify();
+    const expectedNla = nlaRaw();
+    mockStore["bread_lab_migration_pending_v1"] = "1";
+
+    await fireEvent.press(screen.getByText("Proceed Without Importing"));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+
+    expect(alertSpy.mock.calls[0][1]).toContain("migration pending marker remains present");
+    expect(api.auth.identify).not.toHaveBeenCalled();
+    expect(api.auth.signout).not.toHaveBeenCalled();
+    expect(fakeServer.calls).toEqual([]);
+    expect(remoteSession).toBeNull();
+    expect(nlaRaw()).toEqual(expectedNla);
+    expect(mockStore["bread_lab_migration_pending_v1"]).toBe("1");
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(onAuthChange).not.toHaveBeenCalled();
+    expect(screen.getByText("Proceed Without Importing")).toBeTruthy();
+  });
+
   describe("1. old choices are void while recovery is incomplete", () => {
     // Each way a choice can fail, then a recovery that cannot be confirmed.
     const triggers: Array<{ name: string; button: string; arm: () => void; expectedNla: () => Record<string, string | null> }> = [
-      {
-        name: "workspace changed (Proceed Without Importing)",
-        button: "Proceed Without Importing",
-        arm: () => addLateRecipe(),
-        expectedNla: () => nlaRaw(),
-      },
       {
         name: "import not verified (Import & Proceed)",
         button: "Import & Proceed",
@@ -207,7 +220,7 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
           expect((api.auth.signout as jest.Mock).mock.calls.length).toBe(signouts);
           expect((api.auth.identify as jest.Mock).mock.calls.length).toBe(identifyCalls);
           expect(nlaRaw()).toEqual(expectedNla);
-          expectNothingCompleted();
+          expectNothingCompleted("RECOVERY_REQUIRED");
           expect(onAuthChange).not.toHaveBeenCalledWith(null); // identity is not declared clean while uncertain
         });
       }
@@ -217,10 +230,10 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
       seedRecords();
       await mountModal();
       await identify();
-      addLateRecipe();
       const expectedNla = nlaRaw();
+      fakeServer.fetchError = new Error("Network request failed");
       (api.auth.signout as jest.Mock).mockRejectedValue(new Error("offline"));
-      await fireEvent.press(screen.getByText("Proceed Without Importing"));
+      await fireEvent.press(screen.getByText("Import & Proceed"));
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
 
       // Cancel while the network is still down: still locked.
@@ -229,7 +242,7 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
       expect(screen.queryByText("Proceed Without Importing")).toBeNull();
       expect(screen.queryByText("Import & Proceed")).toBeNull();
       expect(nlaRaw()).toEqual(expectedNla);
-      expectNothingCompleted();
+      expectNothingCompleted("RECOVERY_REQUIRED");
 
       // Network back: Cancel confirms the cleanup and returns to the start. No choice survives.
       (api.auth.signout as jest.Mock).mockImplementation(async () => { remoteSession = null; return { signedOut: true }; });
@@ -243,7 +256,7 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
 
       await identify(); // Cancel clears the form, so the baker types their name again
       expect(api.auth.identify).toHaveBeenCalledTimes(1); // a fresh choice screen appears before the destination is authenticated
-      expect(screen.getByText(TWO_RECIPES)).toBeTruthy();
+      expect(screen.getByText(ONE_RECIPE)).toBeTruthy();
       expect(screen.getByText("Proceed Without Importing")).toBeTruthy(); // available again, but only as a new decision
 
       await fireEvent.press(screen.getByText("Proceed Without Importing"));
@@ -258,11 +271,12 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
       seedRecords();
       await mountModal();
       await identify();
+      fakeServer.fetchError = new Error("Network request failed");
       (api.auth.signout as jest.Mock).mockRejectedValue(new Error("offline"));
-      addLateRecipe();
-      await fireEvent.press(screen.getByText("Proceed Without Importing"));
+      await fireEvent.press(screen.getByText("Import & Proceed"));
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
 
+      expect(api.auth.identify).toHaveBeenCalledTimes(1);
       expect(remoteSession).toEqual({ user: { id: TOKEN } }); // remote session is alive...
       expect(mockStore[TOKEN_KEY]).toBeUndefined();           // ...while the local credential store is empty
     });
@@ -336,16 +350,17 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
       seedRecords();
       await mountModal();
       await identify();
-      addLateRecipe();
       const expectedNla = nlaRaw();
+      fakeServer.fetchError = new Error("Network request failed");
       (api.auth.signout as jest.Mock).mockRejectedValue(new Error("offline"));
-      await fireEvent.press(screen.getByText("Proceed Without Importing"));
+      await fireEvent.press(screen.getByText("Import & Proceed"));
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
       expect(remoteSession).not.toBeNull();
 
       // App killed. Only storage (local credentials: none; remote session: alive) survives.
       cleanup();
       await new Promise((r) => setTimeout(r, 0));
+      setCoordinatorState("IDLE"); // a process restart resets module-local coordinator state
       alertSpy.mockClear();
       onAuthChange.mockClear();
       (api.auth.identify as jest.Mock).mockClear();
@@ -361,7 +376,7 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
       (api.auth.signout as jest.Mock).mockImplementation(async () => { remoteSession = null; return { signedOut: true }; });
       await fireEvent.press(screen.getByText("Connect & Sync"));          // network back
       await screen.findByText("Your offline workspace");
-      expect(screen.getByText(TWO_RECIPES)).toBeTruthy();                 // fresh inventory
+      expect(screen.getByText(ONE_RECIPE)).toBeTruthy();                 // fresh inventory
       await fireEvent.press(screen.getByText("Proceed Without Importing")); // new explicit decision
       await waitFor(() => expect(onAuthChange).toHaveBeenCalledWith(USER));
       expectNlaPurged();

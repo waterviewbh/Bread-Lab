@@ -370,7 +370,9 @@ async function executeWithBoundaryCheck<T>(expectedUserId?: string | null, opera
 
 export const api = {
   auth: {
-    getSession: () => supabase?.auth.getSession(),
+    getSession: () => supabase
+      ? supabase.auth.getSession()
+      : Promise.resolve({ data: { session: null }, error: null }),
     identify: async (body: { firstName: string; starterName: string; isSignUp?: boolean }): Promise<ApiAuthResponse> => {
       if (!supabase) throw new Error("Supabase not configured");
       const fn = body.firstName.trim();

@@ -22,6 +22,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [📜 Briefs](file:///E:/Bread-Lab/docs/briefs/)
 **Purpose**: This is the "Inbox" for the agent. Place guides, custom instructions, task parameters, or feature specifications here that you want me to follow or use as a reference for future work.
+- [Issue 1A Continuation Handoff (2026-11-13)](file:///E:/Bread-Lab/docs/briefs/20261113_issue_1a_continuation_handoff.md) [ACTIVE]
 - [Logo Card Refinement (2026-10-12)](file:///E:/Bread-Lab/docs/briefs/20261012%resources_logo_card_refinement_brief.md)
 - [Post-Bulk Investigation (2026-10-08)](file:///E:/Bread-Lab/docs/briefs/20261008%-%Planned%Post-Bulk%Proof%and%Target%Rise.txt)
 - [Stretch & Fold Timing Chits (2026-09-19)](file:///E:/Bread-Lab/docs/briefs/20260919%20fold%20timechit.txt)
@@ -103,7 +104,9 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Maestro Testing: Status and Lessons Learned](file:///E:/Bread-Lab/docs/research/maestro_testing_status.artifact.md) [OPEN ITEM]
 
 ### [🐞 Bug Tracker](file:///E:/Bread-Lab/docs/bug_tracker.md)
-**Purpose**: A central log for intermittent build issues, known native flakiness, and items to watch.
+**Purpose**: Central tracking for confirmed defects, unresolved test failures, build issues, and watchlist items.
+- [NLA transition test authorization failures](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-001-nla-transition-test-authorization-failures) [TEST SETUP FIXED; PRODUCTION UNVERIFIED]
+- [Operational cleanup validation test failures](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-002-operational-cleanup-validation-test-failures) [TRIAGE]
 - [C/C++ Configuration Timeout (Windows)](file:///E:/Bread-Lab/docs/bug_tracker.md#1-cc-configuration-timeout-windows) [WATCHLIST]
 - [Active Issues & Watchlist](file:///E:/Bread-Lab/docs/bug_tracker.md)
 
