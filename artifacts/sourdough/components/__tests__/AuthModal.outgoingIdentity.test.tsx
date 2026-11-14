@@ -2,11 +2,13 @@ import React from "react";
 import { Alert } from "react-native";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react-native";
+import { act, render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react-native";
 import AuthModal from "../AuthModal";
 import { api } from "@/lib/api";
 import { fakeServer } from "@/lib/testSupport/fakeApi";
-import { setCoordinatorState } from "@/lib/transitionCoordinator";
+import { getCoordinatorState, setCoordinatorState } from "@/lib/transitionCoordinator";
+import * as migration from "@/lib/migrate";
+import { UDL } from "@/lib/udl";
 
 // Issue #89: the OUTGOING identity of an account switch comes from the validated stored credentials, never from the
 // `currentUser` prop (which starts null and is hydrated asynchronously). No destination account is authenticated while
@@ -114,6 +116,72 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
     expect(screen.queryByPlaceholderText("e.g. Jane")).toBeNull();
     expect(screen.queryByText("Connect & Sync")).toBeNull();
     expect(screen.getByText("Sign Out / Remove Name")).toBeTruthy();
+  });
+
+  it("runs no sign-out sync when the coordinator preflight rejects", async () => {
+    storeValid(A);
+    await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
+    const migrate = jest.spyOn(migration, "migrateLocalDataToAccount");
+
+    await render(<AuthModal visible currentUser={A} onClose={onClose} onAuthChange={onAuthChange} />);
+    await fireEvent.press(screen.getByText("Sign Out / Remove Name"));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Sign out?", expect.any(String), expect.any(Array)));
+    const confirmation = alertSpy.mock.calls.find(([title]) => title === "Sign out?");
+    const signOutButton = confirmation?.[2]?.find(({ text }) => text === "Sign out");
+    expect(signOutButton?.onPress).toBeDefined();
+
+    await act(async () => {
+      signOutButton?.onPress?.();
+    });
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Sign-out failed", expect.stringMatching(/migration pending marker remains present/i)));
+    expect(migrate).not.toHaveBeenCalled();
+    expect(api.auth.signout).not.toHaveBeenCalled();
+    expect(mockStore[TOKEN_KEY]).toBe(A.id);
+    expect(JSON.parse(mockStore[USER_KEY])).toEqual(A);
+    expect(mockStore["bread_lab_migration_pending_v1"]).toBe("1");
+    expect(remoteSession).toEqual({ user: { id: A.id } });
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(onAuthChange).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("runs sign-out sync only after the coordinator preflight succeeds", async () => {
+    storeValid(A);
+    const sequence: string[] = [];
+    const verifyReadiness = UDL.verifyReadiness.bind(UDL);
+    jest.spyOn(UDL, "verifyReadiness").mockImplementation(async (ownerId, options) => {
+      await verifyReadiness(ownerId, options);
+      sequence.push("preflight");
+    });
+    const migrate = jest.spyOn(migration, "migrateLocalDataToAccount").mockImplementation(async () => {
+      sequence.push("sync");
+      return {
+        feed: { ok: 0, failed: 0, unresolved: 0 },
+        bakes: { ok: 0, failed: 0, unresolved: 0 },
+        recipes: { ok: 0, failed: 0, unresolved: 0 },
+      };
+    });
+
+    await render(<AuthModal visible currentUser={A} onClose={onClose} onAuthChange={onAuthChange} />);
+    await fireEvent.press(screen.getByText("Sign Out / Remove Name"));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Sign out?", expect.any(String), expect.any(Array)));
+    const confirmation = alertSpy.mock.calls.find(([title]) => title === "Sign out?");
+    const signOutButton = confirmation?.[2]?.find(({ text }) => text === "Sign out");
+
+    await act(async () => {
+      signOutButton?.onPress?.();
+    });
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(sequence).toEqual(["preflight", "sync"]);
+    expect(migrate).toHaveBeenCalledTimes(1);
+    expect(api.auth.signout).toHaveBeenCalledTimes(1);
+    expect(mockStore[TOKEN_KEY]).toBeUndefined();
+    expect(remoteSession).toBeNull();
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(onAuthChange).toHaveBeenCalledWith(null);
   });
 
   const invalidStates: Array<{ name: string; arm: () => void }> = [

@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
-import { clearAllAppData, clearOperationalData, validateOperationalData, safeParse } from "@/lib/storageUtils";
+import { clearAllAppData, clearOperationalData, safeParse } from "@/lib/storageUtils";
 import { executeWorkspaceTransition, clearCredentialsExclusive, ActiveFeedNotAcknowledgedError, setCoordinatorState } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount } from "@/lib/migrate";
@@ -397,18 +397,18 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
           throw new Error("Identity consistency conflict: stored sign-in could not be confirmed.");
         }
 
-        // 1. Establish and validate outgoing identity, complete required outgoing synchronization and pending-work checks
-        await validateOperationalData(currentToken, { discardActiveFeed: true });
-        const migrationResult = await migrateLocalDataToAccount(currentToken);
-        const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
-        const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
-        if (totalFailed > 0 || totalUnresolved > 0) {
-          throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
-        }
-
-        // 2. Retire outgoing local workspace through transition machinery (local retirement and credential clearance)
+        // The coordinator owns the authoritative readiness gate. Sync only after it passes, under the same
+        // transition mutex, and before the coordinator changes local identity or retires the workspace.
         await executeWorkspaceTransition(currentToken, null, null, null, {
           activeFeedAcknowledged: activeFeedAckRef.current,
+          beforeTransition: async () => {
+            const migrationResult = await migrateLocalDataToAccount(currentToken);
+            const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
+            const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
+            if (totalFailed > 0 || totalUnresolved > 0) {
+              throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
+            }
+          },
         });
 
         // 3. Verify local credentials are cleared and local workspace is NLA

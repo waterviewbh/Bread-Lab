@@ -60,6 +60,21 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(await AsyncStorage.getItem("bread_lab_recipes_v1")).toBe("not-json");
   });
 
+  it("does not run outgoing synchronization when mandatory preflight fails", async () => {
+    await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
+    const beforeTransition = jest.fn(async () => {});
+    const genBefore = getWorkspaceGeneration();
+
+    await expect(
+      executeWorkspaceTransition("user-A", null, null, null, { beforeTransition })
+    ).rejects.toThrow(/migration pending marker remains present/);
+
+    expect(beforeTransition).not.toHaveBeenCalled();
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(getWorkspaceGeneration()).toBe(genBefore);
+    expect(await AsyncStorage.getItem("bread_lab_migration_pending_v1")).toBe("1");
+  });
+
   it("leaves existing records and credentials intact when preflight fails", async () => {
     const tokenKey = "bread_lab_auth_token_v1";
     const recipeKey = "bread_lab_recipes_v1";

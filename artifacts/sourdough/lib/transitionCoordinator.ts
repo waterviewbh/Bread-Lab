@@ -73,6 +73,8 @@ export interface WorkspaceTransitionOptions {
   activeFeedAcknowledged?: boolean;
   /** NLA departures only: the verified purge (import) or full purge (discard) to run instead of setting data aside. */
   nlaDisposition?: NlaDisposition;
+  /** Outgoing sync after readiness passes, while the transition mutex is held, but before local identity mutation. */
+  beforeTransition?: () => Promise<void>;
 }
 
 /**
@@ -115,6 +117,10 @@ export async function executeWorkspaceTransition(
 
     // Mandatory preflight readiness check for all transitions (including NLA disposition) before any mutations.
     await UDL.verifyReadiness(outgoingOwnerId ?? "anonymous", { discardActiveBake: !!disposition, nlaDisposition: disposition });
+
+    // Outgoing synchronization can write remotely and locally, so run it only after preflight and under this
+    // same mutex. If it fails, identity and workspace state have not yet changed and the caller can retry.
+    await options.beforeTransition?.();
 
     setCoordinatorState("TRANSITIONING");
     advanceWorkspaceGeneration();
