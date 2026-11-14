@@ -6,6 +6,7 @@ import { saveAuth } from "@/lib/auth";
 import { executeWorkspaceTransition, getCoordinatorState, setCoordinatorState } from "@/lib/transitionCoordinator";
 import { QUARANTINE_KEY } from "@/lib/storageUtils";
 import { getFeedTombstone } from "@/lib/recipeStorage";
+import { inventoryNlaWorkspace, buildPurgePlan, authorizeDiscardPlan, authorizeNlaTransitionIntent } from "@/lib/nlaWorkspace";
 import { api } from "@/lib/api";
 
 // Omicron_CLI-2: Active Feed work is device-local. It is never synced, never tombstoned, never
@@ -59,6 +60,8 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     pairs.forEach(([k, v]) => { mockStore[k] = v; });
   }),
   multiRemove: jest.fn(async (ks: string[]) => { ks.forEach((k) => delete mockStore[k]); }),
+  getAllKeys: jest.fn(async () => Object.keys(mockStore)),
+  multiGet: jest.fn(async (ks: string[]) => ks.map((k) => [k, k in mockStore ? mockStore[k] : null])),
   clear: jest.fn(async () => { mockStore = {}; }),
 }));
 jest.mock("@/lib/api", () => ({
@@ -137,9 +140,24 @@ const mountEmpty = async (token: string | null) => {
   await waitFor(() => expect(mockSetupProps).toBeTruthy());
 };
 
-// Two real workspace changes, both through the production transition code.
+// Account changes use the product path: sign out into NLA, then make an explicit choice before B.
+const switchAccount = async (from: string, to: string): Promise<void> => {
+  await executeWorkspaceTransition(from, null, null, null, ACK);
+  const inventory = await inventoryNlaWorkspace();
+  const intent = authorizeNlaTransitionIntent("discard", inventory.raw);
+  const plan = authorizeDiscardPlan(buildPurgePlan(inventory, "discard"));
+  await executeWorkspaceTransition(null, null, null, null, {
+    ...ACK,
+    nlaTransitionIntent: intent,
+    prepareIncoming: async () => ({
+      ownerId: to, token: to, user: userOf(to),
+      nlaDisposition: { mode: "discard", plan, snapshotRaw: inventory.raw },
+    }),
+  });
+};
+
 const transitions: Record<string, (from: string, to: string) => Promise<void>> = {
-  "account switch (A -> B)": (from, to) => executeWorkspaceTransition(from, to, to, userOf(to), ACK),
+  "account switch (A -> NLA -> B)": switchAccount,
   "sign-out (A -> NLA)": (from) => executeWorkspaceTransition(from, null, null, null, ACK),
 };
 
@@ -210,7 +228,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
         await mockSetupProps.onRefresh();
         expect(mockViewProps).toBeNull();
         expect(storageHas(aId)).toBe(false);
-      });
+      }, 15000);
 
       it(`${label}: a refresh alone resets the screen to B's (empty) workspace`, async () => {
         const { id: aId, view } = await mountAndStartFeed("tokA");
@@ -225,17 +243,37 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       });
     });
 
-    it("signed-out (NLA) baker's active Feed is discarded on sign-in and never appears for B", async () => {
+    it("requires an explicit NLA choice, then discards the active Feed without carrying it into B", async () => {
       const { id: nlaId } = await mountAndStartFeed(null);
-      await executeWorkspaceTransition(null as any, "tokB", "tokB", userOf("tokB"), ACK);
+      const before = { ...mockStore };
+      await expect(executeWorkspaceTransition(null, "tokB", "tokB", userOf("tokB"), ACK))
+        .rejects.toThrow(/explicit Import or Discard choice is required/);
+      expect(mockStore).toEqual(before);
+      expect(getCoordinatorState()).toBe("IDLE");
+
+      const inventory = await inventoryNlaWorkspace();
+      const intent = authorizeNlaTransitionIntent("discard", inventory.raw);
+      const plan = authorizeDiscardPlan(buildPurgePlan(inventory, "discard"));
+      await executeWorkspaceTransition(null, null, null, null, {
+        ...ACK,
+        nlaTransitionIntent: intent,
+        prepareIncoming: async () => ({
+          ownerId: "tokB",
+          token: "tokB",
+          user: userOf("tokB"),
+          nlaDisposition: { mode: "discard", plan, snapshotRaw: inventory.raw },
+        }),
+      });
       expect(mockStore[ACTIVE]).toBeUndefined();
       expect(storageHas(nlaId)).toBe(false); // not parked in the "unknown" bucket either
+      expect(mockStore["bread_lab_auth_token_v1"]).toBe("tokB");
+      expect(feedApi.upsert).not.toHaveBeenCalled();
     });
 
     it("A's discarded session does not come back when A returns", async () => {
       const { id: aId } = await mountAndStartFeed("tokA");
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
-      await executeWorkspaceTransition("tokB", "tokA", "tokA", userOf("tokA"), ACK);
+      await switchAccount("tokA", "tokB");
+      await switchAccount("tokB", "tokA");
       expect(mockStore[ACTIVE]).toBeUndefined();
       expect(storageHas(aId)).toBe(false);
     });
@@ -245,7 +283,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
   describe("B. Ownership fence", () => {
     it("a stale completion (handler rendered for A) writes nothing into B's history and uploads nothing", async () => {
       const { id: aId, view: staleView } = await mountAndStartFeed("tokA");
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      await switchAccount("tokA", "tokB");
 
       await staleView.onSavePeak(PEAK);
 
@@ -256,7 +294,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
 
     it("stale handlers never touch B's own active session (no overwrite of destination data)", async () => {
       const { id: aId, view: staleView } = await mountAndStartFeed("tokA");
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      await switchAccount("tokA", "tokB");
 
       // B resets the screen and starts a Feed of their own.
       await mockViewProps.onRefresh();
@@ -286,7 +324,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       mockDeviceGate = new Promise<void>((r) => { release = r; });
       const pending = view.onSavePeak(PEAK); // paused inside getDeviceId()
 
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      await switchAccount("tokA", "tokB");
       release();
       await pending;
 
@@ -403,7 +441,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       const write = view.onLogReading(READING); // has passed the ownership check; paused mid-write
       await waitFor(() => expect(mockActiveWriteGate!.entered).toBe(true));
 
-      const transition = executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      const transition = switchAccount("tokA", "tokB");
       // Let everything that can run, run. The switch cannot proceed while the write holds the lock:
       // credentials are still Account A's. (Without the lock the switch would already be finished.)
       await drain();
@@ -426,7 +464,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       let release!: () => void;
       mockCredentialWriteGate = { promise: new Promise<void>((r) => { release = r; }), entered: false };
 
-      const transition = executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      const transition = switchAccount("tokA", "tokB");
       // Paused inside the switch: A's data is already set aside, credentials not yet pivoted.
       await waitFor(() => expect(mockCredentialWriteGate!.entered).toBe(true));
       expect(mockStore[ACTIVE]).toBeUndefined();
@@ -452,7 +490,7 @@ describe("ActiveFeedSection — device-local active Feed and workspace isolation
       await waitFor(() => expect(mockTokenReadGate!.waiting).toBe(true));
       expect(JSON.parse(mockStore[HISTORY])[0].id).toBe(aId); // already saved on the device
 
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK); // the switch lands here
+      await switchAccount("tokA", "tokB"); // the switch lands here
       release();
       await completion;
 

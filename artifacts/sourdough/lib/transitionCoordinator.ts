@@ -132,6 +132,9 @@ export async function executeWorkspaceTransition(
     }
 
     const outgoingIsNla = outgoingOwnerId === null || isNlaOwner(outgoingOwnerId);
+    if (!outgoingIsNla && incomingOwnerId !== null) {
+      throw new Error("Workspace transition refused: sign out to the offline workspace before entering another account.");
+    }
     const deferredNlaLogin = outgoingIsNla && incomingOwnerId === null && !!options.prepareIncoming;
     const intent = options.nlaTransitionIntent;
     let disposition = outgoingIsNla ? options.nlaDisposition : undefined;
@@ -195,7 +198,8 @@ export async function executeWorkspaceTransition(
           const keysB = Object.keys(b).sort();
           return keysA.length === keysB.length && keysA.every((key, index) => key === keysB[index] && a[key] === b[key]);
         };
-        if (!sameSnapshot(prepared.nlaDisposition.snapshotRaw, intent!.snapshotRaw)) {
+        if (!sameSnapshot(prepared.nlaDisposition.snapshotRaw, intent!.snapshotRaw)
+          || await nlaSnapshotChanged(intent!.snapshotRaw)) {
           throw new NlaWorkspaceChangedError();
         }
 

@@ -41,6 +41,23 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(getCoordinatorState()).toBe("IDLE");
   });
 
+  it("refuses direct account-to-account entry before state, sync, or storage changes", async () => {
+    const beforeTransition = jest.fn(async () => {});
+    await AsyncStorage.setItem("bread_lab_auth_token_v1", "user-A");
+    await AsyncStorage.setItem("bread_lab_auth_user_v1", JSON.stringify({ id: "user-A" }));
+    const generationBefore = getWorkspaceGeneration();
+
+    await expect(executeWorkspaceTransition("user-A", "user-B", "user-B",
+      { id: "user-B", firstName: "B", starterName: "S" }, { beforeTransition }))
+      .rejects.toThrow(/sign out to the offline workspace/);
+
+    expect(beforeTransition).not.toHaveBeenCalled();
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(getWorkspaceGeneration()).toBe(generationBefore);
+    expect(await AsyncStorage.getItem("bread_lab_auth_token_v1")).toBe("user-A");
+    expect(await AsyncStorage.getItem("bread_lab_auth_user_v1")).toBe(JSON.stringify({ id: "user-A" }));
+  });
+
   it("executes successful transition when prerequisites pass", async () => {
     await AsyncStorage.removeItem("bread_lab_migration_pending_v1");
 

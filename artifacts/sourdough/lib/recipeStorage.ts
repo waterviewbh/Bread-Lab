@@ -638,9 +638,13 @@ export async function loadAll(): Promise<{
 
     await assertWorkspaceOperationCurrent(context);
 
-    if (!localBakesFound && activeBake) {
+    // A legacy remote row created when the runner was merely opened is not active work.
+    // Only restore a phase-started bake whose remote owner matches this account.
+    if (!localBakesFound && activeBake && typeof token === "string" && activeBake.userId === token &&
+        Array.isArray(activeBake.phases) && activeBake.phases.some((p) => !!p.startedAt)) {
       const apiBake: ActiveBake = {
         id: activeBake.id,
+        userId: token,
         recipeId: activeBake.recipeId ?? "",
         recipeName: activeBake.recipeName,
         startedAt: activeBake.startedAt,
@@ -806,6 +810,8 @@ export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
 }
 
 export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
+  // Opening the runner does not start a bake. Keep that preparation local until a phase starts.
+  if (!bake.phases.some((phase) => !!phase.startedAt)) return Promise.resolve();
   // null = NLA. An uncertain identity rejects (callers handle failure); it is never sent as a device-id-only write.
   return Promise.all([getDeviceId(), getStoredToken()])
     .then(([deviceId, userId]) =>

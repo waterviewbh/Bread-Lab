@@ -9,9 +9,9 @@ import { fakeServer } from "@/lib/testSupport/fakeApi";
 import { NLA_ALL_KEYS } from "@/lib/nlaWorkspace";
 import { setCoordinatorState, getCoordinatorState } from "@/lib/transitionCoordinator";
 
-// Issue #24, fail-closed recovery: when the offline (NLA) workspace changes AFTER the baker chose
-// "Import & Proceed" or "Proceed Without Importing", the transition must end unsuccessfully with the destination
-// account signed out, the NLA data untouched, and no way to continue without fresh inventory and a new choice.
+// Issue 1A/24: if the NLA workspace changes before the baker submits a choice, preflight must refuse before
+// destination authentication. If it changes later during the coordinated transition, fail-closed recovery must
+// close the destination session and preserve the changed NLA workspace.
 
 let mockStore: Record<string, string> = {};
 
@@ -116,7 +116,7 @@ describe("AuthModal: offline workspace changes after the baker's choice (fail cl
   });
 
   describe("Proceed Without Importing", () => {
-    it("signs the account out, keeps every NLA record, and does not report success", async () => {
+    it("blocks before destination authentication when the workspace changes before the choice is submitted", async () => {
       seedRecords();
       await openChoiceScreen();
       addLateRecipe();
@@ -125,35 +125,35 @@ describe("AuthModal: offline workspace changes after the baker's choice (fail cl
       await fireEvent.press(screen.getByText("Proceed Without Importing"));
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
 
-      const [title, message] = alertSpy.mock.calls[0];
-      expect(title).toBe("Couldn't continue");
-      expect(message).toContain(CHANGED_MESSAGE);
-      expect(message).toContain("Your account session was closed.");
-      expect(message).toContain("You are still in your offline workspace.");
-      expectFailedClosed(expectedNla);
-      expect(fakeServer.calls.filter((c) => c !== "auth.signout")).toEqual([]);
-      await screen.findByText("Connect & Sync");
+      expect(alertSpy).toHaveBeenCalledWith("Couldn't continue", CHANGED_MESSAGE);
+      expect(api.auth.identify).not.toHaveBeenCalled();
+      expect(api.auth.signout).not.toHaveBeenCalled();
+      expect(nlaRaw()).toEqual(expectedNla);
+      expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();
+      expect(onAuthChange).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(getCoordinatorState()).toBe("IDLE");
+      expect(fakeServer.calls).toEqual([]);
+      expect(screen.getByText(TWO_RECIPES)).toBeTruthy(); // the updated inventory is shown before a new choice
+      expect(screen.getByText("Proceed Without Importing")).toBeTruthy();
     });
 
-    it("a retry needs a fresh sign-in, fresh inventory and a new choice, and then purges what is there NOW", async () => {
+    it("requires a new choice against the refreshed inventory, then discards only after that choice", async () => {
       seedRecords();
       await openChoiceScreen();
       addLateRecipe();
       await fireEvent.press(screen.getByText("Proceed Without Importing"));
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-      await screen.findByText("Connect & Sync");
 
-      // No choice is available until the baker signs in again.
-      expect(screen.queryByText("Proceed Without Importing")).toBeNull();
+      expect(api.auth.identify).not.toHaveBeenCalled();
       expect(onAuthChange).not.toHaveBeenCalledWith(USER);
+      expect(screen.getByText(TWO_RECIPES)).toBeTruthy();
+      expect(screen.getByText("Proceed Without Importing")).toBeTruthy();
 
-      await reidentify();
-      expect(api.auth.identify).toHaveBeenCalledTimes(1); // presenting a new choice does not authenticate the destination
-      expect(screen.getByText(TWO_RECIPES)).toBeTruthy(); // fresh inventory includes the late recipe
-      expect(onAuthChange).not.toHaveBeenCalledWith(USER); // still nothing decided
-
-      await fireEvent.press(screen.getByText("Proceed Without Importing")); // the new, explicit decision
+      alertSpy.mockClear();
+      await fireEvent.press(screen.getByText("Proceed Without Importing"));
       await waitFor(() => expect(onAuthChange).toHaveBeenCalledWith(USER));
+      expect(api.auth.identify).toHaveBeenCalledTimes(1);
       expectNlaPurged();
       expect(mockStore["bread_lab_auth_token_v1"]).toBe(TOKEN);
       expect(onClose).toHaveBeenCalled();
@@ -213,9 +213,13 @@ describe("AuthModal: offline workspace changes after the baker's choice (fail cl
     const changeThenPressDiscard = async (armFailure: () => void = () => {}) => {
       seedRecords();
       await openChoiceScreen();
-      addLateRecipe();
-      const expectedNla = nlaRaw();
-      armFailure(); // armed late so sign-in itself does not consume it
+      let expectedNla: Record<string, string | null> = {};
+      (api.auth.identify as jest.Mock).mockImplementationOnce(async () => {
+        addLateRecipe();
+        expectedNla = nlaRaw();
+        return { token: TOKEN, user: USER };
+      });
+      armFailure();
       await fireEvent.press(screen.getByText("Proceed Without Importing"));
       await waitFor(() => expect(alertSpy).toHaveBeenCalled());
       return expectedNla;
@@ -223,7 +227,9 @@ describe("AuthModal: offline workspace changes after the baker's choice (fail cl
 
     it("remote sign-out fails: says so, keeps the NLA data, shows fresh counts, offers no way to finish, and Cancel retries the cleanup", async () => {
       (api.auth.signout as jest.Mock).mockRejectedValueOnce(new Error("offline"));
-      const expectedNla = await changeThenPressDiscard();
+      const expectedNla = await changeThenPressDiscard(() => {
+        (api.auth.getSession as jest.Mock).mockResolvedValueOnce({ data: { session: { user: { id: TOKEN } } }, error: null });
+      });
 
       expect(alertSpy.mock.calls[0][1]).toContain("Closing your account session could not be confirmed.");
       expect(nlaRaw()).toEqual(expectedNla);
@@ -231,7 +237,7 @@ describe("AuthModal: offline workspace changes after the baker's choice (fail cl
       expect(onAuthChange).not.toHaveBeenCalledWith(null); // identity not declared clean until it is confirmed
       expect(onClose).not.toHaveBeenCalled();
       expect(Haptics.notificationAsync).not.toHaveBeenCalled();
-      expect(getCoordinatorState()).toBe("IDLE");
+      expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
       await screen.findByText(new RegExp(CHANGED_MESSAGE)); // shown together with the recovery status
       expect(screen.getByText(TWO_RECIPES)).toBeTruthy(); // refreshed, so the next choice is about what is really there
 

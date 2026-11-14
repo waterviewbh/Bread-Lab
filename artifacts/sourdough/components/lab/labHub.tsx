@@ -20,7 +20,8 @@ import { ReadingHint, ACIDIFICATION_HINT, LIFTING_HINT, METABOLIC_HINT } from ".
 
 import { api } from "@/lib/api";
 import { computeAcidificationSeries, computeLiftingSeries } from "@/lib/analytics";
-import { loadAll as loadRecipeData, writeRecipesLocal, upsertRecipeRemote, addToRecipeTombstone, removeFromRecipeTombstone } from "@/lib/recipeStorage";
+import { loadAll as loadRecipeData, writeRecipesLocal, upsertRecipeRemote, addToRecipeTombstone, removeFromRecipeTombstone, getWorkspaceIdentity, assertWorkspaceOperationCurrent } from "@/lib/recipeStorage";
+import { storageMutex, subscribeToWorkspaceChange } from "@/lib/storageUtils";
 import { buildRecipeHtml, printHtml, shareHtmlAsPdf } from "@/lib/recipeHtml";
 import { PHASE_DEFINITIONS, PHASE_CATEGORIES, BAKE_HISTORY_KEY } from "@/lib/recipeTypes";
 import { sortRecipePhases, createEmptyPhase, resolveRootMasterId } from "@/lib/recipeUtils";
@@ -57,20 +58,26 @@ export function LabHub() {
   const [hasSuccessfullyImported, setHasSuccessfullyImported] = useState(false);
   const reviewControllerRef = useRef<CandidateReviewControllerRef>(null);
   const { subscribeCandidatesChanged } = useShareCandidate();
+  const candidateLoadId = useRef(0);
 
   const reloadCandidates = useCallback(async () => {
+    const requestId = ++candidateLoadId.current;
     try {
+      const identity = await getWorkspaceIdentity();
       const key = await getCandidatesKey();
       const raw = await AsyncStorage.getItem(key);
+      await assertWorkspaceOperationCurrent(identity);
+      if (requestId !== candidateLoadId.current) return;
       if (raw === null) {
         // Initial fixture or empty
         await AsyncStorage.setItem(key, JSON.stringify([]));
       }
       const list = await loadCandidates();
-      setCandidates(list);
+      await assertWorkspaceOperationCurrent(identity);
+      if (requestId === candidateLoadId.current) setCandidates(list);
     } catch (e) {
       console.error("[LabHub] reloadCandidates failed", e);
-      setCandidates([]); // nothing from a previous workspace stays visible when the identity cannot be confirmed
+      if (requestId === candidateLoadId.current) setCandidates([]);
     }
   }, []);
 
@@ -153,31 +160,55 @@ export function LabHub() {
   const [letterFilter, setLetterFilter] = useState<string | null>(null);
   const [showPhasePicker, setShowPhasePicker] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const dataLoadId = useRef(0);
 
   const loadData = useCallback(async () => {
+    const requestId = ++dataLoadId.current;
     setRefreshing(true);
     try {
+      const identity = await getWorkspaceIdentity();
       const [histRaw, bakeHistRaw, recipeData] = await Promise.all([
         AsyncStorage.getItem(HISTORY_KEY),
         AsyncStorage.getItem(BAKE_HISTORY_KEY),
         loadRecipeData()
       ]);
-      if (histRaw) {
-        const parsed = JSON.parse(histRaw);
-        const sorted = Array.isArray(parsed)
-          ? parsed.sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0))
-          : [];
-        setHistory(sorted);
-      }
-      if (bakeHistRaw) setBakeHistory(JSON.parse(bakeHistRaw));
+      await assertWorkspaceOperationCurrent(identity);
+      if (requestId !== dataLoadId.current) return;
+      const parsedHistory = histRaw ? JSON.parse(histRaw) : [];
+      const sortedHistory = Array.isArray(parsedHistory)
+        ? parsedHistory.sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0))
+        : [];
+      const parsedBakes = bakeHistRaw ? JSON.parse(bakeHistRaw) : [];
+      setHistory(sortedHistory);
+      setBakeHistory(Array.isArray(parsedBakes) ? parsedBakes : []);
       setRecipes(recipeData.recipes);
       await reloadCandidates();
     } catch (e) {
       console.error("[LabHub] Load failed", e);
+      if (requestId === dataLoadId.current) {
+        setHistory([]);
+        setBakeHistory([]);
+        setRecipes([]);
+      }
     } finally {
-      setRefreshing(false);
+      if (requestId === dataLoadId.current) setRefreshing(false);
     }
   }, [reloadCandidates]);
+
+  useEffect(() => subscribeToWorkspaceChange(() => {
+    dataLoadId.current++;
+    candidateLoadId.current++;
+    setHistory([]);
+    setBakeHistory([]);
+    setRecipes([]);
+    setCandidates([]);
+    setSelectedCandidate(null);
+    setShowCandidateReviewModal(false);
+    setEditingRecipe(null);
+    setRefreshing(false);
+    // Quarantine and credential changes finish under this mutex before the new workspace is read.
+    void storageMutex.run(async () => {}).then(() => loadData());
+  }), [loadData]);
 
   const handleCloseEdit = useCallback(() => {
     setEditingRecipe(null);

@@ -77,9 +77,32 @@ describe("Auth Error Handling & Domain Regression", () => {
 
     await expect(
       api.auth.identify({ firstName: "Luke", starterName: "Baker" })
-    ).rejects.toThrow(/Account sign-in failed/);
+    ).rejects.toThrow(/Check your first name and starter name/);
 
     expect(supabase.auth.signUp).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("reports a returned network error as connection trouble before trying another identity or signup (isSignUp=%s)", async (isSignUp) => {
+    const authMod: any = supabase!.auth;
+    authMod.signInWithPassword.mockResolvedValue({
+      data: null,
+      error: { name: "AuthRetryableFetchError", message: "Network request failed" },
+    });
+
+    await expect(api.auth.identify({ firstName: "Luke", starterName: "Baker", isSignUp }))
+      .rejects.toThrow("Couldn't connect to your account. Check your internet connection and try again.");
+    expect(authMod.signInWithPassword).toHaveBeenCalledTimes(1);
+    expect(authMod.signUp).not.toHaveBeenCalled();
+  });
+
+  it("reports a thrown fetch failure as connection trouble without credential advice", async () => {
+    const authMod: any = supabase!.auth;
+    authMod.signInWithPassword.mockRejectedValue(new TypeError("Network request failed"));
+
+    await expect(api.auth.identify({ firstName: "Luke", starterName: "Baker" }))
+      .rejects.toThrow("Couldn't connect to your account. Check your internet connection and try again.");
+    expect(authMod.signInWithPassword).toHaveBeenCalledTimes(1);
+    expect(authMod.signUp).not.toHaveBeenCalled();
   });
 
   it("triggers explicit signup when isSignUp: true is provided and sign-in fails", async () => {

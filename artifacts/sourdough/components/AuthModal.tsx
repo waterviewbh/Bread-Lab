@@ -23,12 +23,13 @@ import { clearAllAppData, clearOperationalData, safeParse } from "@/lib/storageU
 import { executeWorkspaceTransition, recoverTransition, ActiveFeedNotAcknowledgedError, getCoordinatorState } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount } from "@/lib/migrate";
-import { confirmActiveFeedTransition, NLA_LOCAL_WORK_TITLE, NLA_LOCAL_WORK_PARAGRAPHS } from "@/lib/activeWork";
+import { confirmActiveFeedTransition, NLA_LOCAL_WORK_TITLE, describeActiveNlaWork } from "@/lib/activeWork";
 import {
   inventoryNlaWorkspace,
   buildPurgePlan,
   authorizeDiscardPlan,
   authorizeNlaTransitionIntent,
+  inventoryIsEmpty,
   summarizeInventory,
   describeInventory,
   type NlaInventory,
@@ -238,9 +239,11 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     }
   };
 
-  const handleChoiceProceedWithoutImport = async () => {
-    if (!transitionPendingData || recoveryIncompleteRef.current) return;
-    const inventory = nlaInventory;
+  const handleChoiceProceedWithoutImport = async (
+    pendingData = transitionPendingData,
+    inventory = nlaInventory
+  ) => {
+    if (!pendingData || recoveryIncompleteRef.current) return;
     if (!inventory) {
       await refreshInventory();
       setChoiceMessage("Please review what is on this device, then choose again.");
@@ -252,20 +255,20 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     }
     setLoading(true);
     setChoiceMessage(null);
-    let destinationUser: AuthUser | null = transitionPendingData.user ?? null;
+    let destinationUser: AuthUser | null = pendingData.user ?? null;
     try {
       const intent = authorizeNlaTransitionIntent("discard", inventory.raw);
       await executeWorkspaceTransition(null, null, null, null, {
         activeFeedAcknowledged: true,
         nlaTransitionIntent: intent,
         prepareIncoming: async () => {
-          let token = transitionPendingData.token;
-          let user = transitionPendingData.user;
+          let token = pendingData.token;
+          let user = pendingData.user;
           if (!token || !user) {
             const result = await api.auth.identify({
-              firstName: transitionPendingData.firstName,
-              starterName: transitionPendingData.starterName,
-              isSignUp: transitionPendingData.isSignUp,
+              firstName: pendingData.firstName,
+              starterName: pendingData.starterName,
+              isSignUp: pendingData.isSignUp,
             });
             token = result.token;
             user = result.user;
@@ -289,7 +292,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       onClose();
       noteLeftovers(describeInventory(summarizeInventory(inventory)), left > 0);
     } catch (err: any) {
-      await failChoice("Couldn't continue", err);
+      const recovered = await failChoice("Couldn't continue", err);
+      if (!recovered && getCoordinatorState() !== "IDLE") setTransitionPendingData(pendingData);
     } finally {
       setLoading(false);
     }
@@ -376,11 +380,16 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       if (hasOrphanRemoteSession) await closeOrphanRemoteSession();
       setNlaInventory(inventory);
       setChoiceMessage(null);
-      setTransitionPendingData({
+      const pendingData = {
         firstName: firstName.trim(),
         starterName: starterName.trim(),
         isSignUp: mode === "name",
-      });
+      };
+      if (inventoryIsEmpty(inventory)) {
+        await handleChoiceProceedWithoutImport(pendingData, inventory);
+      } else {
+        setTransitionPendingData(pendingData);
+      }
     } catch (error) {
       console.error("Auth Identification Technical Diagnostics:", error);
       const errMessage = error instanceof Error ? error.message : String(error);
@@ -527,7 +536,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
                   <Text style={[s.cardName, { color: colors.foreground, fontSize: 15, marginBottom: 6 }]}>
                     {NLA_LOCAL_WORK_TITLE}
                   </Text>
-                  {NLA_LOCAL_WORK_PARAGRAPHS.map((paragraph) => (
+                  {describeActiveNlaWork(nlaInventory).map((paragraph) => (
                     <Text key={paragraph} style={[s.cardInfo, { color: colors.mutedForeground, marginBottom: 6 }]}>
                       {paragraph}
                     </Text>
@@ -557,7 +566,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
                 </Pressable>
 
                 <Pressable
-                  onPress={handleChoiceProceedWithoutImport}
+                  onPress={() => { void handleChoiceProceedWithoutImport(); }}
                   disabled={loading}
                   style={[s.outlineButton, { borderColor: colors.border }]}
                 >

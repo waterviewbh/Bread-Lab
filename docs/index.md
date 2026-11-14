@@ -99,7 +99,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 ### [🔍 Research & Status](file:///E:/Bread-Lab/docs/research/)
 **Purpose**: Findings from investigations, current status of ongoing initiatives, and lessons learned.
 - [Issues #89 & #88: UDL & Workspace Transition Coordinator Architecture Design (2026-10-26)](file:///E:/Bread-Lab/.artifacts/implementation_plan.artifact.md) [OPEN ITEM]
-- [Issue #24: Migration Identity, Ownership Isolation & Data Preservation (2026-10-26)](file:///E:/Bread-Lab/docs/research/2026-10-26_issue_24_migration_and_identity_remediation.md) [OPEN ITEM]
+- [Session Journal: Issue #24 — Migration Identity, Ownership Isolation & Data Preservation (2026-10-26; updated 2026-11-14)](file:///E:/Bread-Lab/docs/research/2026-10-26_issue_24_migration_and_identity_remediation.md) [OPEN; UPSTREAM-FIRST OKR PLAN]
 - [Issue #73: Pre-Implementation Architecture Inspection — Moving Candidates to Recipe Builder (2026-10-12)](file:///E:/Bread-Lab/docs/research/2026-10-12_issue_73_recipe_builder_candidates_inspection.md)
 - [Maestro Testing: Status and Lessons Learned](file:///E:/Bread-Lab/docs/research/maestro_testing_status.artifact.md) [OPEN ITEM]
 
@@ -107,6 +107,10 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 **Purpose**: Central tracking for confirmed defects, unresolved test failures, build issues, and watchlist items.
 - [NLA transition test authorization failures](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-001-nla-transition-test-authorization-failures) [TEST SETUP FIXED; PRODUCTION UNVERIFIED]
 - [Operational cleanup validation test failures](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-002-operational-cleanup-validation-test-failures) [TRIAGE]
+- [Account feed charts remain visible in NLA Analytics](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-003-account-feed-charts-remain-visible-in-nla-analytics) [OPEN; STALE STATE CONFIRMED]
+- [NLA Proceed Without Importing identification crash](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-004-nla-proceed-without-importing-crashed-during-identification) [CODE AND DEVICE RETEST PASSED]
+- [Offline sign-in failure suggests incorrect credentials](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-005-offline-sign-in-failure-suggests-incorrect-credentials) [CODE AND DEVICE RETEST PASSED]
+- [NLA workspace change after choice escaped snapshot check](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-006-nla-workspace-change-after-choice-escaped-the-coordinator-snapshot-check) [CODE FIXED; FOCUSED TESTS PASS]
 - [C/C++ Configuration Timeout (Windows)](file:///E:/Bread-Lab/docs/bug_tracker.md#1-cc-configuration-timeout-windows) [WATCHLIST]
 - [Active Issues & Watchlist](file:///E:/Bread-Lab/docs/bug_tracker.md)
 

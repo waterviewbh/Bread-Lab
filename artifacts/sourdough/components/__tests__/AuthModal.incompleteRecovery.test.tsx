@@ -27,15 +27,21 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   multiRemove: jest.fn(async (ks: string[]) => { ks.forEach((k) => delete mockStore[k]); }),
   clear: jest.fn(async () => { mockStore = {}; }),
 }));
-// Records each Pressable's onPress by function name (handleChoiceImport, ...), so a test can keep the handler the
-// baker's old choice was bound to and call it later, which pressing a no-longer-mounted button cannot do.
-const mockHandlers: Record<string, () => Promise<void>> = {};
+// Preserve the callbacks from the two visible choices so recovery can prove they are void even if invoked later.
+const mockChoicePresses: Record<string, () => void> = {};
 jest.mock("react-native/Libraries/Components/Pressable/Pressable", () => {
   const ReactLib = require("react");
   const actual = jest.requireActual("react-native/Libraries/Components/Pressable/Pressable");
   const Real = actual.default ?? actual;
+  const containsLabel = (child: any, label: string): boolean => {
+    if (typeof child === "string") return child === label;
+    if (Array.isArray(child)) return child.some((item) => containsLabel(item, label));
+    return !!child?.props && containsLabel(child.props.children, label);
+  };
   const Recording = ReactLib.forwardRef((props: any, ref: any) => {
-    if (typeof props.onPress === "function" && props.onPress.name) mockHandlers[props.onPress.name] = props.onPress;
+    for (const label of ["Import & Proceed", "Proceed Without Importing"]) {
+      if (containsLabel(props.children, label)) mockChoicePresses[label] = props.onPress;
+    }
     return ReactLib.createElement(Real, { ...props, ref });
   });
   return { __esModule: true, default: Recording };
@@ -181,9 +187,9 @@ describe("AuthModal: incomplete recovery voids the old choices; surviving remote
           seedRecords();
           await mountModal();
           await identify();
-          // The handlers the baker's old choices were bound to (the buttons are gone from the screen afterwards).
-          const staleImport = mockHandlers["handleChoiceImport"];
-          const staleProceed = mockHandlers["handleChoiceProceedWithoutImport"];
+          // Keep the callbacks from the visible buttons before recovery removes those choices.
+          const staleImport = mockChoicePresses["Import & Proceed"];
+          const staleProceed = mockChoicePresses["Proceed Without Importing"];
           expect(typeof staleImport).toBe("function");
           expect(typeof staleProceed).toBe("function");
 

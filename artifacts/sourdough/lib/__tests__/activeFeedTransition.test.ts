@@ -12,6 +12,7 @@ import {
 import { saveAuth } from "../auth";
 import { addToFeedTombstone } from "../recipeStorage";
 import { executeWorkspaceTransition, setCoordinatorState, getCoordinatorState, ActiveFeedNotAcknowledgedError } from "../transitionCoordinator";
+import { inventoryNlaWorkspace, buildPurgePlan, authorizeDiscardPlan, authorizeNlaTransitionIntent } from "../nlaWorkspace";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -34,6 +35,8 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   removeItem: jest.fn(async (k: string) => { delete mockStore[k]; }),
   multiSet: jest.fn(async (pairs: [string, string][]) => { pairs.forEach(([k, v]) => { mockStore[k] = v; }); }),
   multiRemove: jest.fn(async (ks: string[]) => { ks.forEach((k) => delete mockStore[k]); }),
+  getAllKeys: jest.fn(async () => Object.keys(mockStore)),
+  multiGet: jest.fn(async (ks: string[]) => ks.map((k) => [k, k in mockStore ? mockStore[k] : null])),
   clear: jest.fn(async () => { mockStore = {}; }),
 }));
 jest.mock("../api", () => ({ api: { auth: { signout: jest.fn() } } }));
@@ -41,6 +44,20 @@ jest.mock("../api", () => ({ api: { auth: { signout: jest.fn() } } }));
 const ACTIVE = APP_STORAGE_KEYS.ACTIVE_FEED;
 const ACK = { activeFeedAcknowledged: true };
 const userOf = (t: string) => ({ id: t, firstName: t, starterName: "Starter" });
+const switchAccount = async (from: string, to: string, acknowledged = true): Promise<void> => {
+  await executeWorkspaceTransition(from, null, null, null, { activeFeedAcknowledged: acknowledged });
+  const inventory = await inventoryNlaWorkspace();
+  const intent = authorizeNlaTransitionIntent("discard", inventory.raw);
+  const plan = authorizeDiscardPlan(buildPurgePlan(inventory, "discard"));
+  await executeWorkspaceTransition(null, null, null, null, {
+    activeFeedAcknowledged: true,
+    nlaTransitionIntent: intent,
+    prepareIncoming: async () => ({
+      ownerId: to, token: to, user: userOf(to),
+      nlaDisposition: { mode: "discard", plan, snapshotRaw: inventory.raw },
+    }),
+  });
+};
 const anyKeyContains = (needle: string) => Object.values(mockStore).some((v) => v.includes(needle));
 
 describe("Active Feed at a workspace transition", () => {
@@ -91,7 +108,7 @@ describe("Active Feed at a workspace transition", () => {
       await addToFeedTombstone("finished-feed-9"); // pending finished-record deletion for tokA
       const before = mockStore[ACTIVE];
 
-      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK)).rejects.toThrow(/pending deletion work/);
+      await expect(switchAccount("tokA", "tokB")).rejects.toThrow(/pending deletion work/);
 
       expect(mockStore[ACTIVE]).toBe(before); // nothing was discarded or moved
       expect(getCoordinatorState()).toBe("IDLE");
@@ -101,7 +118,7 @@ describe("Active Feed at a workspace transition", () => {
       await saveAuth("tokA", userOf("tokA"));
       mockStore[getOwnerStorageKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, "tokB")] = JSON.stringify(["old-pending"]);
 
-      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK)).resolves.toBeUndefined();
+      await expect(switchAccount("tokA", "tokB")).resolves.toBeUndefined();
       expect(getCoordinatorState()).toBe("IDLE");
     });
   });
@@ -111,7 +128,7 @@ describe("Active Feed at a workspace transition", () => {
       await saveAuth("tokA", userOf("tokA"));
       mockStore[ACTIVE] = JSON.stringify({ id: "feed-A", readings: [] });
 
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      await switchAccount("tokA", "tokB");
 
       expect(getCoordinatorState()).toBe("IDLE");
       expect(mockStore[ACTIVE]).toBeUndefined();
@@ -130,7 +147,7 @@ describe("Active Feed at a workspace transition", () => {
       mockStore[ACTIVE] = JSON.stringify({ id: "feed-A" });
       mockStore[APP_STORAGE_KEYS.FEED_HISTORY] = JSON.stringify([{ id: "a-finished", userId: "tokA" }]);
 
-      await executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"), ACK);
+      await switchAccount("tokA", "tokB");
 
       const history = JSON.parse(mockStore[APP_STORAGE_KEYS.FEED_HISTORY]);
       expect(history.map((h: any) => h.id)).toEqual(["b-finished"]); // B's finished data is back, A's is not
@@ -159,7 +176,7 @@ describe("Active Feed at a workspace transition", () => {
       mockStore[ACTIVE] = JSON.stringify({ id: "feed-A", userId: "tokA" });
       const before = { ...mockStore };
 
-      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"))).rejects.toBeInstanceOf(ActiveFeedNotAcknowledgedError);
+      await expect(switchAccount("tokA", "tokB", false)).rejects.toBeInstanceOf(ActiveFeedNotAcknowledgedError);
 
       expect(mockStore).toEqual(before);
       expect(getCoordinatorState()).toBe("IDLE");
@@ -167,7 +184,7 @@ describe("Active Feed at a workspace transition", () => {
 
     it("needs no acknowledgement when there is nothing to lose", async () => {
       await saveAuth("tokA", userOf("tokA"));
-      await expect(executeWorkspaceTransition("tokA", "tokB", "tokB", userOf("tokB"))).resolves.toBeUndefined();
+      await expect(switchAccount("tokA", "tokB", false)).resolves.toBeUndefined();
     });
 
     it("sign-out: clears credentials, discards the active Feed, sets finished data aside, and restores nothing", async () => {

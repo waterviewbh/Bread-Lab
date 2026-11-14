@@ -5,12 +5,12 @@ import AuthModal from "../AuthModal";
 import { api } from "@/lib/api";
 import { fakeServer } from "@/lib/testSupport/fakeApi";
 import { NLA_ALL_KEYS } from "@/lib/nlaWorkspace";
-import { setCoordinatorState } from "@/lib/transitionCoordinator";
+import { getCoordinatorState, setCoordinatorState } from "@/lib/transitionCoordinator";
+import { getWorkspaceGeneration } from "@/lib/storageUtils";
 import { NLA_LOCAL_WORK_TITLE, NLA_LOCAL_WORK_PARAGRAPHS } from "@/lib/activeWork";
 
 // The real sign-in screen, driven the way a baker would: type a name and starter, tap "Connect & Sync".
-// Coming from the offline (NLA) workspace the baker is ALWAYS offered the three choices, shown a neutral count,
-// and (only when active Feed/Bake work exists) the agreed "Local work on this device" panel.
+// A choice is shown only when the NLA inventory contains records or unresolved data to decide about.
 
 let mockStore: Record<string, string> = {};
 
@@ -54,11 +54,15 @@ let onClose: jest.Mock;
 let onAuthChange: jest.Mock;
 let alertSpy: jest.SpyInstance;
 
-const openChoiceScreen = async () => {
+const submitIdentification = async () => {
   await render(<AuthModal visible currentUser={null} onClose={onClose} onAuthChange={onAuthChange} />);
   await fireEvent.changeText(screen.getByPlaceholderText("e.g. Jane"), "Jane");
   await fireEvent.changeText(screen.getByPlaceholderText(/^e.g. Dough/), "Doughy");
   await fireEvent.press(screen.getByText("Connect & Sync"));
+};
+
+const openChoiceScreen = async () => {
+  await submitIdentification();
   try {
     await screen.findByText("Your offline workspace");
   } catch (e) {
@@ -89,13 +93,15 @@ describe("AuthModal: NLA -> account choice screen", () => {
     jest.restoreAllMocks();
   });
 
-  describe("always offered", () => {
-    it("offers all three choices even when NOTHING was detected on the device", async () => {
-      await openChoiceScreen();
-      expect(screen.getByText("No offline records were found on this device.")).toBeTruthy();
-      expect(screen.getByText("Import & Proceed")).toBeTruthy();
-      expect(screen.getByText("Proceed Without Importing")).toBeTruthy();
-      expect(screen.getByText("Cancel Transition")).toBeTruthy();
+  describe("choice screen visibility", () => {
+    it("continues without showing a choice when nothing is in the offline workspace", async () => {
+      await submitIdentification();
+
+      await waitFor(() => expect(onAuthChange).toHaveBeenCalledWith(USER));
+      expect(screen.queryByText("Your offline workspace")).toBeNull();
+      expect(api.auth.identify).toHaveBeenCalledWith({ firstName: "Jane", starterName: "Doughy", isSignUp: true });
+      expect(fakeServer.calls).toEqual([]);
+      expect(onClose).toHaveBeenCalled();
       expect(screen.queryByText(NLA_LOCAL_WORK_TITLE)).toBeNull();
     });
 
@@ -116,26 +122,23 @@ describe("AuthModal: NLA -> account choice screen", () => {
   });
 
   describe("the 'Local work on this device' panel (agreed wording, NLA -> account only)", () => {
-    const expectPanel = () => {
+    const expectPanel = (kind: "Bake" | "Feed") => {
       expect(screen.getByText(NLA_LOCAL_WORK_TITLE)).toBeTruthy();
-      expect(NLA_LOCAL_WORK_TITLE).toBe("A note about work in progress");
-      expect([...NLA_LOCAL_WORK_PARAGRAPHS]).toEqual([
-        "You have an active Bake or Feed running on this device; you may want to finish it before continuing. Active work isn't included in the import and will be lost when you sign in to a remote account.",
-        "Your saved recipes, bake history, feed history, and other eligible records will be handled according to your choice below.",
-      ]);
-      for (const paragraph of NLA_LOCAL_WORK_PARAGRAPHS) expect(screen.getByText(paragraph)).toBeTruthy();
+      expect(screen.getByText(new RegExp(`You have an active ${kind} running on this device`))).toBeTruthy();
+      expect(screen.queryByText(NLA_LOCAL_WORK_PARAGRAPHS[0])).toBeNull();
+      expect(screen.getByText(NLA_LOCAL_WORK_PARAGRAPHS[1])).toBeTruthy();
     };
 
     it("appears for an active BAKE (stored in the owner-named cabinet)", async () => {
       put("bread_lab_bake_v2_anonymous", [{ id: "ab", recipeName: "Active", userId: "anonymous", phases: [] }]);
       await openChoiceScreen();
-      expectPanel();
+      expectPanel("Bake");
     });
 
     it("appears for an active FEED", async () => {
       put("sourdough_feed_session_v1", { id: "af", userId: "anonymous", savedAt: 1 });
       await openChoiceScreen();
-      expectPanel();
+      expectPanel("Feed");
     });
   });
 
@@ -145,8 +148,9 @@ describe("AuthModal: NLA -> account choice screen", () => {
       put("bread_lab_bake_v2_anonymous", [{ id: "ab", userId: "anonymous", phases: [] }]);
       await openChoiceScreen();
 
-      await fireEvent.press(screen.getByText("Proceed Without Importing"));
+      fireEvent.press(screen.getByText("Proceed Without Importing"), { nativeEvent: { target: 1 } });
       await waitFor(() => expect(onAuthChange).toHaveBeenCalledWith(USER));
+      expect(api.auth.identify).toHaveBeenCalledWith({ firstName: "Jane", starterName: "Doughy", isSignUp: true });
 
       expect(onClose).toHaveBeenCalled();
       for (const key of NLA_ALL_KEYS.filter((k) => /_anonymous$/.test(k))) expect(mockStore[key]).toBeUndefined();
@@ -210,16 +214,38 @@ describe("AuthModal: NLA -> account choice screen", () => {
     // The "workspace changed after the choice" cases (both choices, retry, recovery failures) live in
     // AuthModal.workspaceChanged.test.tsx; the old test here asserted the session stayed open, which was the defect.
 
-    it("does not retire tombstones or clear migration state before the user chooses", async () => {
-      put("bread_lab_deleted_recipe_ids_v1_anonymous", ["deleted-r"]);
-      mockStore["bread_lab_migration_pending_v1"] = "1";
-      await openChoiceScreen();
+    it.each(["Import & Proceed", "Proceed Without Importing"])(
+      "refuses %s before authentication while migration is pending, then permits retry after resolution",
+      async (choice) => {
+        put("bread_lab_recipes_v1_anonymous", [{ id: "r-pending", name: "Pending", userId: "anonymous", phases }]);
+        mockStore["bread_lab_migration_pending_v1"] = "1";
+        await openChoiceScreen();
+        const before = { ...mockStore };
+        const generationBefore = getWorkspaceGeneration();
 
-      expect(mockStore["bread_lab_deleted_recipe_ids_v1_anonymous"]).toBe(JSON.stringify(["deleted-r"]));
-      expect(mockStore["bread_lab_migration_pending_v1"]).toBe("1");
-      expect(api.auth.identify).not.toHaveBeenCalled();
-      expect(screen.getByText("Your offline workspace")).toBeTruthy();
-    });
+        fireEvent.press(screen.getByText(choice));
+        await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+        expect(alertSpy).toHaveBeenCalledWith(
+          choice === "Import & Proceed" ? "Import didn\'t complete" : "Couldn\'t continue",
+          expect.stringContaining("migration pending marker remains present")
+        );
+        expect(api.auth.identify).not.toHaveBeenCalled();
+        expect(api.auth.signout).not.toHaveBeenCalled();
+        expect(onAuthChange).not.toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(fakeServer.calls).toEqual([]);
+        expect(getCoordinatorState()).toBe("IDLE");
+        expect(getWorkspaceGeneration()).toBe(generationBefore);
+        expect(mockStore).toEqual(before);
+        expect(screen.getByText("Your offline workspace")).toBeTruthy();
+
+        delete mockStore["bread_lab_migration_pending_v1"];
+        fireEvent.press(screen.getByText(choice));
+        await waitFor(() => expect(onAuthChange).toHaveBeenCalledWith(USER));
+        expect(api.auth.identify).toHaveBeenCalledTimes(1);
+        expect(onClose).toHaveBeenCalled();
+      }
+    );
 
     it("tells the baker what stayed behind (a conflict is kept and reported, the rest completes)", async () => {
       put("bread_lab_recipes_v1", [{ id: "dup", name: "A" }, { id: "ok", name: "Fine", phases }]);

@@ -33,6 +33,17 @@ export const NLA_LOCAL_WORK_PARAGRAPHS = [
   "Your saved recipes, bake history, feed history, and other eligible records will be handled according to your choice below.",
 ] as const;
 
+export function describeActiveNlaWork(inventory: { counts: { activeFeed: number; activeBakes: number } }): string[] {
+  const { activeFeed, activeBakes } = inventory.counts;
+  const kinds = [activeBakes > 0 ? (activeBakes === 1 ? "an active Bake" : `${activeBakes} active Bakes`) : null,
+    activeFeed > 0 ? (activeFeed === 1 ? "an active Feed" : `${activeFeed} active Feeds`) : null].filter(Boolean);
+  const subject = kinds.join(" and ");
+  return [
+    `You have ${subject} running on this device; you may want to finish ${activeBakes + activeFeed === 1 ? "it" : "them"} before continuing. Active work isn't included in the import and will be lost when you sign in to a remote account.`,
+    NLA_LOCAL_WORK_PARAGRAPHS[1],
+  ];
+}
+
 const hasStoredWork = (raw: string | null | undefined): boolean => {
   if (raw === null || raw === undefined || raw === "") return false;
   try {

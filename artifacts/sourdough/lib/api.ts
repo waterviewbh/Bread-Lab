@@ -109,6 +109,7 @@ export type ApiBakePhase = {
 export type ApiBakeSession = {
   id: string;
   deviceId: string;
+  userId?: string | null;
   recipeId?: string | null;
   recipeName: string;
   savedAt: number;
@@ -268,10 +269,11 @@ export function rowToApiBakeSession(r: BakeSessionRow): ApiBakeSession {
   return {
     id: r.id,
     deviceId: r.device_id,
+    userId: r.user_id,
     recipeId: r.recipe_id ?? null,
     recipeName: r.recipe_name,
-    saved_at: Number(r.saved_at),
-    started_at: Number(r.started_at),
+    savedAt: Number(r.saved_at),
+    startedAt: Number(r.started_at),
     phases: (r.phases ?? []).map((p: any) => ({
       ...p,
       bulkFermentState: p.bulkFermentState,
@@ -395,10 +397,22 @@ export const api = {
 
       let authData: any = null;
       let lastError: any = null;
+      const isConnectionFailure = (error: any) =>
+        error?.name === "AuthRetryableFetchError" ||
+        /network request failed|failed to fetch|fetch failed|network error|offline/i.test(error?.message ?? "");
+      const connectionMessage = "Couldn't connect to your account. Check your internet connection and try again.";
 
       for (const [source, desc] of strategies) {
         const password = derivePassword(source);
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        let result;
+        try {
+          result = await supabase.auth.signInWithPassword({ email, password });
+        } catch (error) {
+          if (isConnectionFailure(error)) throw new Error(connectionMessage);
+          throw error;
+        }
+        const { data, error } = result;
+        if (isConnectionFailure(error)) throw new Error(connectionMessage);
 
         if (error && error.message.includes("Email not confirmed")) {
           throw new Error("Email confirmation is required for this account. Please verify your email.");
@@ -427,8 +441,11 @@ export const api = {
           }
           authData = signUpData;
         } else {
-          const failureMsg = lastError?.message || "Invalid login credentials";
-          throw new Error(`Account sign-in failed: ${failureMsg}. Check your first name and starter name, or select 'New Account' to register.`);
+          const failureMsg = lastError?.message ?? "";
+          if (/invalid login credentials|invalid credentials|invalid email or password/i.test(failureMsg)) {
+            throw new Error("Account sign-in failed. Check your first name and starter name, or select 'New Account' to register.");
+          }
+          throw new Error(failureMsg ? `Account sign-in failed: ${failureMsg}` : "Account sign-in failed. Please try again.");
         }
       }
 
