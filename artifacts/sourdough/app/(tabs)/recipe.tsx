@@ -100,7 +100,7 @@ import { TransientShareBanner } from "@/components/recipe/TransientShareBanner";
 import { BakerReviewModal } from "@/components/recipe/BakerReviewModal";
 import { CandidateReviewController, CandidateReviewControllerRef } from "@/components/recipe/CandidateReviewController";
 import { PasteCandidateModal } from "@/components/recipe/PasteCandidateModal";
-import { loadCandidates, removeCandidate, CandidateRecord, formatCandidateSharedAt, getCandidatesKey } from "@/lib/candidateStorage";
+import { loadCandidates, removeCandidate, CandidateRecord, StagedShareExtractionError, formatCandidateSharedAt, getCandidatesKey } from "@/lib/candidateStorage";
 import { useShareCandidate } from "@/contexts/ShareCandidateContext";
 import { extractRecipeFromText, ExtractionResult } from "@/lib/recipeExtractor";
 import { fetchAndExtractRecipeFromUrl } from "@/lib/webAcquisition";
@@ -145,7 +145,7 @@ export default function RecipeScreen() {
       setCandidates(list);
     } catch (e) {
       // An uncertain identity rejects here; nothing from a previous workspace stays visible.
-      console.error("[Recipe] reloadCandidates failed", e);
+      if (!(e instanceof StagedShareExtractionError)) console.error("[Recipe] reloadCandidates failed", e);
       setCandidates([]);
     }
   }, []);

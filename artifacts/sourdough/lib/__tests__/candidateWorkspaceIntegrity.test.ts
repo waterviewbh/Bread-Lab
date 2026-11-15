@@ -2,6 +2,7 @@ import { AppState } from "react-native";
 import {
   saveCandidate,
   loadCandidates,
+  loadStoredCandidates,
   updateCandidateExtraction,
   removeCandidate,
   clearCandidates,
@@ -472,6 +473,44 @@ describe("native staged shares", () => {
 
     await expect(ingestStagedNativeShares()).rejects.toBeInstanceOf(CandidateStorageError);
     expect(ids(key("acct-A"))).toBeNull();
+  });
+
+  it("keeps an offline URL staged and saves it exactly once after reconnect", async () => {
+    mockShares.items = [{
+      id: "offline-url-1",
+      rawContent: "https://example.com/recipe",
+      sharedAt: "2026-11-15T12:00:00.000Z",
+    }];
+    mockExtract.url = async () => ({ status: "fetch_failed" });
+
+    await expect(loadCandidates()).rejects.toBeInstanceOf(StagedShareExtractionError);
+    expect(ids(ANONYMOUS_CANDIDATES_KEY)).toBeNull();
+    expect(mockShares.items.map((item) => item.id)).toEqual(["offline-url-1"]);
+    expect(console.error).not.toHaveBeenCalled();
+
+    mockExtract.url = async () => ({ status: "single_candidate", recipe: { name: "Extra-Tangy" } });
+    const first = await loadCandidates();
+    const second = await loadCandidates();
+    expect(first.map((item) => item.id)).toEqual(["offline-url-1"]);
+    expect(second.map((item) => item.id)).toEqual(["offline-url-1"]);
+    expect(mockShares.items).toHaveLength(0);
+  });
+
+  it("shows saved Candidates while an offline URL waits in staging", async () => {
+    mockStore[ANONYMOUS_CANDIDATES_KEY] = JSON.stringify([cand("rustic")]);
+    mockShares.items = [{
+      id: "offline-url-2",
+      rawContent: "https://example.com/recipe",
+      sharedAt: "2026-11-15T12:00:00.000Z",
+    }];
+    mockExtract.url = async () => ({ status: "fetch_failed" });
+
+    await expect(loadCandidates()).rejects.toBeInstanceOf(StagedShareExtractionError);
+    expect((await loadStoredCandidates()).map((item) => item.id)).toEqual(["rustic"]);
+    expect(mockShares.items.map((item) => item.id)).toEqual(["offline-url-2"]);
+
+    mockExtract.url = async () => ({ status: "single_candidate", recipe: { name: "New" } });
+    expect((await loadCandidates()).map((item) => item.id)).toEqual(["offline-url-2", "rustic"]);
   });
 
   it("persistence failure (e.g. disk full during save) is not an extraction failure: rejects with original CandidateStorageError, not StagedShareExtractionError", async () => {

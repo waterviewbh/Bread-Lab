@@ -284,21 +284,19 @@ export async function ingestStagedNativeShares(context?: WorkspaceOperationConte
         savedCount++;
         await acknowledgeStagedShares([item.id], ctx.owner);
       } catch (e: any) {
-        console.error(`[candidateStorage] Staged share ${item.id ?? i} was not acknowledged and remains in native staging.`, e);
+        // A URL fetch can fail offline. Keep native staging for retry without raising a dev error overlay.
+        if (!(e instanceof StagedShareExtractionError)) {
+          console.error(`[candidateStorage] Staged share ${item.id ?? i} was not acknowledged and remains in native staging.`, e);
+        }
         throw e;
       }
     }
   });
 }
 
-/**
- * Reads all Candidate records for the captured workspace. Any failure (identity, stale workspace, unreadable stored
- * data, storage error) rejects; none is turned into an empty list.
- */
-export async function loadCandidates(context?: WorkspaceOperationContext): Promise<CandidateRecord[]> {
+/** Reads saved Candidates in the verified workspace without processing native staging. */
+export async function loadStoredCandidates(context?: WorkspaceOperationContext): Promise<CandidateRecord[]> {
   const ctx = await capture(context);
-  await ingestStagedNativeShares(ctx);
-
   return withWorkspaceLock(ctx, async (key) => {
     const candidates = parseCandidates(await AsyncStorage.getItem(key), key);
     return candidates.sort((a, b) => {
@@ -307,6 +305,16 @@ export async function loadCandidates(context?: WorkspaceOperationContext): Promi
       return timeB - timeA;
     });
   });
+}
+
+/**
+ * Ingests staged shares, then reads saved Candidates. Ingestion errors reject so callers can
+ * show pending work; they must not interpret an extraction failure as an empty workspace.
+ */
+export async function loadCandidates(context?: WorkspaceOperationContext): Promise<CandidateRecord[]> {
+  const ctx = await capture(context);
+  await ingestStagedNativeShares(ctx);
+  return loadStoredCandidates(ctx);
 }
 
 /**

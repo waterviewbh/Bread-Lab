@@ -186,6 +186,10 @@ export async function executeWorkspaceTransition(
     // Outgoing synchronization can write remotely and locally, so run it only after preflight and under this
     // same mutex. If it fails, identity and workspace state have not yet changed and the caller can retry.
     await options.beforeTransition?.();
+    // Outgoing sync may take time; a newly staged share still belongs to this workspace.
+    if (await hasStagedShares(outgoingOwnerId ?? "anonymous")) {
+      throw new Error("Workspace transition refused: a shared recipe is still pending. Open Candidates to save it, then try again.");
+    }
 
     setCoordinatorState("TRANSITIONING");
     advanceWorkspaceGeneration();
@@ -225,6 +229,9 @@ export async function executeWorkspaceTransition(
 
       // A share may arrive while destination authentication or import is in progress.
       if (await hasStagedShares(outgoingOwnerId ?? "anonymous")) {
+        // A verified import may have set this marker, but source cleanup has not begun. Retain the
+        // NLA records and allow another idempotent import after session recovery and ingestion.
+        if (deferredNlaLogin && disposition?.mode === "import") await clearMigrationPending();
         throw new Error("Workspace transition refused: a shared recipe is still pending. Open Candidates to save it, then try again.");
       }
 

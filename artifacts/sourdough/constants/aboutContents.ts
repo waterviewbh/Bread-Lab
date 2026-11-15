@@ -128,7 +128,15 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
-      version: "v2.5.5", /* -- published 202610XX -- */
+      version: "v2.6", /* -- published 2026XXXX -- */
+      changes: [
+        { type: "Added", content: "If sharing a recipe into the app runs into a network problem, the URL is stored until access is restored. This cache DOES NOT survive signing in or out before the candidate is brought in." },
+        { type: "Fixed", content: "" },
+        { type: "Modified", content: "" },
+      ],
+    },
+    {
+      version: "v2.5.5", /* -- published 20261115 -- */
       changes: [
         { type: "Added", content: "Cleaned up the app landing page, and added some new functionality." },
         { type: "Added", content: "Moved the Recipe Candidate workflow to Recipe Builder, while preserving pasting a recipe as a Quick Action on the landing page." },

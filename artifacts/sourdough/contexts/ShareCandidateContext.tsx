@@ -14,7 +14,7 @@ import { fonts, radius } from "@/constants/theme";
 import { useTransientShareIntent } from "@/lib/useTransientShareIntent";
 import { fetchAndExtractRecipeFromUrl } from "@/lib/webAcquisition";
 import { extractRecipeFromText, ExtractionResult } from "@/lib/recipeExtractor";
-import { saveCandidate, loadCandidates, CandidateRecord } from "@/lib/candidateStorage";
+import { saveCandidate, loadCandidates, CandidateRecord, StagedShareExtractionError } from "@/lib/candidateStorage";
 
 interface ShareCandidateContextValue {
   lastCreatedCandidate: CandidateRecord | null;
@@ -238,8 +238,13 @@ export function ShareCandidateProvider({ children }: { children: React.ReactNode
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (appStateRef.current !== "active" && nextAppState === "active") {
         (async () => {
-          await loadCandidates();
-          notifyListeners();
+          try {
+            await loadCandidates();
+          } catch (error) {
+            if (!(error instanceof StagedShareExtractionError)) console.error("[ShareCandidate] Candidate refresh failed", error);
+          } finally {
+            notifyListeners();
+          }
         })();
       }
       appStateRef.current = nextAppState;

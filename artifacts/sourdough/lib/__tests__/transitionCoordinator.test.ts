@@ -75,6 +75,82 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(getWorkspaceGeneration()).toBe(generationBefore);
   });
 
+  it("refuses a share staged during outgoing sync while remaining retryable", async () => {
+    const beforeTransition = jest.fn(async () => {});
+    jest.mocked(hasStagedShares).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const generationBefore = getWorkspaceGeneration();
+
+    await expect(executeWorkspaceTransition("user-A", null, null, null,
+      { activeFeedAcknowledged: true, beforeTransition }))
+      .rejects.toThrow(/shared recipe is still pending/);
+
+    expect(beforeTransition).toHaveBeenCalledTimes(1);
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(getWorkspaceGeneration()).toBe(generationBefore);
+  });
+
+  it("preserves NLA data and credentials when a share arrives during destination preparation", async () => {
+    const { inventoryNlaWorkspace, authorizeNlaTransitionIntent, buildPurgePlan, authorizeDiscardPlan } = require("../nlaWorkspace");
+    await AsyncStorage.setItem("bread_lab_candidates_v1_anonymous",
+      JSON.stringify([{ id: "c-1", sharedAt: "2026-01-01T00:00:00.000Z", extractionResult: { status: "single_candidate" } }]));
+    const sourceBefore = await AsyncStorage.getItem("bread_lab_candidates_v1_anonymous");
+    const inventory = await inventoryNlaWorkspace();
+    const intent = authorizeNlaTransitionIntent("discard", inventory.raw);
+    const plan = authorizeDiscardPlan(buildPurgePlan(inventory, "discard"));
+    const prepareIncoming = jest.fn(async () => ({
+      ownerId: "user-A", token: "user-A", user: { id: "user-A", firstName: "A", starterName: "S" },
+      nlaDisposition: { mode: "discard" as const, plan, snapshotRaw: inventory.raw },
+    }));
+    jest.mocked(hasStagedShares).mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await expect(executeWorkspaceTransition(null, null, null, null, {
+      activeFeedAcknowledged: true, nlaTransitionIntent: intent, prepareIncoming,
+    })).rejects.toThrow(/shared recipe is still pending/);
+
+    expect(prepareIncoming).toHaveBeenCalledTimes(1);
+    expect(await AsyncStorage.getItem("bread_lab_candidates_v1_anonymous")).toBe(sourceBefore);
+    expect(await AsyncStorage.getItem("bread_lab_auth_token_v1")).toBeNull();
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+
+    // Once the baker ingests the staged share and session recovery succeeds, retry in this process.
+    expect(await recoverTransition()).toEqual({ remoteSignout: true, localClear: true });
+    jest.mocked(hasStagedShares).mockResolvedValue(false);
+    await expect(executeWorkspaceTransition(null, null, null, null, {
+      activeFeedAcknowledged: true, nlaTransitionIntent: intent, prepareIncoming,
+    })).resolves.toBeUndefined();
+    expect(prepareIncoming).toHaveBeenCalledTimes(2);
+    expect(getCoordinatorState()).toBe("IDLE");
+  });
+
+  it("clears the import marker but keeps NLA source when a share arrives after verified preparation", async () => {
+    const { inventoryNlaWorkspace, authorizeNlaTransitionIntent, buildPurgePlan, authorizeImportPlan } = require("../nlaWorkspace");
+    await AsyncStorage.setItem("bread_lab_candidates_v1_anonymous",
+      JSON.stringify([{ id: "c-1", sharedAt: "2026-01-01T00:00:00.000Z", extractionResult: { status: "single_candidate" } }]));
+    const sourceBefore = await AsyncStorage.getItem("bread_lab_candidates_v1_anonymous");
+    const inventory = await inventoryNlaWorkspace();
+    const intent = authorizeNlaTransitionIntent("import", inventory.raw);
+    const plan = authorizeImportPlan(buildPurgePlan(inventory, "import", {
+      recipes: [], bakeHistory: [], feedHistory: [], candidates: ["c-1"],
+    }));
+    const prepareIncoming = jest.fn(async () => {
+      await AsyncStorage.setItem("bread_lab_migration_pending_v1", "1");
+      return {
+        ownerId: "user-A", token: "user-A", user: { id: "user-A", firstName: "A", starterName: "S" },
+        nlaDisposition: { mode: "import" as const, plan, snapshotRaw: inventory.raw },
+      };
+    });
+    jest.mocked(hasStagedShares).mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await expect(executeWorkspaceTransition(null, null, null, null, {
+      activeFeedAcknowledged: true, nlaTransitionIntent: intent, prepareIncoming,
+    })).rejects.toThrow(/shared recipe is still pending/);
+
+    expect(await AsyncStorage.getItem("bread_lab_migration_pending_v1")).toBeNull();
+    expect(await AsyncStorage.getItem("bread_lab_candidates_v1_anonymous")).toBe(sourceBefore);
+    expect(await AsyncStorage.getItem("bread_lab_auth_token_v1")).toBeNull();
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+  });
+
   it("executes successful transition when prerequisites pass", async () => {
     await AsyncStorage.removeItem("bread_lab_migration_pending_v1");
 

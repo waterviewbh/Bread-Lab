@@ -32,7 +32,7 @@ import { PhasePickerModal } from "@/components/recipe/PhasePickerModal";
 import { BakerReviewModal } from "@/components/recipe/BakerReviewModal";
 import { CandidateReviewController, CandidateReviewControllerRef } from "@/components/recipe/CandidateReviewController";
 import { PasteCandidateModal } from "@/components/recipe/PasteCandidateModal";
-import { loadCandidates, removeCandidate, CandidateRecord, formatCandidateSharedAt, getCandidatesKey } from "@/lib/candidateStorage";
+import { loadCandidates, loadStoredCandidates, removeCandidate, CandidateRecord, StagedShareExtractionError, formatCandidateSharedAt, getCandidatesKey } from "@/lib/candidateStorage";
 import { useShareCandidate } from "@/contexts/ShareCandidateContext";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
@@ -51,6 +51,7 @@ export function LabHub() {
 
   // ── Candidates State ───────────────────────────────────────────────────────
   const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
+  const [candidateLoadMessage, setCandidateLoadMessage] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
   const [showCandidateReviewModal, setShowCandidateReviewModal] = useState(false);
   const [showPasteModal, setShowPasteModal] = useState(false);
@@ -74,10 +75,32 @@ export function LabHub() {
       }
       const list = await loadCandidates();
       await assertWorkspaceOperationCurrent(identity);
-      if (requestId === candidateLoadId.current) setCandidates(list);
+      if (requestId === candidateLoadId.current) {
+        setCandidates(list);
+        setCandidateLoadMessage(null);
+      }
     } catch (e) {
-      console.error("[LabHub] reloadCandidates failed", e);
-      if (requestId === candidateLoadId.current) setCandidates([]);
+      if (e instanceof StagedShareExtractionError) {
+        try {
+          const saved = await loadStoredCandidates();
+          if (requestId === candidateLoadId.current) {
+            setCandidates(saved);
+            setCandidateLoadMessage("A shared recipe is saved for retry. Check your connection, then tap Retry.");
+          }
+        } catch (readError) {
+          console.error("[LabHub] Saved Candidates could not be read", readError);
+          if (requestId === candidateLoadId.current) {
+            setCandidates([]);
+            setCandidateLoadMessage(null);
+          }
+        }
+      } else {
+        console.error("[LabHub] reloadCandidates failed", e);
+        if (requestId === candidateLoadId.current) {
+          setCandidates([]);
+          setCandidateLoadMessage(null);
+        }
+      }
     }
   }, []);
 
@@ -135,7 +158,10 @@ export function LabHub() {
   }, [reloadCandidates, subscribeCandidatesChanged]);
 
   const handleSwitchBuilderSubcard = async (target: "theories" | "candidates") => {
-    if (builderSubcard === target) return;
+    if (builderSubcard === target) {
+      if (target === "candidates") await reloadCandidates();
+      return;
+    }
     if (builderSubcard === "candidates" && showCandidateReviewModal) {
       const success = await reviewControllerRef.current?.saveChanges();
       if (!success) {
@@ -514,6 +540,16 @@ export function LabHub() {
                     </Text>
                   </Pressable>
                 </View>
+
+                {candidateLoadMessage ? (
+                  <View style={[s.emptyCard, { borderColor: colors.border, backgroundColor: colors.card, padding: 24, alignItems: 'center', borderRadius: radius.lg, marginBottom: 12 }]} testID="candidate-pending-share">
+                    <Text style={[s.emptyTitle, { color: colors.foreground, textAlign: 'center', ...typography.titleMd }]}>Shared recipe pending</Text>
+                    <Text style={[s.emptyBody, { color: colors.mutedForeground, textAlign: 'center', marginTop: 8, ...typography.bodySm }]}>{candidateLoadMessage}</Text>
+                    <Pressable onPress={reloadCandidates} testID="retry-pending-share" style={[s.reviewBtn, { marginTop: 16, paddingVertical: 8, paddingHorizontal: 16, borderRadius: radius.md, backgroundColor: colors.primary }]}>
+                      <Text style={[s.reviewBtnText, { color: colors.primaryForeground, fontSize: 12 }]}>Retry</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
 
                 {candidates.length === 0 ? (
                   <View style={[s.emptyCard, { borderColor: colors.border, backgroundColor: colors.card, padding: 32, alignItems: 'center', borderRadius: radius.lg }]}>
