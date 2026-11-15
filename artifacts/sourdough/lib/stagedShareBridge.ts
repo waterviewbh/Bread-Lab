@@ -9,21 +9,37 @@ export interface StagedShareItem {
 
 const { StagedShareBridgeModule } = NativeModules;
 
-/**
- * Narrow bridge function to safely read and clear native staged share payloads.
- * GUARANTEE: Web, iOS, and mock/test safe fallback.
- */
-export async function getAndClearStagedShares(): Promise<StagedShareItem[]> {
-  if (Platform.OS !== 'android' || !StagedShareBridgeModule) {
-    return [];
+/** Reads native staging without changing it. A missing Android bridge or unreadable queue is an error. */
+export async function peekStagedShares(owner: string): Promise<StagedShareItem[]> {
+  if (Platform.OS !== 'android') return [];
+  if (!owner || !owner.trim()) throw new Error('A workspace owner is required to inspect staged shares.');
+  if (typeof StagedShareBridgeModule?.peekStagedShares !== 'function') {
+    throw new Error('Native staged-share peek is unavailable; rebuild the Android app.');
   }
+  const raw: string = await StagedShareBridgeModule.peekStagedShares(owner);
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed) || parsed.some((item) =>
+    !item || typeof item !== 'object' || typeof item.id !== 'string' || !item.id.trim() ||
+    typeof item.rawContent !== 'string' || typeof item.sharedAt !== 'string'
+  )) {
+    throw new Error('Native staged shares are unreadable; staging was left untouched.');
+  }
+  const items = parsed as StagedShareItem[];
+  if (new Set(items.map((item) => item.id)).size !== items.length) {
+    throw new Error('Native staged shares contain duplicate IDs; staging was left untouched.');
+  }
+  return items;
+}
 
-  try {
-    const jsonStr: string = await StagedShareBridgeModule.getAndClearStagedShares();
-    if (!jsonStr || !jsonStr.trim()) return [];
-    const parsed = JSON.parse(jsonStr);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_e) {
-    return [];
+/** Removes only IDs whose Candidate was durably written and verified. Safe to retry after a crash. */
+export async function acknowledgeStagedShares(ids: string[], owner: string): Promise<void> {
+  if (ids.length === 0 || Platform.OS !== 'android') return;
+  if (!owner || !owner.trim()) throw new Error('A workspace owner is required to acknowledge staged shares.');
+  if (typeof StagedShareBridgeModule?.acknowledgeStagedShares !== 'function') {
+    throw new Error('Native staged-share acknowledgement is unavailable; rebuild the Android app.');
   }
+  if (ids.some((id) => typeof id !== 'string' || !id.trim())) {
+    throw new Error('Cannot acknowledge a staged share without an ID.');
+  }
+  await StagedShareBridgeModule.acknowledgeStagedShares(ids, owner);
 }

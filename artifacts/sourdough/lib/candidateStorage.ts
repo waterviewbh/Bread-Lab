@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "react-native";
 import { extractRecipeFromText, ExtractionResult } from "@/lib/recipeExtractor";
 import { fetchAndExtractRecipeFromUrl } from "@/lib/webAcquisition";
-import { getAndClearStagedShares } from "@/lib/stagedShareBridge";
+import { peekStagedShares, acknowledgeStagedShares } from "@/lib/stagedShareBridge";
 import {
   recordShareDiagnosticLog,
   flushNativeDiagnosticLogs,
@@ -205,116 +205,88 @@ export async function adoptLegacyCandidates(
 }
 
 /**
- * Ingests any pending native staged shares into the captured workspace.
- *
- * KNOWN LIMIT (native contract, deliberately not worked around here): the native bridge only offers the destructive
- * getAndClearStagedShares(). Once it returns, the staged items exist only in memory, so a crash, or a workspace change
- * during the (possibly networked) extraction below, cannot put them back. What this function guarantees is the part JS
- * controls: identity is captured and verified IMMEDIATELY BEFORE staging is consumed (an uncertain identity or stale
- * context leaves staging untouched), extraction runs without any lock, and every write re-verifies the captured
- * context under storageMutex, so a share is never saved to a different workspace. If the workspace changes after
- * consumption the remaining shares are reported lost, loudly, not misfiled. Closing this needs a native
- * peek/acknowledge contract: peek returns the items without clearing them, and an explicit acknowledge(ids) clears
- * only what was durably saved.
+ * Native staging stays durable until each share has a verified Candidate in its captured workspace.
+ * The native share ID is the Candidate ID, so a crash after save but before acknowledgement is retryable.
  */
 export async function ingestStagedNativeShares(context?: WorkspaceOperationContext): Promise<void> {
   return ingestionMutex.run(async () => {
-    if (AppState.currentState !== "active") {
-      return;
-    }
+    if (AppState.currentState !== "active") return;
 
     const ctx = await capture(context);
-    // Verify right before the destructive read: identity uncertain / workspace changed => staging stays untouched.
     await assertWorkspaceOperationCurrent(ctx);
     await flushNativeDiagnosticLogs();
 
-    const stagedItems = await getAndClearStagedShares();
-    if (!stagedItems || stagedItems.length === 0) return;
+    const stagedItems = await peekStagedShares(ctx.owner);
+    if (stagedItems.length === 0) return;
 
     await recordShareDiagnosticLog("js_ingestion_start", {
       source: "native_staging",
       candidateCount: stagedItems.length,
     });
 
-    const consumedCount = stagedItems.length;
     let savedCount = 0;
-    let failingItem: any = null;
-    let failingIndex = 0;
-
-    try {
-      for (let i = 0; i < stagedItems.length; i++) {
-        const item = stagedItems[i];
-        failingItem = item;
-        failingIndex = i;
-
-        if (!item.rawContent || !item.rawContent.trim()) {
-          throw new StagedShareExtractionError(
-            `[candidateStorage] Staged share item ${item.id} has empty rawContent`,
-            consumedCount,
-            savedCount,
-            consumedCount - savedCount,
-            item.id,
-            i
-          );
+    for (let i = 0; i < stagedItems.length; i++) {
+      const item = stagedItems[i];
+      try {
+        if (!item.id || !item.id.trim() || !item.rawContent || !item.rawContent.trim()) {
+          throw new Error("Staged share has a missing ID or empty content");
         }
+        const sharedAt = new Date(item.sharedAt).toISOString();
 
-        const trimmedInput = item.rawContent.trim();
-        const isUrl = /^(https?:\/\/[^\s]+)/i.test(trimmedInput);
-
-        // 1. Extraction phase
-        let result: ExtractionResult;
-        try {
-          result = isUrl
-            ? await fetchAndExtractRecipeFromUrl(trimmedInput)
-            : extractRecipeFromText(trimmedInput);
-        } catch (e: any) {
-          if (e instanceof WorkspaceIdentityError || e instanceof StaleWorkspaceError) {
-            throw e;
+        // If a prior attempt saved the Candidate but crashed before native acknowledgement,
+        // acknowledge that exact share without creating a second Candidate.
+        const alreadySaved = await withWorkspaceLock(ctx, async (key) => {
+          const existing = parseCandidates(await AsyncStorage.getItem(key), key).find((c) => c.id === item.id);
+          if (!existing) return false;
+          if (existing.acquisitionSource !== "share" || existing.sharedAt !== sharedAt) {
+            throw new CandidateStorageError(`Staged share ${item.id} conflicts with an existing Candidate; staging was preserved.`);
           }
-          throw new StagedShareExtractionError(
-            `[candidateStorage] Extraction failed for item ${item.id}: ${e?.message || e}`,
-            consumedCount,
-            savedCount,
-            consumedCount - savedCount,
-            item.id,
-            i,
-            e
-          );
-        }
+          return true;
+        });
 
-        if (
-          result.status !== "single_candidate" &&
-          result.status !== "multiple_candidates"
-        ) {
-          throw new StagedShareExtractionError(
-            `[candidateStorage] Extraction produced no usable candidate for item ${item.id} (status: ${result.status})`,
-            consumedCount,
-            savedCount,
-            consumedCount - savedCount,
-            item.id,
-            i
-          );
-        }
+        if (!alreadySaved) {
+          const trimmedInput = item.rawContent.trim();
+          const isUrl = /^(https?:\/\/[^\s]+)/i.test(trimmedInput);
+          let result: ExtractionResult;
+          try {
+            result = isUrl
+              ? await fetchAndExtractRecipeFromUrl(trimmedInput)
+              : extractRecipeFromText(trimmedInput);
+          } catch (e: any) {
+            if (e instanceof WorkspaceIdentityError || e instanceof StaleWorkspaceError) throw e;
+            throw new StagedShareExtractionError(
+              `[candidateStorage] Extraction failed for item ${item.id}: ${e?.message || e}`,
+              stagedItems.length, savedCount, stagedItems.length - savedCount, item.id, i, e
+            );
+          }
+          if (result.status !== "single_candidate" && result.status !== "multiple_candidates") {
+            throw new StagedShareExtractionError(
+              `[candidateStorage] Extraction produced no usable candidate for item ${item.id} (status: ${result.status})`,
+              stagedItems.length, savedCount, stagedItems.length - savedCount, item.id, i
+            );
+          }
 
-        // 2. Persistence phase
-        await saveCandidate(result, item.sharedAt, 'share', ctx);
+          await withWorkspaceLock(ctx, async (key) => {
+            const existing = parseCandidates(await AsyncStorage.getItem(key), key);
+            if (existing.some((c) => c.id === item.id)) {
+              throw new CandidateStorageError(`Staged share ${item.id} conflicts with an existing Candidate; staging was preserved.`);
+            }
+            const record: CandidateRecord = {
+              id: item.id, sharedAt, extractionResult: result, acquisitionSource: "share",
+            };
+            await AsyncStorage.setItem(key, JSON.stringify([record, ...existing]));
+            const back = parseCandidates(await AsyncStorage.getItem(key), key).find((c) => c.id === item.id);
+            if (!back || JSON.stringify(back) !== JSON.stringify(record)) {
+              throw new CandidateStorageError(`Staged share ${item.id} did not read back from Candidate storage; staging was preserved.`);
+            }
+          });
+        }
         savedCount++;
-      }
-    } catch (e: any) {
-      const unsavedCount = consumedCount - savedCount;
-      const errorMsg = `[candidateStorage] ${consumedCount} staged share(s) were consumed but only ${savedCount} could be saved; the rest are lost (native staging has no acknowledge step).`;
-      console.error(errorMsg, e);
-
-      if (e instanceof WorkspaceIdentityError || e instanceof StaleWorkspaceError) {
+        await acknowledgeStagedShares([item.id], ctx.owner);
+      } catch (e: any) {
+        console.error(`[candidateStorage] Staged share ${item.id ?? i} was not acknowledged and remains in native staging.`, e);
         throw e;
       }
-
-      if (e instanceof StagedShareExtractionError) {
-        throw e;
-      }
-
-      // Persistence failure (e.g. CandidateStorageError or storage error)
-      throw e;
     }
   });
 }

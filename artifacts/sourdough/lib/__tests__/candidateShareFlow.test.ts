@@ -21,10 +21,14 @@ import { DETERMINISTIC_TEST_CANDIDATE } from "@/constants/testCandidateFixture";
 // Mocks
 let mockStagedShares: any[] = [];
 jest.mock("@/lib/stagedShareBridge", () => ({
-  getAndClearStagedShares: jest.fn(async () => {
-    const items = [...mockStagedShares];
-    mockStagedShares = [];
-    return items;
+  peekStagedShares: jest.fn(async (owner: string) => {
+    if (mockStagedShares.some((item) => item.claimedOwner && item.claimedOwner !== owner)) throw new Error("Staged share belongs to another workspace");
+    mockStagedShares.forEach((item) => { item.claimedOwner = owner; });
+    return [...mockStagedShares];
+  }),
+  acknowledgeStagedShares: jest.fn(async (ids: string[], owner: string) => {
+    if (mockStagedShares.some((item) => ids.includes(item.id) && item.claimedOwner !== owner)) throw new Error("Staged share acknowledgement owner mismatch");
+    mockStagedShares = mockStagedShares.filter((item) => !ids.includes(item.id));
   }),
 }));
 
@@ -379,7 +383,7 @@ describe("Issue #65 — Share-to-Candidate Front Door Suite", () => {
     expect(candidates.length).toBe(0);
   });
 
-  it("13. Background Share Safety: Staged share while AppState is 'background' does NOT call getAndClearStagedShares() or perform web acquisition", async () => {
+  it("13. Background Share Safety: Staged share while AppState is 'background' does NOT peek staged shares or perform web acquisition", async () => {
     mockStagedShares = [
       {
         id: "bg-staged-1",

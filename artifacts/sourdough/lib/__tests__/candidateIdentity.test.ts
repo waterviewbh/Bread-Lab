@@ -35,11 +35,15 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 
 const mockShares: { calls: number; items: any[] } = { calls: 0, items: [] };
 jest.mock("../stagedShareBridge", () => ({
-  getAndClearStagedShares: jest.fn(async () => {
+  peekStagedShares: jest.fn(async (owner: string) => {
     mockShares.calls++;
-    const items = mockShares.items;
-    mockShares.items = [];
-    return items;
+    if (mockShares.items.some((item) => item.claimedOwner && item.claimedOwner !== owner)) throw new Error("Staged share belongs to another workspace");
+    mockShares.items.forEach((item) => { item.claimedOwner = owner; });
+    return [...mockShares.items];
+  }),
+  acknowledgeStagedShares: jest.fn(async (ids: string[], owner: string) => {
+    if (mockShares.items.some((item) => ids.includes(item.id) && item.claimedOwner !== owner)) throw new Error("Staged share acknowledgement owner mismatch");
+    mockShares.items = mockShares.items.filter((item) => !ids.includes(item.id));
   }),
 }));
 jest.mock("../recipeExtractor", () => ({
@@ -107,7 +111,7 @@ describe("Candidate storage under each identity state (real accessors)", () => {
           mockStore[keyOf("acct-A")] = JSON.stringify([cand("a-1")]);
           mockStore[keyOf("acct-B")] = JSON.stringify([cand("b-1")]);
           state.arm();
-          mockShares.items = [{ rawContent: "Simple loaf: 500g flour", sharedAt: 1 }];
+          mockShares.items = [{ id: "share-1", rawContent: "Simple loaf: 500g flour", sharedAt: 1 }];
           const before = JSON.parse(JSON.stringify(mockStore));
           writeSpies().forEach((s) => s.mockClear());
 
@@ -174,14 +178,14 @@ describe("Candidate storage under each identity state (real accessors)", () => {
 
     it("staged shares are consumed and saved under the validated identity's namespace", async () => {
       validPair("acct-A");
-      mockShares.items = [{ rawContent: "Simple loaf: 500g flour", sharedAt: 1 }];
+      mockShares.items = [{ id: "share-1", rawContent: "Simple loaf: 500g flour", sharedAt: 1 }];
       await ingestStagedNativeShares();
       expect(mockShares.calls).toBe(1);
       expect(JSON.parse(mockStore[keyOf("acct-A")])).toHaveLength(1);
       expect(mockStore[ANONYMOUS_CANDIDATES_KEY]).toBeUndefined();
 
       delete mockStore[TOKEN_KEY]; delete mockStore[USER_KEY];
-      mockShares.items = [{ rawContent: "Another loaf: 400g flour", sharedAt: 2 }];
+      mockShares.items = [{ id: "share-2", rawContent: "Another loaf: 400g flour", sharedAt: 2 }];
       await ingestStagedNativeShares();
       expect(JSON.parse(mockStore[ANONYMOUS_CANDIDATES_KEY])).toHaveLength(1);
       expect(JSON.parse(mockStore[keyOf("acct-A")])).toHaveLength(1); // A's namespace untouched by the NLA share

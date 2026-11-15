@@ -49,7 +49,20 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 
 const mockShares: { items: any[]; consumed: number } = { items: [], consumed: 0 };
 jest.mock("../stagedShareBridge", () => ({
-  getAndClearStagedShares: jest.fn(async () => { mockShares.consumed++; const i = mockShares.items; mockShares.items = []; return i; }),
+  peekStagedShares: jest.fn(async (owner: string) => {
+    mockShares.consumed++;
+    if (mockShares.items.some((item) => item.claimedOwner && item.claimedOwner !== owner)) {
+      throw new Error("Staged share belongs to another workspace");
+    }
+    mockShares.items.forEach((item) => { item.claimedOwner = owner; });
+    return [...mockShares.items];
+  }),
+  acknowledgeStagedShares: jest.fn(async (ids: string[], owner: string) => {
+    if (mockShares.items.some((item) => ids.includes(item.id) && item.claimedOwner !== owner)) {
+      throw new Error("Staged share acknowledgement owner mismatch");
+    }
+    mockShares.items = mockShares.items.filter((item) => !ids.includes(item.id));
+  }),
 }));
 const mockExtract: { text: (t: string) => any; url: (u: string) => Promise<any> } = {
   text: () => ({ status: "single_candidate", recipe: { name: "Staged" } }),
@@ -209,7 +222,7 @@ describe("legacy global Candidates: serialized, verified, and never assigned aut
       await updateCandidateExtraction(saved.id, result);
       await removeCandidate(saved.id);
       await clearCandidates();
-      mockShares.items = [{ rawContent: "Simple loaf: 500g flour", sharedAt: 1 }];
+      mockShares.items = [{ id: "share-1", rawContent: "Simple loaf: 500g flour", sharedAt: 1 }];
       await ingestStagedNativeShares();
       expect(mockStore[LEGACY_GLOBAL_CANDIDATES_KEY]).toBe(legacyBefore);
       expect(ids(key(who ?? "anonymous"))).not.toEqual(expect.arrayContaining(["legacy-1"]));
@@ -322,7 +335,7 @@ describe("legacy global Candidates: serialized, verified, and never assigned aut
 });
 
 describe("native staged shares", () => {
-  const share = (n = 1) => { mockShares.items = Array.from({ length: n }, (_, i) => ({ rawContent: `Simple loaf ${i}: 500g flour`, sharedAt: 1 + i })); };
+  const share = (n = 1) => { mockShares.items = Array.from({ length: n }, (_, i) => ({ id: `share-${i}`, rawContent: `Simple loaf ${i}: 500g flour`, sharedAt: 1 + i })); };
 
   it("identity failure does not consume staged shares", async () => {
     mockStore["bread_lab_auth_token_v1"] = "acct-A"; // partial identity
@@ -343,7 +356,7 @@ describe("native staged shares", () => {
 
   it("saves shares into the captured workspace; extraction/network work runs WITHOUT holding storageMutex", async () => {
     await saveAuth("acct-A", user("acct-A"));
-    mockShares.items = [{ rawContent: "https://example.com/loaf", sharedAt: 1 }];
+    mockShares.items = [{ id: "share-url", rawContent: "https://example.com/loaf", sharedAt: 1 }];
     let lockWasFree: string | null = null;
     mockExtract.url = async () => {
       lockWasFree = await Promise.race([storageMutex.run(async () => "free"), tick(80).then(() => "held")]) as string;
@@ -354,11 +367,11 @@ describe("native staged shares", () => {
     expect(ids(key("acct-A"))).toHaveLength(1);
   });
 
-  it("workspace changes AFTER consumption: nothing is misfiled in either workspace, the loss is raised (not swallowed)", async () => {
+  it("workspace changes after peek: nothing is misfiled and native staging remains retryable", async () => {
     await saveAuth("acct-A", user("acct-A"));
     mockShares.items = [
-      { rawContent: "https://example.com/one", sharedAt: 1 },
-      { rawContent: "https://example.com/two", sharedAt: 2 },
+      { id: "share-one", rawContent: "https://example.com/one", sharedAt: 1 },
+      { id: "share-two", rawContent: "https://example.com/two", sharedAt: 2 },
     ];
     // The workspace switches to B while the first share is being fetched (network work, no lock held).
     mockExtract.url = async () => {
@@ -369,11 +382,12 @@ describe("native staged shares", () => {
 
     await expect(ingestStagedNativeShares()).rejects.toBeInstanceOf(StaleWorkspaceError);
 
-    expect(mockShares.consumed).toBe(1);                                  // the destructive read happened exactly once
+    expect(mockShares.consumed).toBe(1);                                  // the non-destructive peek happened once
+    expect(mockShares.items).toHaveLength(2);                            // both shares remain for the original workspace
     expect(mockStore[key("acct-A")]).toBeUndefined();                      // A got nothing...
     expect(mockStore[key("acct-B")]).toBeUndefined();                      // ...and B got nothing: never misfiled
     expect(Object.keys(mockStore).filter((k) => k.includes("candidates_v1_"))).toEqual(candidateKeysBefore);
-    expect((console.error as jest.Mock).mock.calls.some((c) => String(c[0]).includes("2 staged share(s) were consumed but only 0 could be saved"))).toBe(true);
+    expect((console.error as jest.Mock).mock.calls.some((c) => String(c[0]).includes("was not acknowledged and remains in native staging"))).toBe(true);
   });
 
   it("loadCandidates ingests into the SAME captured workspace it then reads", async () => {
@@ -515,6 +529,43 @@ describe("native staged shares", () => {
     expect(err.message).toContain("Secondary write failed");
 
     const saved = ids(key("acct-A"));
-    expect(saved).toHaveLength(1);
+    expect(saved).toEqual(["item-1-save-ok"]);
+    expect(mockShares.items.map((item) => item.id)).toEqual(["item-2-save-fail"]);
+  });
+
+  it("failed Candidate read-back leaves native staging intact for retry", async () => {
+    await saveAuth("acct-A", user("acct-A"));
+    mockShares.items = [{ id: "share-readback", rawContent: "Valid loaf", sharedAt: 1 }];
+    mockSetHook = (k) => k === key("acct-A") ? "[]" : undefined;
+
+    await expect(ingestStagedNativeShares()).rejects.toThrow(/did not read back/);
+    expect(ids(key("acct-A"))).toEqual([]);
+    expect(mockShares.items.map((item) => item.id)).toEqual(["share-readback"]);
+
+    mockSetHook = null;
+    await ingestStagedNativeShares();
+    expect(ids(key("acct-A"))).toEqual(["share-readback"]);
+    expect(mockShares.items).toEqual([]);
+  });
+
+  it("acknowledgement failure after save retries without a duplicate Candidate", async () => {
+    await saveAuth("acct-A", user("acct-A"));
+    mockShares.items = [{ id: "share-retry", rawContent: "Valid loaf", sharedAt: 1 }];
+    const ack = require("../stagedShareBridge").acknowledgeStagedShares as jest.Mock;
+    ack.mockRejectedValueOnce(new Error("Native acknowledgement interrupted"));
+
+    await expect(ingestStagedNativeShares()).rejects.toThrow(/acknowledgement interrupted/);
+    expect(ids(key("acct-A"))).toEqual(["share-retry"]);
+    expect(mockShares.items.map((item) => item.id)).toEqual(["share-retry"]);
+
+    await saveAuth("acct-B", user("acct-B"));
+    await expect(ingestStagedNativeShares()).rejects.toThrow(/another workspace/);
+    expect(ids(key("acct-B"))).toBeNull();
+    expect(mockShares.items.map((item) => item.id)).toEqual(["share-retry"]);
+
+    await saveAuth("acct-A", user("acct-A"));
+    await ingestStagedNativeShares();
+    expect(ids(key("acct-A"))).toEqual(["share-retry"]);
+    expect(mockShares.items).toEqual([]);
   });
 });
