@@ -14,6 +14,7 @@ import { api } from "./api";
 import { hasActiveFeed, hasActiveNlaWork } from "./activeWork";
 import { isNlaOwner } from "./nlaBoundary";
 import { clearMigrationPending } from "./migrate";
+import { hasStagedShares } from "./stagedShareBridge";
 import {
   nlaSnapshotChanged,
   applyNlaPurgeLocked,
@@ -177,6 +178,11 @@ export async function executeWorkspaceTransition(
       nlaTransitionIntent: intent,
     });
 
+    // Native staging is outside AsyncStorage. Never cross an identity boundary with an unconsumed share.
+    if (await hasStagedShares(outgoingOwnerId ?? "anonymous")) {
+      throw new Error("Workspace transition refused: a shared recipe is still pending. Open Candidates to save it, then try again.");
+    }
+
     // Outgoing synchronization can write remotely and locally, so run it only after preflight and under this
     // same mutex. If it fails, identity and workspace state have not yet changed and the caller can retry.
     await options.beforeTransition?.();
@@ -215,6 +221,11 @@ export async function executeWorkspaceTransition(
           discardActiveBake: true,
           nlaDisposition: disposition,
         });
+      }
+
+      // A share may arrive while destination authentication or import is in progress.
+      if (await hasStagedShares(outgoingOwnerId ?? "anonymous")) {
+        throw new Error("Workspace transition refused: a shared recipe is still pending. Open Candidates to save it, then try again.");
       }
 
       if (disposition) {

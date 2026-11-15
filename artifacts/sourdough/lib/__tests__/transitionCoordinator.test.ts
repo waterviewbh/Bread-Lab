@@ -5,10 +5,12 @@ import { getWorkspaceGeneration } from "../storageUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "../api";
 import { authorizeNlaTransitionIntent } from "../nlaWorkspace";
+import { hasStagedShares } from "../stagedShareBridge";
 
 describe("Workspace Transition Coordinator & UDL Contract", () => {
   beforeEach(async () => {
     jest.restoreAllMocks();
+    jest.mocked(hasStagedShares).mockResolvedValue(false);
     await AsyncStorage.clear();
     setCoordinatorState("IDLE");
   });
@@ -56,6 +58,21 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(getWorkspaceGeneration()).toBe(generationBefore);
     expect(await AsyncStorage.getItem("bread_lab_auth_token_v1")).toBe("user-A");
     expect(await AsyncStorage.getItem("bread_lab_auth_user_v1")).toBe(JSON.stringify({ id: "user-A" }));
+  });
+
+  it("refuses a pending native share before identity, sync, or storage changes", async () => {
+    const options = await explicitDiscard();
+    const beforeTransition = jest.fn(async () => {});
+    jest.mocked(hasStagedShares).mockResolvedValue(true);
+    const generationBefore = getWorkspaceGeneration();
+
+    await expect(executeWorkspaceTransition("anonymous", "user-A", "user-A",
+      { id: "user-A", firstName: "A", starterName: "S" }, { ...options, beforeTransition }))
+      .rejects.toThrow(/shared recipe is still pending/);
+
+    expect(beforeTransition).not.toHaveBeenCalled();
+    expect(getCoordinatorState()).toBe("IDLE");
+    expect(getWorkspaceGeneration()).toBe(generationBefore);
   });
 
   it("executes successful transition when prerequisites pass", async () => {

@@ -9,7 +9,12 @@ export interface StagedShareItem {
 
 const { StagedShareBridgeModule } = NativeModules;
 
-/** Reads native staging without changing it. A missing Android bridge or unreadable queue is an error. */
+/** The existing native peek claims unowned shares for the departing workspace. */
+export async function hasStagedShares(owner: string): Promise<boolean> {
+  return (await peekStagedShares(owner)).length > 0;
+}
+
+/** Reads and claims native staging for the current owner. A missing bridge or unreadable queue is an error. */
 export async function peekStagedShares(owner: string): Promise<StagedShareItem[]> {
   if (Platform.OS !== 'android') return [];
   if (!owner || !owner.trim()) throw new Error('A workspace owner is required to inspect staged shares.');

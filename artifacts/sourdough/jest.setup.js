@@ -11,6 +11,13 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
+// Native share staging is absent in Jest. Individual share suites override this mock.
+jest.mock('./lib/stagedShareBridge', () => ({
+  hasStagedShares: jest.fn(async () => false),
+  peekStagedShares: jest.fn(async () => []),
+  acknowledgeStagedShares: jest.fn(async () => undefined),
+}));
+
 // Mock Expo Vector Icons
 jest.mock('@expo/vector-icons', () => ({
   Feather: 'Feather',
