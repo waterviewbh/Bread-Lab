@@ -135,7 +135,8 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Fixed", content: "Printing is Back: The Share and Print icons in Recipe Builder got shoved off the edge of the cards when we moved from flat to stacked. They've been recovered." },
         { type: "Fixed", content: "Improved use and functionality of the recipe cards in Recipe Builder. Duplicated recipes are now treated as Masters, etc." },
         { type: "Fixed", content: "UI tweaks (better contrast for some elements, both in light and dark mode), clearer wording of hints, etc." },
-        { type: "Added", content: "Bake Data Collection and Governance: we are working toward a system of anonymized data collection to help improve the Bulk Fermentation engine, and to improve how bakers interact with the app. This is a notification only, implementation (and the tool to opt-out) will be released in the next update." },
+        { type: "Added", content: "Bake Data Collection and Governance: we are working toward a system of anonymized data collection to help improve the Bulk Fermentation engine, and to improve how bakers interact with the app. This is a notification only, implementation (and the tool to opt-out) will be released in the 3.0 update." },
+        { type: "Modified", content: "Improving robustness: we have found some fragile workflows and are working to resolve them. We're starting upstream and working our way to the end. This will be an ongoing effort." },
       ],
     },
     {
