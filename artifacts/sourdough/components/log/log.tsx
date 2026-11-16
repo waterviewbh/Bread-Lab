@@ -30,7 +30,7 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useSyncStatus } from "@/contexts/SyncContext";
-import { computeSessionAcidVelocity } from "@/lib/analytics";
+import { buildFeedReportHtml } from "@/lib/feedReportHtml";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 import { SafePrint } from "@/lib/printUtils";
@@ -564,20 +564,13 @@ export function HistorySection() {
   };
 
   const printFeedSession = async (entry: HistoryEntry) => {
-    const date = new Date(entry.savedAt).toLocaleDateString();
-    const rows = (entry.readings ?? []).map(r => {
-      const elapsed = Math.floor((r.loggedAt - entry.savedAt) / 60000);
-      return `<tr><td>${elapsed}m</td><td>${r.pH}</td><td>${r.temp ? `${r.temp}°${r.tempUnit ?? "F"}` : "—"}</td><td>${r.note ?? ""}</td></tr>`;
-    }).join("");
-    const fedDataUri = await toDataUri(entry.fedPhoto);
-    const html = `<html><body style="font-family:sans-serif;padding:24px"><h2>Feed Session</h2><p>Date: ${date} Ratio: ${entry.ratioStr}</p>${fedDataUri ? `<img src="${fedDataUri}" style="max-width:100%" />` : ""}<h3>Readings</h3><table border="1">${rows}</table></body></html>`;
-    await SafePrint.printHtml(html);
+    const photo = await toDataUri(entry.fedPhoto);
+    await SafePrint.printHtml(buildFeedReportHtml(entry, history, photo));
   };
 
   const shareFeedSession = async (entry: HistoryEntry) => {
-    const date = new Date(entry.savedAt).toLocaleDateString();
-    const html = `<html><body style="font-family:sans-serif;padding:24px"><h2>Feed Session</h2><p>Date: ${date} Ratio: ${entry.ratioStr}</p></body></html>`;
-    await SafePrint.sharePdf(html, "FeedSession");
+    const photo = await toDataUri(entry.fedPhoto);
+    await SafePrint.sharePdf(buildFeedReportHtml(entry, history, photo), "FeedSession");
   };
 
   const openBakeDetail = (bake: BakeHistoryEntry) => {

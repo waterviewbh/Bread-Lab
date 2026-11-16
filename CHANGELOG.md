@@ -22,6 +22,14 @@ All notable changes to Bread Lab are recorded here.
 - **Storage Self-Healing** — Added defensive filtering in `recipeStorage` to automatically clean up duplicate or zombie active bakes that were already archived into history.
 - **Model Training Guards** — Enhanced input validation in `predictions.ts` to prevent invalid or zero-mass feed sessions from polluting prediction models.
 
+## Version 2.6 (in progress)
+
+### Fixed
+- **Offline shared recipe recovery** — Recipe URLs shared without network access remain staged for retry. Saved Candidates stay visible beside a pending-share notice; refocusing or tapping Retry processes the URL when access returns without creating a duplicate.
+- **Account transition guard** — Import & Proceed and Proceed Without Importing refuse to leave NLA while a shared recipe is pending. The Android share toast now describes saving a link for later processing; the wording requires a rebuilt client.
+
+See the [session journal](docs/journal/2026-11-15_issue_24_pending_share_recovery.artifact.md) and [walkthrough](docs/walkthroughs/2026-11-15_pending_share_candidate_recovery.artifact.md). Issue #24 remains open.
+
 ## 2026-09-18 — Code Audit & Stability Improvements (v2.5.1)
 
 ### Fixed

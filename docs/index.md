@@ -37,6 +37,10 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: React 19 & RNTL v14 Testing Infrastructure Baseline (2026-09-27)](file:///E:/Bread-Lab/docs/journal/2026-09-27_react19_rntl14_testing_stack.artifact.md)
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
+#### 📦 Version 2.6
+- [Session: Feed Session PDF Report (2026-11-15)](file:///E:/Bread-Lab/docs/journal/2026-11-15_feed_session_pdf_report.artifact.md) [BAKER PRINT PREVIEW REVIEWED]
+- [Session: Issue #24 Pending Share Recovery and Transition Guard (2026-11-15)](file:///E:/Bread-Lab/docs/journal/2026-11-15_issue_24_pending_share_recovery.artifact.md) [FOCUSED WORK VERIFIED; ISSUE #24 OPEN]
+
 #### 📦 Version 2.5.5
 - [Session: Issue #89 Establishing One Validated Local Identity Contract (2026-10-26)](file:///E:/Bread-Lab/docs/journal/2026-10-26_issue_89_validated_local_identity_contract.artifact.md)
 - [Session: Tracing Starter Vitality Percentage and Documenting Meaning (Issue #79) (2026-10-15)](file:///E:/Bread-Lab/docs/journal/2026-10-15_starter_vitality_percentage_tracing.artifact.md)
@@ -118,6 +122,8 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🎨 Walkthroughs](file:///E:/Bread-Lab/docs/walkthroughs/)
 **Purpose**: Demonstrations and summaries of completed features, including UI screenshots and technical breakdowns.
+- [Feed Session PDF Report (2026-11-15)](file:///E:/Bread-Lab/docs/walkthroughs/2026-11-15_feed_session_pdf_report.artifact.md)
+- [Pending Share Candidate Recovery (2026-11-15)](file:///E:/Bread-Lab/docs/walkthroughs/2026-11-15_pending_share_candidate_recovery.artifact.md)
 - [Waterview Bakehouse Logo Card Refinement (2026-10-12)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-12_waterview_bakehouse_logo_card_refinement.artifact.md)
 - [Warm Web Share Acquisition Hardening & End-to-End Verification (2026-10-07)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-07_warm_web_share_acquisition_hardening.artifact.md)
 - [Candidate Commit Unassigned Blocked Maestro Verification (2026-10-05)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-05_candidate_commit_unassigned_blocked_maestro_verification.artifact.md)

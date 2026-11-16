@@ -132,7 +132,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       changes: [
         { type: "Added", content: "If sharing a recipe into the app runs into a network problem, the URL is stored until access is restored. This cache DOES NOT survive signing in or out before the candidate is brought in." },
         { type: "Fixed", content: "" },
-        { type: "Modified", content: "" },
+        { type: "Modified", content: "Added more detail to the Fees Session report." },
       ],
     },
     {
