@@ -124,7 +124,7 @@ describe("AuthModal: NLA -> account choice screen", () => {
   describe("the 'Local work on this device' panel (agreed wording, NLA -> account only)", () => {
     const expectPanel = (kind: "Bake" | "Feed") => {
       expect(screen.getByText(NLA_LOCAL_WORK_TITLE)).toBeTruthy();
-      expect(screen.getByText(new RegExp(`You have an active ${kind} running on this device`))).toBeTruthy();
+      expect(screen.getByText(new RegExp(`You have an active ${kind} on this device`))).toBeTruthy();
       expect(screen.queryByText(NLA_LOCAL_WORK_PARAGRAPHS[0])).toBeNull();
       expect(screen.getByText(NLA_LOCAL_WORK_PARAGRAPHS[1])).toBeTruthy();
     };

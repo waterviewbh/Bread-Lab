@@ -731,6 +731,20 @@ export const api = {
         });
       },
 
+      /** One unfinished row on this device for this exact account, for sign-out reconciliation. */
+      activeForDevice: async (deviceId: string, userId: string): Promise<ApiBakeSession | null> => {
+        const client = supabase;
+        if (!client || !deviceId || !userId) throw new Error("Cannot inspect active Bake without device and owner");
+        return executeWithBoundaryCheck(userId, async () => {
+          const { data, error } = await client.from("bake_sessions")
+            .select("*").eq("user_id", userId).eq("device_id", deviceId)
+            .eq("in_progress", true).order("started_at", { ascending: false })
+            .limit(1).returns<BakeSessionRow[]>().maybeSingle();
+          if (error) throw error;
+          return data ? rowToApiBakeSession(data) : null;
+        });
+      },
+
       upsert: async (body: any): Promise<ApiBakeSession> => {
         const resolvedUserId = await resolveAndVerifyOwner(body.userId);
         return executeWithBoundaryCheck(resolvedUserId, async () => {

@@ -142,7 +142,11 @@ export async function validateOperationalData(
     : getOwnerStorageKey(baseKey, ownerToInspect);
   const recipesKey = storageKey(APP_STORAGE_KEYS.RECIPES);
   const bakeHistKey = storageKey(APP_STORAGE_KEYS.BAKE_HISTORY);
-  const feedHistKey = storageKey(APP_STORAGE_KEYS.FEED_HISTORY);
+  // Feed History is still written at the flat key. Inspect that actual cabinet for account departures;
+  // otherwise ownerless or foreign rows can evade the transition preflight.
+  const feedHistKey = ownerToInspect === "anonymous"
+    ? storageKey(APP_STORAGE_KEYS.FEED_HISTORY)
+    : APP_STORAGE_KEYS.FEED_HISTORY;
   const activeBakeKey = storageKey(APP_STORAGE_KEYS.ACTIVE_BAKE);
   const recTombKey = storageKey(APP_STORAGE_KEYS.DELETED_RECIPE_IDS);
   const bakeTombKey = storageKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS);
@@ -730,7 +734,8 @@ export async function restoreOperationalData(incomingUserId: string): Promise<vo
     await restoreListKey(APP_STORAGE_KEYS.RECIPES, storedQ.recipes);
     await restoreListKey(APP_STORAGE_KEYS.BAKE_HISTORY, storedQ.bakeHistory);
     await restoreListKey(APP_STORAGE_KEYS.FEED_HISTORY, storedQ.feedHistory);
-    await restoreListKey(APP_STORAGE_KEYS.ACTIVE_BAKE, storedQ.activeBakes);
+    // Unfinished Bakes are never restored across an identity transition. Older buckets
+    // retain their bytes for ownership review, but cannot revive an active session.
     await restoreListKey(APP_STORAGE_KEYS.DELETED_RECIPE_IDS, storedQ.deletedRecipeIds);
     await restoreListKey(APP_STORAGE_KEYS.DELETED_BAKE_IDS, storedQ.deletedBakeIds);
     await restoreListKey(APP_STORAGE_KEYS.DELETED_FEED_IDS, storedQ.deletedFeedIds);

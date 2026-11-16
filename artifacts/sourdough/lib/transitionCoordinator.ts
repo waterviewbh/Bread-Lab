@@ -11,14 +11,18 @@ import { storageMutex, advanceWorkspaceGeneration } from "./storageUtils";
 import { UDL } from "./udl";
 import { saveAuth, clearAuth } from "./auth";
 import { api } from "./api";
-import { hasActiveFeed, hasActiveNlaWork } from "./activeWork";
+import { hasActiveAccountWork, hasActiveNlaWork, reconcileActiveBakesForDeparture, discardVerifiedDepartingActiveWork } from "./activeWork";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isNlaOwner } from "./nlaBoundary";
 import { clearMigrationPending } from "./migrate";
 import { hasStagedShares } from "./stagedShareBridge";
 import {
   nlaSnapshotChanged,
   applyNlaPurgeLocked,
+  resumePendingNlaPurgeLocked,
+  NLA_PURGE_JOURNAL_KEY,
   inventoryNlaWorkspace,
+  NLA_SCOPE,
   snapshotProtectedKeys,
   verifyNlaCleanliness,
   retireNlaTombstonesLocked,
@@ -33,8 +37,89 @@ export type CoordinatorState = "IDLE" | "TRANSITIONING" | "RECOVERY_REQUIRED";
 
 let currentState: CoordinatorState = "IDLE";
 
+const SIGNOUT_MARKER_KEY = "bread_lab_pending_account_signout_v1";
+const NLA_ACTIVE_SNAPSHOT_KEY = "bread_lab_pending_nla_active_snapshot_v1";
+
+async function stageNlaActiveSnapshot(): Promise<boolean> {
+  const snapshot: Record<string, string> = {};
+  for (const key of [...NLA_SCOPE.activeBakes, ...NLA_SCOPE.activeFeed]) {
+    const raw = await AsyncStorage.getItem(key);
+    if (raw !== null) snapshot[key] = raw;
+  }
+  if (Object.keys(snapshot).length === 0) return false;
+  const serialized = JSON.stringify(snapshot);
+  await AsyncStorage.setItem(NLA_ACTIVE_SNAPSHOT_KEY, serialized);
+  if (await AsyncStorage.getItem(NLA_ACTIVE_SNAPSHOT_KEY) !== serialized) {
+    throw new Error("Offline active-work snapshot could not be verified");
+  }
+  return true;
+}
+
+async function restoreNlaActiveSnapshot(): Promise<boolean> {
+  const raw = await AsyncStorage.getItem(NLA_ACTIVE_SNAPSHOT_KEY);
+  if (raw === null) return false;
+  const snapshot = JSON.parse(raw);
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    throw new Error("Offline active-work snapshot is malformed");
+  }
+  const allowed = new Set<string>([...NLA_SCOPE.activeBakes, ...NLA_SCOPE.activeFeed]);
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (!allowed.has(key) || typeof value !== "string") {
+      throw new Error("Offline active-work snapshot has an invalid key or value");
+    }
+    await AsyncStorage.setItem(key, value);
+    if (await AsyncStorage.getItem(key) !== value) {
+      throw new Error(`Offline active work at ${key} could not be restored`);
+    }
+  }
+  return true;
+}
+
+async function clearNlaActiveSnapshot(): Promise<void> {
+  await AsyncStorage.removeItem(NLA_ACTIVE_SNAPSHOT_KEY);
+  if (await AsyncStorage.getItem(NLA_ACTIVE_SNAPSHOT_KEY) !== null) {
+    throw new Error("Offline active-work snapshot could not be cleared");
+  }
+}
+type SignoutPhase = "prepared" | "reconciled" | "signedOut";
+type SignoutMarker = { ownerId: string; phase: SignoutPhase };
+
+async function readSignoutMarker(): Promise<SignoutMarker | null> {
+  const raw = await AsyncStorage.getItem(SIGNOUT_MARKER_KEY);
+  if (raw === null) return null;
+  const marker = JSON.parse(raw);
+  if (!marker || typeof marker.ownerId !== "string" || !marker.ownerId.trim() ||
+      !["prepared", "reconciled", "signedOut"].includes(marker.phase)) {
+    throw new Error("Pending account sign-out marker is malformed");
+  }
+  return marker;
+}
+
+async function writeSignoutMarker(marker: SignoutMarker): Promise<void> {
+  const raw = JSON.stringify(marker);
+  await AsyncStorage.setItem(SIGNOUT_MARKER_KEY, raw);
+  if (await AsyncStorage.getItem(SIGNOUT_MARKER_KEY) !== raw) {
+    throw new Error("Pending account sign-out marker could not be verified");
+  }
+}
+
+async function clearSignoutMarker(): Promise<void> {
+  await AsyncStorage.removeItem(SIGNOUT_MARKER_KEY);
+  if (await AsyncStorage.getItem(SIGNOUT_MARKER_KEY) !== null) {
+    throw new Error("Pending account sign-out marker could not be cleared");
+  }
+}
+
 export function getCoordinatorState(): CoordinatorState {
   return currentState;
+}
+
+export async function hasPendingSignoutRecovery(): Promise<boolean> {
+  return (await readSignoutMarker()) !== null;
+}
+
+export async function hasPendingNlaActiveRecovery(): Promise<boolean> {
+  return (await AsyncStorage.getItem(NLA_ACTIVE_SNAPSHOT_KEY)) !== null;
 }
 
 export function setCoordinatorState(state: CoordinatorState): void {
@@ -48,7 +133,7 @@ export function setCoordinatorState(state: CoordinatorState): void {
  */
 export class ActiveFeedNotAcknowledgedError extends Error {
   constructor() {
-    super("Workspace transition refused: an active Feed session would be discarded and the baker has not been warned.");
+    super("Workspace transition refused: active Feed or Bake work would be discarded and the baker has not been warned.");
     this.name = "ActiveFeedNotAcknowledgedError";
   }
 }
@@ -128,7 +213,9 @@ export async function executeWorkspaceTransition(
   options: WorkspaceTransitionOptions = {}
 ): Promise<void> {
   return storageMutex.run(async () => {
-    if (currentState === "RECOVERY_REQUIRED") {
+    if (currentState === "RECOVERY_REQUIRED" || await readSignoutMarker() ||
+        await AsyncStorage.getItem(NLA_ACTIVE_SNAPSHOT_KEY) !== null) {
+      setCoordinatorState("RECOVERY_REQUIRED");
       throw new Error("Transition refused: recovery required due to an incomplete previous transition. Please reconcile session first.");
     }
 
@@ -166,7 +253,7 @@ export async function executeWorkspaceTransition(
 
     // Refuse before anything changes if the baker has not been warned about active work that would be discarded.
     if (!options.activeFeedAcknowledged) {
-      const hasWork = outgoingIsNla ? await hasActiveNlaWork() : await hasActiveFeed();
+      const hasWork = outgoingIsNla ? await hasActiveNlaWork() : await hasActiveAccountWork(outgoingOwnerId!);
       if (hasWork) throw new ActiveFeedNotAcknowledgedError();
     }
 
@@ -191,8 +278,15 @@ export async function executeWorkspaceTransition(
       throw new Error("Workspace transition refused: a shared recipe is still pending. Open Candidates to save it, then try again.");
     }
 
+    const verifiedAccountSignout = !outgoingIsNla && incomingOwnerId === null && !!options.closeRemoteSession;
+    if (verifiedAccountSignout) {
+      // Establish retry ownership before changing session or workspace state.
+      await writeSignoutMarker({ ownerId: outgoingOwnerId!, phase: "prepared" });
+    }
+
     setCoordinatorState("TRANSITIONING");
     advanceWorkspaceGeneration();
+    let stagedNlaActive = false;
 
     try {
       if (deferredNlaLogin) {
@@ -235,11 +329,21 @@ export async function executeWorkspaceTransition(
         throw new Error("Workspace transition refused: a shared recipe is still pending. Open Candidates to save it, then try again.");
       }
 
+      if (disposition) stagedNlaActive = await stageNlaActiveSnapshot();
+
       if (disposition) {
         // The baker's explicit choice supersedes an "import in progress" marker, and NLA has no remote
         // copies, so its pending-deletion queues are simply retired (no network).
         await clearMigrationPending();
         await retireNlaTombstonesLocked();
+      }
+
+      if (verifiedAccountSignout) {
+        const ownerId = outgoingOwnerId!;
+        await reconcileActiveBakesForDeparture(ownerId);
+        await writeSignoutMarker({ ownerId, phase: "reconciled" });
+        await closeAndVerifyRemoteSession();
+        await writeSignoutMarker({ ownerId, phase: "signedOut" });
       }
 
       // Leave the outgoing workspace.
@@ -254,8 +358,11 @@ export async function executeWorkspaceTransition(
         // Leftovers (foreign-owned, conflicts, unreadable) deliberately stay where they are: they were reported,
         // and a generic set-aside here would park unresolved NLA records where a later purge could delete them.
       } else {
-        // Set the outgoing workspace's data aside. Its active Feed is discarded, never parked.
+        // Set the outgoing workspace's finished data aside after remote departure is verified.
         await UDL.quarantineData(outgoingOwnerId);
+        if (verifiedAccountSignout) {
+          await discardVerifiedDepartingActiveWork(outgoingOwnerId!);
+        }
       }
 
       // Bring the incoming workspace's data in, then pivot credentials.
@@ -266,15 +373,26 @@ export async function executeWorkspaceTransition(
         await clearAuth();
       }
 
-      // A sign-out is not complete until the remote session is independently confirmed absent.
-      // Keep RECOVERY_REQUIRED on any uncertainty; never expose a transient IDLE state.
-      if (incomingOwnerId === null && options.closeRemoteSession) {
-        await closeAndVerifyRemoteSession();
-      }
+      // The marker is removed last; an interrupted cleanup can be retried after process restart.
+      if (verifiedAccountSignout) await clearSignoutMarker();
+      if (stagedNlaActive) await clearNlaActiveSnapshot();
 
       setCoordinatorState("IDLE");
       console.log(`[TransitionCoordinator] Transition to owner=${incomingOwnerId} completed successfully.`);
     } catch (error: any) {
+      if (stagedNlaActive) {
+        try {
+          await restoreNlaActiveSnapshot();
+          await clearAuth();
+          // An interrupted purge journal would delete the restored active work on restart.
+          // Keep the snapshot until recovery finishes the journal, then restore once more.
+          if (await AsyncStorage.getItem(NLA_PURGE_JOURNAL_KEY) === null) {
+            await clearNlaActiveSnapshot();
+          }
+        } catch (restoreError) {
+          console.error("[TransitionCoordinator] Offline active-work rollback remains pending:", restoreError);
+        }
+      }
       console.error(`[TransitionCoordinator] Transition failed, entering RECOVERY_REQUIRED state:`, error);
       setCoordinatorState("RECOVERY_REQUIRED");
       throw error;
@@ -302,22 +420,77 @@ export async function recoverTransition(): Promise<TransitionRecoveryResult> {
     console.log(`[TransitionCoordinator] Executing recovery protocol...`);
     let remoteSignout = false;
     let localClear = false;
+    const pending = await readSignoutMarker();
 
-    try {
-      await closeAndVerifyRemoteSession();
-      remoteSignout = true;
-    } catch (error) {
-      console.error(`[TransitionCoordinator] Recovery could not confirm remote session closure:`, error);
+    if (pending) {
+      try {
+        let phase = pending.phase;
+        const sessionRes = await api.auth.getSession();
+        if (sessionRes?.error || !sessionRes?.data ||
+            !Object.prototype.hasOwnProperty.call(sessionRes.data, "session")) {
+          throw new Error("Recovery session state could not be verified");
+        }
+        const session = sessionRes.data.session;
+        if (session?.user?.id && session.user.id !== pending.ownerId) {
+          throw new Error("Recovery session owner differs from the departing account");
+        }
+        if (phase === "signedOut" && session !== null) {
+          throw new Error("Recovered sign-out marker conflicts with an active remote session");
+        }
+        if (phase !== "signedOut") {
+          if (phase === "prepared") {
+            if (!session || session.user?.id !== pending.ownerId) {
+              throw new Error("Cannot reconcile unfinished remote Bakes without the departing account session");
+            }
+            await reconcileActiveBakesForDeparture(pending.ownerId);
+            await writeSignoutMarker({ ...pending, phase: "reconciled" });
+            phase = "reconciled";
+          }
+          if (phase === "reconciled") {
+            await closeAndVerifyRemoteSession();
+            await writeSignoutMarker({ ...pending, phase: "signedOut" });
+          }
+        }
+        remoteSignout = true;
+        await UDL.quarantineData(pending.ownerId);
+        await discardVerifiedDepartingActiveWork(pending.ownerId);
+        await clearAuth();
+        await clearSignoutMarker();
+        localClear = true;
+      } catch (error) {
+        console.error(`[TransitionCoordinator] Account sign-out recovery remains incomplete:`, error);
+      }
+    } else if (await hasPendingNlaActiveRecovery()) {
+      try {
+        await closeAndVerifyRemoteSession();
+        remoteSignout = true;
+        // Finish the already authorized, journaled finished-record purge, then restore
+        // the original unfinished work into NLA before clearing credentials.
+        await resumePendingNlaPurgeLocked();
+        await restoreNlaActiveSnapshot();
+        await clearAuth();
+        await clearNlaActiveSnapshot();
+        localClear = true;
+      } catch (error) {
+        console.error("[TransitionCoordinator] Offline active-work recovery remains incomplete:", error);
+      }
+    } else {
+      try {
+        await closeAndVerifyRemoteSession();
+        remoteSignout = true;
+      } catch (error) {
+        console.error(`[TransitionCoordinator] Recovery could not confirm remote session closure:`, error);
+      }
+      try {
+        await clearAuth();
+        localClear = true;
+      } catch (error) {
+        console.error(`[TransitionCoordinator] Recovery could not verify local credential removal:`, error);
+      }
     }
 
-    try {
-      await clearAuth();
-      localClear = true;
-    } catch (error) {
-      console.error(`[TransitionCoordinator] Recovery could not verify local credential removal:`, error);
-    }
-
-    if (remoteSignout && localClear) {
+    if (remoteSignout && localClear && !(await readSignoutMarker()) &&
+        !(await hasPendingNlaActiveRecovery())) {
       setCoordinatorState("IDLE");
       console.log(`[TransitionCoordinator] Recovery verified local and remote cleanup; state reset to IDLE.`);
     } else {

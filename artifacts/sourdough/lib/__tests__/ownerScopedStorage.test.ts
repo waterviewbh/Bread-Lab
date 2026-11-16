@@ -2,6 +2,7 @@ import { getOwnerStorageKey, APP_STORAGE_KEYS, quarantineOperationalData, QUARAN
 import { loadAll, writeRecipesLocal, appendRecipeLocal, addToRecipeTombstone, getRecipeTombstone, upsertBakeRemote } from "../recipeStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { rowToApiBakeSession } from "../api";
+import { getDeviceId } from "../deviceId";
 
 describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () => {
   beforeEach(async () => {
@@ -213,7 +214,7 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
     jest.spyOn(apiModule.api.recipes, "list").mockResolvedValue([]);
     const active = jest.spyOn(apiModule.api.history.bakes, "active");
     const started: any = {
-      id: "started", userId: "user-A", recipeId: "recipe-1", recipeName: "Loaf",
+      id: "started", userId: "user-A", deviceId: await getDeviceId(), recipeId: "recipe-1", recipeName: "Loaf",
       startedAt: Date.now(), status: "active",
       phases: [{ key: "mix", name: "Mix", startedAt: Date.now(), completedAt: null, ingredients: [], instructions: [], readings: [] }],
     };
@@ -228,6 +229,10 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
 
     await AsyncStorage.removeItem(key);
     active.mockResolvedValue({ ...started, userId: "user-B" });
+    expect((await loadAll()).bakes).toEqual([]);
+    expect(await AsyncStorage.getItem(key)).toBeNull();
+
+    active.mockResolvedValue({ ...started, deviceId: "another-device" });
     expect((await loadAll()).bakes).toEqual([]);
     expect(await AsyncStorage.getItem(key)).toBeNull();
   });

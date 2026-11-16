@@ -127,7 +127,7 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     await expect(migrateLocalDataToAccount("invalid-ledger-token")).rejects.toThrow(/Invalid migration ledger shape/);
   });
 
-  it("preserves complete active bake state including estimatorState, bulkCheckInHistory, and bulkFermentState", async () => {
+  it("keeps complete active Bake state local without uploading it", async () => {
     const activeBake = {
       id: "active-bake-full",
       userId: "anonymous",
@@ -152,20 +152,23 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
 
     const result = await migrateLocalDataToAccount("test-user-token-abc");
 
-    expect(result.bakes.ok).toBe(1);
+    expect(result.bakes.ok).toBe(0);
+    expect(api.history.bakes.upsert).not.toHaveBeenCalled();
+    expect(JSON.parse(mockStorage["bread_lab_bake_v2"])[0]).toEqual(activeBake);
   });
 
-  it("generates valid secure UUID v4 when global crypto.randomUUID is unavailable but expo-crypto is present", async () => {
+  it("persists a generated local ID for an unfinished Bake without uploading it", async () => {
     const originalCrypto = global.crypto;
     (global as any).crypto = undefined;
     try {
-      // An active BAKE without an id still gets a generated id and is migrated.
-      // (Active Feed work is device-local and is never migrated; see the next test.)
+      // An active Bake without an ID can get a durable local ID, but is never uploaded.
       const activeBakeWithoutId = { userId: "anonymous", recipeName: "UUID Bake", startedAt: 1234, phases: [] };
       mockStorage["bread_lab_bake_v2"] = JSON.stringify(activeBakeWithoutId);
 
       const result = await migrateLocalDataToAccount("expo-crypto-uuid-token");
-      expect(result.bakes.ok).toBe(1);
+      expect(result.bakes.ok).toBe(0);
+      expect(api.history.bakes.upsert).not.toHaveBeenCalled();
+      expect(JSON.parse(mockStorage["bread_lab_bake_v2"]).id).toBe("test-uuid");
     } finally {
       (global as any).crypto = originalCrypto;
     }

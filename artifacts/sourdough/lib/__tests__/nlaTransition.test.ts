@@ -269,7 +269,7 @@ describe("NLA -> account transition (real coordinator)", () => {
   });
 
   describe("crash safety and recovery", () => {
-    it("a crash part-way through the purge fails the transition (still NLA), keeps the journal, and the next launch finishes exactly that work", async () => {
+    it("a crash part-way through the purge preserves active NLA work through startup recovery", async () => {
       seedNla();
       seedOthers();
       const others = snapshotOthers();
@@ -290,7 +290,10 @@ describe("NLA -> account transition (real coordinator)", () => {
       await runSchemaMigrations();
 
       expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();
-      expectNoNlaWorkspaceLeft();
+      expect(get("bread_lab_bake_v2_anonymous").map((b: any) => b.id)).toEqual(["ab-1"]);
+      expect(get("sourdough_feed_session_v1").id).toBe("af-1");
+      expect(mockStore["bread_lab_pending_nla_active_snapshot_v1"]).toBeUndefined();
+      expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();
       expect(snapshotOthers()).toEqual(others);
     });
 
@@ -310,7 +313,7 @@ describe("NLA -> account transition (real coordinator)", () => {
       expect(get("bread_lab_recipes_v1_anonymous")).toEqual([{ id: "created-after-crash", name: "New", userId: "anonymous", phases }]);
     });
 
-    it("if saving credentials fails after the cleanup, the data is already safe in the account and the baker can simply continue", async () => {
+    it("restores unfinished NLA work when saving account credentials fails", async () => {
       seedNla();
       const out = await importNlaWorkspace(TOKEN);
       expect(out.report.ok).toBe(true);
@@ -323,8 +326,10 @@ describe("NLA -> account transition (real coordinator)", () => {
       expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();   // still NLA, but the verified records live in the account
       expect(fakeServer.tables.recipe.size).toBe(2);
       expect(fakeServer.tables.bake.size).toBe(2);
+      expect(get("bread_lab_bake_v2_anonymous").map((b: any) => b.id)).toEqual(["ab-1"]);
+      expect(get("sourdough_feed_session_v1").id).toBe("af-1");
 
-      // The baker signs in again: the offline workspace is empty and the same account data is there.
+      // The baker can retry; the unfinished work remains in NLA until that transition succeeds.
       mockFailMultiSet = false;
       setCoordinatorState("IDLE");
       await expect(runTransition("import")).resolves.toBeUndefined();

@@ -641,7 +641,8 @@ export async function loadAll(): Promise<{
     // A legacy remote row created when the runner was merely opened is not active work.
     // Only restore a phase-started bake whose remote owner matches this account.
     if (!localBakesFound && activeBake && typeof token === "string" && activeBake.userId === token &&
-        Array.isArray(activeBake.phases) && activeBake.phases.some((p) => !!p.startedAt)) {
+        activeBake.deviceId === deviceId && Array.isArray(activeBake.phases) &&
+        activeBake.phases.some((p) => !!p.startedAt)) {
       const apiBake: ActiveBake = {
         id: activeBake.id,
         userId: token,
@@ -812,39 +813,44 @@ export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
 export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
   // Opening the runner does not start a bake. Keep that preparation local until a phase starts.
   if (!bake.phases.some((phase) => !!phase.startedAt)) return Promise.resolve();
-  // null = NLA. An uncertain identity rejects (callers handle failure); it is never sent as a device-id-only write.
-  return Promise.all([getDeviceId(), getStoredToken()])
-    .then(([deviceId, userId]) =>
-      api.history.bakes.upsert({
-        id: bake.id,
-        deviceId,
-        userId: userId ?? undefined,
-        recipeId: bake.recipeId,
-        recipeName: bake.recipeName,
-        yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
-        savedAt: Date.now(),
-        startedAt: bake.startedAt,
-        completedAt: bake.completedAt,
-        status: bake.status,
-        outcome: bake.outcome,
-        notes: bake.notes,
-        estimatorState: bake.estimatorState,
-        phases: bake.phases.map((p) => ({
-          key: p.key,
-          name: p.name,
-          ingredients: p.ingredients ?? [],
-          instructions: p.instructions ?? [],
-          startedAt: p.startedAt,
-          completedAt: p.completedAt,
-          readings: p.readings,
-          startVolume: p.startVolume,
-          foldCount: p.foldCount,
-          foldTimestamps: p.foldTimestamps,
-        })),
-        inProgress: true,
-      })
-    )
-    .then(() => undefined);
+  return storageMutex.run(async () => {
+    const context = await getWorkspaceIdentity();
+    if (context.owner === "anonymous") return; // unfinished NLA work never enters an account
+    if (bake.userId !== context.owner) {
+      throw new StaleWorkspaceError("Active Bake owner changed before remote persistence");
+    }
+    const deviceId = await getDeviceId();
+    await assertWorkspaceOperationCurrent(context);
+    await api.history.bakes.upsert({
+      id: bake.id,
+      deviceId,
+      userId: context.owner,
+      recipeId: bake.recipeId,
+      recipeName: bake.recipeName,
+      yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
+      savedAt: Date.now(),
+      startedAt: bake.startedAt,
+      completedAt: bake.completedAt,
+      status: bake.status,
+      outcome: bake.outcome,
+      notes: bake.notes,
+      estimatorState: bake.estimatorState,
+      phases: bake.phases.map((p) => ({
+        key: p.key,
+        name: p.name,
+        ingredients: p.ingredients ?? [],
+        instructions: p.instructions ?? [],
+        startedAt: p.startedAt,
+        completedAt: p.completedAt,
+        readings: p.readings,
+        startVolume: p.startVolume,
+        foldCount: p.foldCount,
+        foldTimestamps: p.foldTimestamps,
+      })),
+      inProgress: true,
+    });
+    await assertWorkspaceOperationCurrent(context);
+  });
 }
 
 export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {

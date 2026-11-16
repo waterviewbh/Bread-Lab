@@ -17,6 +17,7 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   hasActiveFeed,
+  hasActiveAccountWork,
   confirmDiscardActiveFeed,
   confirmActiveFeedTransition,
   ACTIVE_FEED_TRANSITION_TITLE,
@@ -96,6 +97,25 @@ describe("Active Feed at a workspace transition", () => {
       await expect(validateOperationalData(null)).rejects.toThrow(/active feed record has unknown or missing ownership/);
     });
 
+    it.each([
+      [{ id: "feed-ownerless", savedAt: 1 }, /feed history record is missing explicit owner/],
+      [{ id: "feed-foreign", userId: "tokB", savedAt: 1 }, /feed history record has owner/],
+    ])("account departure refuses unaccounted Feed History at the production key", async (record, message) => {
+      await saveAuth("tokA", userOf("tokA"));
+      mockStore[APP_STORAGE_KEYS.FEED_HISTORY] = JSON.stringify([record]);
+      const beforeTransition = jest.fn();
+      const original = mockStore[APP_STORAGE_KEYS.FEED_HISTORY];
+
+      await expect(executeWorkspaceTransition("tokA", null, null, null, {
+        activeFeedAcknowledged: true,
+        beforeTransition,
+      })).rejects.toThrow(message);
+
+      expect(beforeTransition).not.toHaveBeenCalled();
+      expect(mockStore[APP_STORAGE_KEYS.FEED_HISTORY]).toBe(original);
+      expect(getCoordinatorState()).toBe("IDLE");
+    });
+
     it("pending deletion work for FINISHED records still blocks the transition, active Feed or not", async () => {
       mockStore[ACTIVE] = JSON.stringify({ id: "feed-1" });
       await addToFeedTombstone("finished-feed-9"); // signed out => anonymous owner
@@ -160,6 +180,15 @@ describe("Active Feed at a workspace transition", () => {
       mockStore[QUARANTINE_KEY("tokB")] = JSON.stringify({ activeFeed: { id: "old-active", userId: "tokB" } });
       await restoreOperationalData("tokB");
       expect(mockStore[ACTIVE]).toBeUndefined();
+    });
+
+    it("never revives an active Bake from a prior account quarantine", async () => {
+      mockStore[QUARANTINE_KEY("tokB")] = JSON.stringify({
+        activeBakes: [{ id: "old-active", userId: "tokB" }],
+      });
+      await restoreOperationalData("tokB");
+      expect(mockStore[APP_STORAGE_KEYS.ACTIVE_BAKE]).toBeUndefined();
+      expect(mockStore[QUARANTINE_KEY("tokB")]).toContain("old-active");
     });
 
     it("a signed-out (NLA) baker's active Feed is discarded on sign-in, not parked as 'unknown'", async () => {
@@ -239,7 +268,7 @@ describe("Active Feed at a workspace transition", () => {
       };
 
       // Sign-out (Authenticated -> NLA): the active-Feed warning is asked before the transition.
-      expect(body("const handleClearIdentity = async", "const isFind = mode")).toMatch(/ensureActiveFeedAck\(\)/);
+      expect(body("const handleClearIdentity = async", "const isFind = mode")).toMatch(/ensureActiveFeedAck\(currentToken\)/);
 
       // NLA -> account: the baker sees the local-work panel, then chooses; both choices carry an explicit NLA disposition.
       expect(body("const handleChoiceImport = async", "const handleChoiceProceedWithoutImport = async")).toMatch(/nlaDisposition:\s*\{ mode: "import"/);
@@ -253,6 +282,21 @@ describe("Active Feed at a workspace transition", () => {
       expect(await hasActiveFeed()).toBe(false);
       mockStore[ACTIVE] = JSON.stringify({ id: "feed-1" });
       expect(await hasActiveFeed()).toBe(true);
+    });
+
+    it("warns for an account's scoped active Bake even without an active Feed", async () => {
+      const key = getOwnerStorageKey(APP_STORAGE_KEYS.ACTIVE_BAKE, "tokA");
+      mockStore[key] = JSON.stringify([{ id: "bake-1", userId: "tokA" }]);
+      expect(await hasActiveAccountWork("tokA")).toBe(true);
+      alertSpy.mockImplementation((_t: string, _m: string, buttons: any[]) => {
+        buttons.find((b) => b.text === "Continue").onPress();
+      });
+      await expect(confirmActiveFeedTransition("tokA")).resolves.toBe(true);
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+
+      await expect(executeWorkspaceTransition("tokA", null)).rejects.toBeInstanceOf(ActiveFeedNotAcknowledgedError);
+      expect(mockStore[key]).toBeDefined();
+      expect(getCoordinatorState()).toBe("IDLE");
     });
 
     it("does not interrupt the baker when there is nothing to lose", async () => {
@@ -272,8 +316,8 @@ describe("Active Feed at a workspace transition", () => {
       const [title, message] = alertSpy.mock.calls[0];
       expect(title).toBe(ACTIVE_FEED_TRANSITION_TITLE);
       expect(message).toBe(ACTIVE_FEED_TRANSITION_MESSAGE);
-      expect(message).toMatch(/finishing it before signing in or out/);
-      expect(message).toMatch(/discarded and cannot be recovered/);
+      expect(message).toMatch(/Finish it before changing accounts/);
+      expect(message).toMatch(/will not carry into the next workspace/);
     });
 
     it("lets the baker go back, and treats dismissing the dialog as going back", async () => {

@@ -388,7 +388,9 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
 
   const recipesToMigrate = recipes.filter(isAnonymousOrOwnedGuard);
   const bakeHistoryToMigrate = bakeHistory.filter(isAnonymousOrOwnedGuard);
-  const activeBakesToMigrate = activeBakes.filter(isAnonymousOrOwnedGuard);
+  // An unfinished Bake never becomes a remote history row during transition. The coordinator
+  // reconciles any old same-device remote row and retains the local original until verified sign-out.
+  const activeBakesToMigrate: LocalBakeSession[] = [];
   const feedHistoryToMigrate = feedHistory.filter(isAnonymousOrOwnedGuard);
   // Active Feed work is device-local: it is never migrated or uploaded. Only finished feed history is.
 
@@ -570,7 +572,7 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
   for (const b of allBakes) {
     const key = `bake:${b.id}`;
     const targetId = ledger[key];
-    const ownerVal = b.userId ?? b.user_id ?? "missing";
+    const ownerVal = (b as any).userId ?? (b as any).user_id ?? "missing";
 
     console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=bake, localId=${b.id}, targetId=${targetId}, owner=${ownerVal}, inProgress=${b.inProgress}`);
     try {

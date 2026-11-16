@@ -38,6 +38,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
 #### 📦 Version 2.6
+- [Session: Issue #24 Active Work Transition Thresholds (2026-11-16)](file:///E:/Bread-Lab/docs/journal/2026-11-16_issue_24_active_work_thresholds.artifact.md) [FOCUSED TESTS PASSED; ISSUE #24 OPEN]
 - [Session: Feed Session PDF Report (2026-11-15)](file:///E:/Bread-Lab/docs/journal/2026-11-15_feed_session_pdf_report.artifact.md) [BAKER PRINT PREVIEW REVIEWED]
 - [Session: Issue #24 Pending Share Recovery and Transition Guard (2026-11-15)](file:///E:/Bread-Lab/docs/journal/2026-11-15_issue_24_pending_share_recovery.artifact.md) [FOCUSED WORK VERIFIED; ISSUE #24 OPEN]
 
@@ -104,6 +105,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 **Purpose**: Findings from investigations, current status of ongoing initiatives, and lessons learned.
 - [Issues #89 & #88: UDL & Workspace Transition Coordinator Architecture Design (2026-10-26)](file:///E:/Bread-Lab/.artifacts/implementation_plan.artifact.md) [OPEN ITEM]
 - [Session Journal: Issue #24 — Migration Identity, Ownership Isolation & Data Preservation (2026-10-26; updated 2026-11-14)](file:///E:/Bread-Lab/docs/research/2026-10-26_issue_24_migration_and_identity_remediation.md) [OPEN; UPSTREAM-FIRST OKR PLAN]
+- [Issue #24 Per-Store Disposition Matrix (2026-11-15; updated 2026-11-16)](file:///E:/Bread-Lab/docs/research/2026-11-15_issue_24_store_disposition_matrix.md) [OPEN]
 - [Issue #73: Pre-Implementation Architecture Inspection — Moving Candidates to Recipe Builder (2026-10-12)](file:///E:/Bread-Lab/docs/research/2026-10-12_issue_73_recipe_builder_candidates_inspection.md)
 - [Maestro Testing: Status and Lessons Learned](file:///E:/Bread-Lab/docs/research/maestro_testing_status.artifact.md) [OPEN ITEM]
 
@@ -115,6 +117,8 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [NLA Proceed Without Importing identification crash](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-004-nla-proceed-without-importing-crashed-during-identification) [CODE AND DEVICE RETEST PASSED]
 - [Offline sign-in failure suggests incorrect credentials](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-005-offline-sign-in-failure-suggests-incorrect-credentials) [CODE AND DEVICE RETEST PASSED]
 - [NLA workspace change after choice escaped snapshot check](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-006-nla-workspace-change-after-choice-escaped-the-coordinator-snapshot-check) [CODE FIXED; FOCUSED TESTS PASS]
+- [Account Feed History escaped departure preflight](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-009-account-feed-history-escaped-departure-preflight) [FOCUSED TESTS PASS]
+- [Active work crossed or was lost at an identity threshold](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-010-active-work-crossed-or-was-lost-at-an-identity-threshold) [FOCUSED TESTS PASS; DEVICE PROOF OPEN]
 - [C/C++ Configuration Timeout (Windows)](file:///E:/Bread-Lab/docs/bug_tracker.md#1-cc-configuration-timeout-windows) [WATCHLIST]
 - [Active Issues & Watchlist](file:///E:/Bread-Lab/docs/bug_tracker.md)
 
@@ -122,6 +126,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 
 ### [🎨 Walkthroughs](file:///E:/Bread-Lab/docs/walkthroughs/)
 **Purpose**: Demonstrations and summaries of completed features, including UI screenshots and technical breakdowns.
+- [Active Bake and Feed Transition Warning (2026-11-16)](file:///E:/Bread-Lab/docs/walkthroughs/2026-11-16_issue_24_active_work_transition.artifact.md)
 - [Feed Session PDF Report (2026-11-15)](file:///E:/Bread-Lab/docs/walkthroughs/2026-11-15_feed_session_pdf_report.artifact.md)
 - [Pending Share Candidate Recovery (2026-11-15)](file:///E:/Bread-Lab/docs/walkthroughs/2026-11-15_pending_share_candidate_recovery.artifact.md)
 - [Waterview Bakehouse Logo Card Refinement (2026-10-12)](file:///E:/Bread-Lab/docs/walkthroughs/2026-10-12_waterview_bakehouse_logo_card_refinement.artifact.md)

@@ -14,6 +14,8 @@ This file is Bread Lab's central tracker for confirmed defects, unresolved test 
 | BT-006 | NLA workspace change after choice escaped the coordinator snapshot check | Code fixed; focused tests pass | Verify interrupted import/recovery behavior on device when practical |
 | BT-007 | Unstarted bake blocks sign-out until remote deletion | Fresh unstarted-bake path fixed; automated and device retest passed | Handle legacy remote rows and lifecycle labels under Issue #94 |
 | BT-008 | Coordinator permits direct account-to-account transition | Code fixed; focused tests pass | Verify account switching on device through A → NLA → B |
+| BT-009 | Account Feed History preflight inspected a scoped key while production writes the global key | Preflight fixed; coordinator tests pass | Reconcile the #90 key model and migration accounting; verify on device |
+| BT-010 | Unfinished Bake and Feed could cross or be lost at identity transition | Coordinated source fix; focused tests pass | Verify on device and deployed Supabase; retain Issue #24 parent work |
 
 ### BT-001 NLA transition test authorization failures
 
@@ -99,6 +101,22 @@ This file is Bread Lab's central tracker for confirmed defects, unresolved test 
 - **Change**: Refuse direct authenticated-to-authenticated input before readiness, synchronization, state change, or storage mutation. Updated active Feed isolation fixtures to sign out into NLA and then use an authorized Discard choice for entry into B. The tests continue to check pending-work refusal, active Feed discard, stale handlers, and destination isolation.
 - **Verification**: `pnpm.cmd exec jest --runInBand --silent lib/__tests__/transitionCoordinator.test.ts lib/__tests__/activeFeedTransition.test.ts lib/__tests__/nlaTransition.test.ts lib/__tests__/nlaImport.test.ts components/bench/__tests__/ActiveFeedSection.workspace.test.tsx components/__tests__/AuthModal.nla.test.tsx components/__tests__/AuthModal.workspaceChanged.test.tsx components/lab/__tests__/labHub.workspace.test.tsx` — 8 suites, 153 tests passed. The new coordinator test confirms refusal leaves credentials, generation, state, and outgoing synchronization untouched. No device account-switch run was performed.
 - **Status**: Code fixed and focused tests pass; production device verification of A → NLA → B remains.
+
+### BT-009 Account Feed History escaped departure preflight
+
+- **First observed**: 2026-11-16, during Issue #24 per-store reconciliation.
+- **Root cause**: `validateOperationalData(account)` read a scoped Feed History key, while the Feed production path and `migrateLocalDataToAccount` use `sourdough_feed_history_v1`. An ownerless or foreign row at the actual key could pass sign-out readiness and be excluded from upload without appearing as unresolved.
+- **Change**: For account departures, inspect the actual global Feed History key and reject ownerless, foreign, or conflicting ownership before synchronization or identity mutation. Preserve the source record on refusal.
+- **Verification**: `npx.cmd jest --runInBand lib/__tests__/activeFeedTransition.test.ts` — 1 suite, 22 tests passed, including two new real-coordinator preflight cases. `npx.cmd jest --runInBand lib/__tests__/ownerScopedStorage.test.ts lib/__tests__/transitionCoordinator.test.ts` — 2 suites, 39 tests passed. `npx.cmd jest --runInBand --silent lib/__tests__/bulletproofImport.test.ts` — 1 suite, 58 tests passed. No device or Supabase test was run.
+- **Remaining**: #90's canonical Feed key model, mixed-owner reconciliation, and migration accounting still need work. Parent Issue #24 remains open.
+
+### BT-010 Active work crossed or was lost at an identity threshold
+
+- **First observed**: 2026-11-16, while reconciling Issue #24 active-work policy.
+- **Root cause**: Sign-out migration uploaded active Bakes; warning and cleanup covered Feed unevenly; quarantine could revive active Bakes; remote active rows could restore from another device; NLA purge could precede a failed credential activation. Fire-and-forget Bake upserts could race sign-out reconciliation.
+- **Change**: Exclude active Bake upload; warn for both types; reconcile only remote rows matching account and device, confirming absence; verify remote sign-out before local cleanup; keep a durable sign-out phase marker; snapshot NLA active bytes for failed/interrupted purge; serialize active Bake remote writes with the transition lock.
+- **Verification**: `npx.cmd jest --runInBand --silent --testTimeout=15000 lib/__tests__/activeFeedTransition.test.ts lib/__tests__/transitionCoordinator.test.ts lib/__tests__/bulletproofImport.test.ts lib/__tests__/ownerScopedStorage.test.ts lib/__tests__/nlaTransition.test.ts lib/__tests__/nlaImport.test.ts components/__tests__/AuthModal.nla.test.tsx components/__tests__/AuthModal.workspaceChanged.test.tsx lib/__tests__/bakeLifecycle.test.ts` — 9 suites, 204 tests passed. A further identity/race command over `transitionCoordinator.test.ts`, `log.identity.test.tsx`, and `ownerScopedStorage.test.ts` passed 61 tests. TypeScript remains blocked by 174 existing diagnostics, none on the new transition/migration/warning code.
+- **Remaining**: Device and deployed Supabase verification, full account cycle, older local active copies without a stale marker, and parent #24's per-store requirements remain open.
 
 ## Active Issues
 

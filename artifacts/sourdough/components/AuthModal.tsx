@@ -20,7 +20,7 @@ import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
 import { clearAllAppData, clearOperationalData, safeParse } from "@/lib/storageUtils";
-import { executeWorkspaceTransition, recoverTransition, ActiveFeedNotAcknowledgedError, getCoordinatorState } from "@/lib/transitionCoordinator";
+import { executeWorkspaceTransition, recoverTransition, ActiveFeedNotAcknowledgedError, getCoordinatorState, hasPendingSignoutRecovery } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount } from "@/lib/migrate";
 import { confirmActiveFeedTransition, NLA_LOCAL_WORK_TITLE, describeActiveNlaWork } from "@/lib/activeWork";
@@ -96,9 +96,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
   } | null>(initialTransitionData ? { firstName: initialTransitionData.user.firstName, starterName: initialTransitionData.user.starterName, isSignUp: false, token: initialTransitionData.token, user: initialTransitionData.user } : null);
 
   const activeFeedAckRef = useRef(false);
-  const ensureActiveFeedAck = async (): Promise<boolean> => {
+  const ensureActiveFeedAck = async (ownerId?: string): Promise<boolean> => {
     if (activeFeedAckRef.current) return true;
-    const ok = await confirmActiveFeedTransition();
+    const ok = await confirmActiveFeedTransition(ownerId);
     if (ok) activeFeedAckRef.current = true;
     return ok;
   };
@@ -408,7 +408,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
       try {
         // A prior sign-out may have cleared local credentials while remote closure remained uncertain.
         // Retry through coordinator recovery before attempting another identity transition.
-        if (getCoordinatorState() === "RECOVERY_REQUIRED") {
+        if (getCoordinatorState() === "RECOVERY_REQUIRED" || await hasPendingSignoutRecovery()) {
           const recovery = await executeFailClosedRecovery(onAuthChange);
           if (recovery.remoteSignout && recovery.localClear) {
             onClose();
@@ -416,7 +416,6 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
           }
           throw new Error("Sign-out recovery is still incomplete. Keep this screen open and retry Sign Out / Remove Name.");
         }
-        if (!(await ensureActiveFeedAck())) return;
         let activeSession: any = null;
         try {
           const sessionResponse = await api.auth.getSession();
@@ -434,6 +433,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         if (!storedUser || storedUser.id !== currentToken) {
           throw new Error("Identity consistency conflict: stored sign-in could not be confirmed.");
         }
+        if (!(await ensureActiveFeedAck(currentToken))) return;
 
         // The coordinator owns the authoritative readiness gate. Sync only after it passes, under the same
         // transition mutex, and before the coordinator changes local identity or retires the workspace.
@@ -464,7 +464,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     };
 
     if (Platform.OS === "web") {
-      if (window.confirm("Sign out? Your operational records are preserved locally and synced to the cloud.")) {
+      if (window.confirm("Sign out? Saved records will sync before sign-out. Unfinished Feed or Bake work will not carry into the offline workspace.")) {
         await performClear();
       }
       return;
@@ -472,7 +472,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
 
     Alert.alert(
       "Sign out?",
-      "Your operational records are preserved locally and synced to the cloud.",
+      "Saved records will sync before sign-out. Unfinished Feed or Bake work will not carry into the offline workspace.",
       [
         { text: "Cancel", style: "cancel" },
         {

@@ -133,7 +133,7 @@ describe("remote upserts under each identity state (recipeStorage)", () => {
   afterEach(() => { jest.restoreAllMocks(); });
 
   const recipe: any = { id: "r1", name: "Loaf", phases: [{ key: "mix", name: "Mix", ingredients: [], instructions: [] }], createdAt: 1, updatedAt: 1 };
-  const activeBake: any = { id: "bk1", recipeId: "r1", recipeName: "Loaf", startedAt: 1, status: "active", phases: [] };
+  const activeBake: any = { id: "bk1", userId: "acct-A", recipeId: "r1", recipeName: "Loaf", startedAt: 1, status: "active", phases: [{ key: "mix", name: "Mix", startedAt: 1 }] };
 
   it("valid account: the owner id is sent with the write", async () => {
     validPair("acct-A");
