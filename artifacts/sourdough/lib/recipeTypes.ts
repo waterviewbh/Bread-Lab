@@ -122,6 +122,7 @@ export interface RecipeProvenance {
   sharedByAuthorName?: string;  // Sharer name (e.g. "Luke"). Undefined if unsupplied.
   sourceUrl?: string;           // Web source URL if acquired from web
   importedAt?: number;          // Timestamp when imported into workspace
+  sourceCandidateId?: string;    // Stable Candidate lineage for promotion retry
 }
 
 // ─── Saved recipe (persisted shape) ──────────────────────────────────────────

@@ -34,6 +34,7 @@ import { buildFeedReportHtml } from "@/lib/feedReportHtml";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 import { SafePrint } from "@/lib/printUtils";
+import { storageMutex, subscribeToWorkspaceChange } from "@/lib/storageUtils";
 import { type BakeOutcome } from "@/lib/recipeTypes";
 import {
   addToFeedTombstone,
@@ -228,7 +229,6 @@ export function HistorySection() {
   const [bakeRecipeMap, setBakeRecipeMap] = useState<Record<string, { ingredients?: string; instructions?: string }>>({});
 
   const loadSequenceRef = useRef(0);
-  const activeTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem(FEED_FILTER_KEY).then((v) => {
@@ -237,12 +237,15 @@ export function HistorySection() {
   }, []);
 
   const loadHistory = useCallback(async () => {
+    const sequenceId = ++loadSequenceRef.current;
+    await storageMutex.run(async () => {});
+    if (loadSequenceRef.current !== sequenceId) return;
     try {
       await processPendingDeletions();
     } catch (e) {
       console.warn("[History] background deletion sync failed:", e);
     }
-    const sequenceId = ++loadSequenceRef.current;
+    if (loadSequenceRef.current !== sequenceId) return;
     // null = NLA (both credentials absent). An uncertain identity (partial, mismatched, malformed, unreadable) THROWS and
     // must not be read as NLA: load nothing, call no remote list, and clear what is shown so nothing owned by another
     // identity stays on screen.
@@ -302,16 +305,16 @@ export function HistorySection() {
         AsyncStorage.getItem(ACTIVE_BAKE_KEY),
       ]);
       if (loadSequenceRef.current !== sequenceId) return;
-      if (feedStored) {
-        const parsedFeed = JSON.parse(feedStored) as HistoryEntry[];
-        setHistory(parsedFeed.filter(isOwnerMatch));
-      }
+      const parsedFeed: HistoryEntry[] = feedStored ? JSON.parse(feedStored) : [];
+      setHistory(parsedFeed.filter(isOwnerMatch));
       const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
       setBakeHistory(mergeActiveBake(bakeList.filter(isOwnerMatch), activeStored));
     } catch {}
 
+    if (!token || loadSequenceRef.current !== sequenceId) return;
     try {
       const deviceId = await getDeviceId();
+      if (loadSequenceRef.current !== sequenceId) return;
       const [apiFeed, apiBakes, activeStored] = await Promise.all([
         api.history.feed.list(deviceId, token ?? undefined),
         api.history.bakes.list(deviceId, token ?? undefined),
@@ -338,11 +341,6 @@ export function HistorySection() {
       const supabaseFeedIds = new Set(mapped.map((e) => e.id));
       const localOnlyFeed = localFeed.filter(e => !supabaseFeedIds.has(e.id) && !deletedFeedIds.has(e.id) && isOwnerMatch(e));
       const mergedFeed = [...mapped.filter(e => !deletedFeedIds.has(e.id)), ...localOnlyFeed].sort((a, b) => (b.completedAt ?? b.savedAt) - (a.completedAt ?? a.savedAt));
-
-      if (token || apiFeed.length > 0) {
-        setHistory(mergedFeed);
-        await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(mergedFeed));
-      }
 
       const apiMapped: BakeHistoryEntry[] = apiBakes.map((b) => ({
         id: b.id,
@@ -382,29 +380,50 @@ export function HistorySection() {
 
       if (loadSequenceRef.current !== sequenceId) return;
 
-      if (token || apiBakes.length > 0) {
-        await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(finalBakes));
-      }
-      const [finalActiveStored] = await Promise.all([AsyncStorage.getItem(ACTIVE_BAKE_KEY)]);
-      if (loadSequenceRef.current !== sequenceId) return;
-
-      setBakeHistory(mergeActiveBake(finalBakes, finalActiveStored));
-      setLastSynced(Date.now());
+      await storageMutex.run(async () => {
+        if (loadSequenceRef.current !== sequenceId || await getStoredToken() !== token ||
+            loadSequenceRef.current !== sequenceId) return;
+        await AsyncStorage.multiSet([
+          [HISTORY_KEY, JSON.stringify(mergedFeed)],
+          [BAKE_HISTORY_KEY, JSON.stringify(finalBakes)],
+        ]);
+        if (loadSequenceRef.current !== sequenceId) return;
+        setHistory(mergedFeed);
+        setBakeHistory(mergeActiveBake(finalBakes, activeStored));
+        setLastSynced(Date.now());
+      });
     } catch {}
   }, []);
 
+  const refreshWorkspace = useCallback(() => {
+    void loadHistory();
+    const sequenceId = loadSequenceRef.current;
+    void storageMutex.run(() => getStoredUser()).then(user => {
+      if (loadSequenceRef.current === sequenceId) setCurrentUser(user);
+    }).catch(() => {});
+  }, [loadHistory]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToWorkspaceChange(() => {
+      setHistory([]);
+      setBakeHistory([]);
+      setSelectedFeedDetail(null);
+      setSelectedBakeDetail(null);
+      setBakeRecipeMap({});
+      setLastSynced(null);
+      setCurrentUser(null);
+      refreshWorkspace();
+    });
+    return () => {
+      loadSequenceRef.current++;
+      unsubscribe();
+    };
+  }, [refreshWorkspace]);
+
   useFocusEffect(useCallback(() => {
-    getStoredToken().then((token) => {
-      if (activeTokenRef.current !== token) {
-        activeTokenRef.current = token;
-        setHistory([]);
-        setBakeHistory([]);
-      }
-      loadHistory();
-    }).catch(() => loadHistory());
-    getStoredUser().then(setCurrentUser).catch(() => {});
+    refreshWorkspace();
     getDeviceId().then(setLocalDeviceId).catch(() => {});
-  }, [loadHistory]));
+  }, [refreshWorkspace]));
 
   const feedDayMap = useMemo(() => {
     const map: Record<string, HistoryEntry[]> = {};
@@ -846,7 +865,7 @@ export function HistorySection() {
         )}
       </Modal>
 
-      <AuthModal visible={showAuthModal} currentUser={currentUser} onClose={() => setShowAuthModal(false)} onAuthChange={(user) => { setCurrentUser(user); loadHistory(); }} />
+      <AuthModal visible={showAuthModal} currentUser={currentUser} onClose={() => setShowAuthModal(false)} onAuthChange={setCurrentUser} />
     </View>
   );
 }

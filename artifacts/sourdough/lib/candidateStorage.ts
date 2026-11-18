@@ -374,6 +374,9 @@ export async function removeCandidate(id: string, context?: WorkspaceOperationCo
     const existing = parseCandidates(await AsyncStorage.getItem(key), key);
     if (!existing.some((c) => c.id === id)) return;
     await AsyncStorage.setItem(key, JSON.stringify(existing.filter((c) => c.id !== id)));
+    if (parseCandidates(await AsyncStorage.getItem(key), key).some(c => c.id === id)) {
+      throw new CandidateStorageError(`Candidate ${id} removal could not be verified.`);
+    }
   });
 }
 

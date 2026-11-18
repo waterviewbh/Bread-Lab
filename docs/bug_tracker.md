@@ -16,6 +16,27 @@ This file is Bread Lab's central tracker for confirmed defects, unresolved test 
 | BT-008 | Coordinator permits direct account-to-account transition | Code fixed; focused tests pass | Verify account switching on device through A → NLA → B |
 | BT-009 | Account Feed History preflight inspected a scoped key while production writes the global key | Preflight fixed; coordinator tests pass | Reconcile the #90 key model and migration accounting; verify on device |
 | BT-010 | Unfinished Bake and Feed could cross or be lost at identity transition | Coordinated source fix; focused tests pass | Verify on device and deployed Supabase; retain Issue #24 parent work |
+| BT-011 | Offline promoted Theory disappeared after remote refresh | Focused tests and device retry passed | Recovery of previously missing records remains unverified |
+
+### BT-011 Offline promoted Theory disappeared after remote refresh
+
+- **Observed 2026-11-16:** The baker promoted Pasted Recipe 04 in Luke's account with the network off. It appeared locally as a Theory, then disappeared after network restoration and app refocus. The Candidate did not return, and the baker found no Supabase row. Logcat showed `loadAll remote failed` while offline. The exact on-device storage sequence was not captured; preserve app data for recovery inspection.
+- **Confirmed source defect:** `recipeStorage.loadAll` replaced the account's entire local Recipe list with the remote list on a successful refresh. A promoted Theory whose remote upsert failed could therefore be erased when the remote list omitted it. A local append could also race with an in-flight remote refresh.
+- **Change:** During the serialized remote reconciliation, re-read the current local store and preserve account-owned promoted Theories with Candidate lineage until a matching remote row is observed. Reject conflicting remote owner or lineage instead of overwriting. Keep the local record if storage is malformed or unreadable.
+- **Verification:** `pnpm.cmd exec jest --runInBand --silent lib/__tests__/ownerScopedStorage.test.ts components/recipe/candidatePromotionRetry.test.tsx` — 2 suites, 17 tests passed. New repository-path tests cover a missing remote row and a local promotion concurrent with refresh.
+- **Baker-run device retest (2026-11-17):** After reloading with Metro online, offline promotion in Luke's account displayed `Promotion Error`. The Candidate remained available after reconnecting and returning to Recipe Builder. Retrying the same Candidate online removed it, produced exactly one Theory and one matching Supabase row, and the Theory remained visible after refocus. The screenshots show the promotion alert and a separate `loadAll remote failed` development overlay during the offline attempt.
+- **Status:** The focused offline promotion and manual retry passed on device. Recovery of previously missing records, direct verification of stored IDs and provenance, and the separate History and sign-out observations remain open under Issue #24.
+
+- **Sign-out follow-up (2026-11-17):** Test Loaf 07 exposed a separate gap. After an offline promotion failed, online sign-out synced the Theory while its Candidate remained. The coordinator now checks the departing account’s canonical Candidate and Recipe stores under the storage mutex before outgoing sync. A linked pair blocks sign-out and tells the baker to retry promotion online. An unlinked Candidate does not block this check. Test Loaf 08 independently verified that completed promotion provenance survived sign-out unchanged in Supabase.
+- **Guard verification:** `pnpm.cmd exec jest --runInBand --silent lib/__tests__/transitionCoordinator.test.ts components/recipe/candidatePromotionRetry.test.tsx` from `artifacts/sourdough` exited 0 with 43 tests passing across 2 suites. The new cases verify refusal before outgoing sync, preservation of both stored records, and entry into sync for an unlinked Candidate. 
+- **Baker-run guard retest (2026-11-17):** After Test Loaf 09 failed to promote offline, sign-out blocked both offline and after reconnecting. Retrying promotion online moved the Candidate to Theories. Sign-out then succeeded, NLA showed neither record, and signing back into Luke showed the Theory with no leftover Candidate. This verifies the visible recovery and account boundary. Supabase provenance for 09 was not inspected in this retest.
+
+### BT-012 History showed stale records after a workspace change
+
+- **Problem:** The baker saw an old Feed entry on History after sign-out. Leaving and returning cleared it.
+- **Root cause:** Mounted History did not subscribe to workspace changes, and an absent local Feed key did not replace the visible list with an empty list.
+- **Change:** History clears its records, details, and sync timestamp on the workspace notification. It waits for the transition lock before loading and checks the request and owner before caching remote results.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent components/log/__tests__/log.identity.test.tsx lib/__tests__/transitionCoordinator.test.ts` exited 0 with 55 tests passing across two suites. The new test keeps History mounted through real credential changes and verifies that a delayed account response cannot update the screen or local cache. The baker confirmed that the History refresh worked on the emulator during the sign-out and sign-in retest, without switching tabs.
 
 ### BT-001 NLA transition test authorization failures
 

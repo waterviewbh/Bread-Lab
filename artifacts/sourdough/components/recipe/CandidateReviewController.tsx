@@ -76,7 +76,7 @@ const CandidateReviewControllerRender: React.ForwardRefRenderFunction<CandidateR
     const userId = user?.id ?? null;
 
     const normalizedPayload = normalizePortableRecipe(portableRecipe, {
-      id: generateUuid(),
+      id: candidateId ?? generateUuid(),
       deviceId,
       userId: userId ?? undefined,
     });
@@ -107,30 +107,39 @@ const CandidateReviewControllerRender: React.ForwardRefRenderFunction<CandidateR
         sharedByAuthorName,
         sourceUrl: (portableRecipe as any).sourceUrl ?? undefined,
         importedAt: Date.now(),
+        sourceCandidateId: candidateId,
       },
     };
 
     // 3. Persist LOCALLY FIRST using storageMutex via appendRecipeLocal
+    let persistedRecipe: SavedRecipe;
     try {
-      await appendRecipeLocal(newRecipe);
+      const recipes = await appendRecipeLocal(newRecipe);
+      persistedRecipe = recipes.find(r => r.id === newRecipe.id)!;
     } catch (localErr: any) {
       throw new Error(`Local recipe commit failed: ${localErr?.message || 'Storage error'}`);
     }
 
     // 4. Conditionally sync to remote ONLY IF authenticated (Non-blocking for local commit)
     if (userId) {
-      await api.recipes.upsert(normalizedPayload).catch((err) => {
-        console.warn('[CandidateReviewController] Remote sync failed, saved locally:', err);
+      await api.recipes.upsert({
+        ...normalizedPayload,
+        name: persistedRecipe.name,
+        overview: persistedRecipe.overview,
+        phases: persistedRecipe.phases,
+        yield_value: Number(persistedRecipe.yieldValue) || normalizedPayload.yield_value,
+        createdAt: persistedRecipe.createdAt,
+        provenance: persistedRecipe.provenance,
       });
+      const remote = (await api.recipes.list(deviceId, userId)).find(r => r.id === persistedRecipe.id);
+      if (!remote || remote.provenance?.sourceCandidateId !== candidateId || remote.userId !== userId) {
+        throw new Error('Promoted Theory could not be verified remotely; Candidate was retained.');
+      }
     }
 
     // 5. Remove Candidate from storage (Cleanup)
     if (candidateId) {
-      try {
-        await removeCandidate(candidateId);
-      } catch (removeErr: any) {
-        console.warn('[CandidateReviewController] Candidate staging cleanup failed after successful local commit:', removeErr);
-      }
+      await removeCandidate(candidateId);
     }
 
     // 6. Notify parent

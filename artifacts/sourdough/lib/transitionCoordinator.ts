@@ -16,6 +16,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { isNlaOwner } from "./nlaBoundary";
 import { clearMigrationPending } from "./migrate";
 import { hasStagedShares } from "./stagedShareBridge";
+import { candidatesKeyForOwner } from "./candidateStorage";
+import { RECIPES_KEY, type SavedRecipe } from "./recipeTypes";
+import { getOwnerStorageKey } from "./storageUtils";
 import {
   nlaSnapshotChanged,
   applyNlaPurgeLocked,
@@ -255,6 +258,29 @@ export async function executeWorkspaceTransition(
     if (!options.activeFeedAcknowledged) {
       const hasWork = outgoingIsNla ? await hasActiveNlaWork() : await hasActiveAccountWork(outgoingOwnerId!);
       if (hasWork) throw new ActiveFeedNotAcknowledgedError();
+    }
+
+    if (outgoingOwnerId && !outgoingIsNla) {
+      // The coordinator already holds storageMutex. Read the two canonical stores
+      // directly so another promotion cannot commit between this check and sign-out.
+      const [candidateRaw, recipeRaw] = await Promise.all([
+        AsyncStorage.getItem(candidatesKeyForOwner(outgoingOwnerId)),
+        AsyncStorage.getItem(getOwnerStorageKey(RECIPES_KEY, outgoingOwnerId)),
+      ]);
+      const candidates: unknown = JSON.parse(candidateRaw ?? "[]");
+      const recipes: unknown = JSON.parse(recipeRaw ?? "[]");
+      if (!Array.isArray(candidates) || !Array.isArray(recipes)) {
+        throw new Error("Couldn’t check for unfinished promotions. You’re still signed in.");
+      }
+      const candidateIds = new Set(candidates.map(candidate => candidate?.id));
+      const pending = (recipes as SavedRecipe[]).find(recipe =>
+        recipe?.userId === outgoingOwnerId &&
+        recipe.provenance?.sourceCandidateId &&
+        candidateIds.has(recipe.provenance.sourceCandidateId)
+      );
+      if (pending) {
+        throw new Error(`Open Candidates and retry promoting “${pending.name}”. Once promotion succeeds, you can sign out.`);
+      }
     }
 
     // This is the authoritative gate. For deferred NLA login it runs before api.auth.identify,

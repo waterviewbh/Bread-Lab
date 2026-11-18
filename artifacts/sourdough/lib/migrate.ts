@@ -541,6 +541,7 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
         createdAt: r.createdAt ?? (r as any).created_at,
         yield_value: safeYield,
         parentRecipeId: remappedParent,
+        ...(r.provenance ? { provenance: r.provenance } : {}),
         phases: (r.phases || []).map((p: any) => ({
           key: p.key,
           name: p.name,

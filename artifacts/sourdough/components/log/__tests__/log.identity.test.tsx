@@ -89,6 +89,32 @@ describe("History (log.tsx) under each identity state", () => {
     expect(screen.queryByText("NLA Loaf")).toBeNull();
   });
 
+  it("refreshes mounted History on workspace changes and ignores a late account response", async () => {
+    const { saveAuth, clearAuth } = require("@/lib/auth");
+    seedBakes();
+    validPair("acct-A");
+    let finishOldRead!: (rows: any[]) => void;
+    jest.mocked(api.history.bakes.list).mockImplementationOnce(() =>
+      new Promise(resolve => { finishOldRead = resolve; })
+    );
+
+    await render(<HistorySection />);
+    await waitFor(() => expect(screen.getByText("Account A Loaf")).toBeTruthy());
+    await waitFor(() => expect(finishOldRead).toBeDefined());
+    await act(async () => { await clearAuth(); });
+    await waitFor(() => expect(screen.getByText("NLA Loaf")).toBeTruthy());
+    expect(screen.queryByText("Account A Loaf")).toBeNull();
+
+    const localBefore = mockStore[BAKES_KEY];
+    await act(async () => { finishOldRead([bake("late", "acct-A", "Late Account Loaf")]); });
+    expect(screen.queryByText("Late Account Loaf")).toBeNull();
+    expect(mockStore[BAKES_KEY]).toBe(localBefore);
+
+    await act(async () => { await saveAuth("acct-A", { id: "acct-A", firstName: "A", starterName: "S" }); });
+    await waitFor(() => expect(screen.getByText("Account A Loaf")).toBeTruthy());
+    expect(screen.queryByText("NLA Loaf")).toBeNull();
+  });
+
   it("records already on screen for account A are cleared when the identity later becomes uncertain (nothing stays visible)", async () => {
     seedBakes();
     validPair("acct-A");

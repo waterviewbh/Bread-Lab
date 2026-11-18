@@ -444,7 +444,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
             const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
             const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
             if (totalFailed > 0 || totalUnresolved > 0) {
-              throw new Error(`Cannot sign out: local data sync incomplete (${totalUnresolved} unresolved record(s), ${totalFailed} failure(s)). Please check your connection.`);
+              console.warn("[AuthModal] Sign-out sync incomplete", { totalUnresolved, totalFailed });
+              throw new Error("You’re still signed in. We couldn’t finish syncing your saved work. Check your connection and try again.");
             }
           },
           closeRemoteSession: true,

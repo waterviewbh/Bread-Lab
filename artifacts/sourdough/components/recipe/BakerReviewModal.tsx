@@ -424,8 +424,17 @@ const BakerReviewModalRender: React.ForwardRefRenderFunction<BakerReviewModalRef
       setStagedRecipe(null);
       setSelectedCandidateIdx(0);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (err: any) {
-      Alert.alert('Promotion Error', err.message || 'Could not promote recipe.');
+    } catch (err) {
+      const message = typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string'
+        ? err.message
+        : '';
+      const connectionFailed = /network request failed|failed to fetch|fetch failed|network error/i.test(message);
+      Alert.alert(
+        'Promotion Error',
+        connectionFailed
+          ? 'Couldn’t finish promoting this Candidate. Check your connection and try again.'
+          : message || 'Could not promote recipe.',
+      );
     } finally {
       setIsSaving(false);
     }

@@ -11,6 +11,50 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
     delete (global as any).__pausePrePersist;
   });
 
+  it("retains an offline-promoted Theory when a later remote refresh returns no row", async () => {
+    const auth = require("../auth");
+    jest.spyOn(auth, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));
+    await auth.saveAuth("owner-1", { id: "owner-1", firstName: "Baker", starterName: "Starter" });
+    const key = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "owner-1");
+    const theory: any = {
+      id: "candidate-1", userId: "owner-1", name: "Offline Theory",
+      createdAt: 1, phases: [{ key: "incorporating", name: "Mix", ingredients: [], instructions: [] }],
+      provenance: { sourceCandidateId: "candidate-1", importedAt: 1 },
+    };
+    await appendRecipeLocal(theory);
+    const apiModule = require("../api");
+    jest.spyOn(apiModule.api.recipes, "list").mockResolvedValue([]);
+    jest.spyOn(apiModule.api.history.bakes, "active").mockResolvedValue(null);
+    await loadAll();
+    expect(JSON.parse((await AsyncStorage.getItem(key))!)).toEqual([theory]);
+  });
+
+  it("retains a Theory committed while remote refresh is in flight", async () => {
+    const auth = require("../auth");
+    jest.spyOn(auth, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));
+    await auth.saveAuth("owner-1", { id: "owner-1", firstName: "Baker", starterName: "Starter" });
+    const key = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "owner-1");
+    const apiModule = require("../api");
+    jest.spyOn(apiModule.api.recipes, "list").mockResolvedValue([]);
+    jest.spyOn(apiModule.api.history.bakes, "active").mockResolvedValue(null);
+    let resume!: () => void;
+    let reached!: () => void;
+    const paused = new Promise<void>(resolve => { reached = resolve; });
+    const gate = new Promise<void>(resolve => { resume = resolve; });
+    (global as any).__pausePrePersist = async () => { reached(); await gate; };
+    const loading = loadAll();
+    await paused;
+    const theory: any = {
+      id: "candidate-2", userId: "owner-1", name: "Racing Theory",
+      createdAt: 2, phases: [{ key: "incorporating", name: "Mix", ingredients: [], instructions: [] }],
+      provenance: { sourceCandidateId: "candidate-2", importedAt: 2 },
+    };
+    await appendRecipeLocal(theory);
+    resume();
+    await loading;
+    expect(JSON.parse((await AsyncStorage.getItem(key))!)).toEqual([theory]);
+  });
+
   it("Test A — Switch during remote fetch fails closed and prevents workspace contamination", async () => {
     const authModule = require("../auth");
     jest.spyOn(authModule, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));

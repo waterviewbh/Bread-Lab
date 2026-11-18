@@ -38,6 +38,8 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
 #### 📦 Version 2.6
+- [Session: Issue #24 Offline Theory Refresh Preservation (2026-11-16)](file:///E:/Bread-Lab/docs/journal/2026-11-16_issue_24_offline_theory_refresh.artifact.md) [FOCUSED TESTS PASSED; DEVICE RECOVERY OPEN]
+- [Session: Issue #24 Candidate Promotion Retry and Lineage (2026-11-16)](file:///E:/Bread-Lab/docs/journal/2026-11-16_issue_24_candidate_promotion_retry.artifact.md) [FOCUSED TESTS PASSED; ISSUE #24 OPEN]
 - [Session: Issue #24 Active Work Transition Thresholds (2026-11-16)](file:///E:/Bread-Lab/docs/journal/2026-11-16_issue_24_active_work_thresholds.artifact.md) [FOCUSED TESTS PASSED; ISSUE #24 OPEN]
 - [Session: Feed Session PDF Report (2026-11-15)](file:///E:/Bread-Lab/docs/journal/2026-11-15_feed_session_pdf_report.artifact.md) [BAKER PRINT PREVIEW REVIEWED]
 - [Session: Issue #24 Pending Share Recovery and Transition Guard (2026-11-15)](file:///E:/Bread-Lab/docs/journal/2026-11-15_issue_24_pending_share_recovery.artifact.md) [FOCUSED WORK VERIFIED; ISSUE #24 OPEN]
@@ -119,6 +121,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [NLA workspace change after choice escaped snapshot check](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-006-nla-workspace-change-after-choice-escaped-the-coordinator-snapshot-check) [CODE FIXED; FOCUSED TESTS PASS]
 - [Account Feed History escaped departure preflight](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-009-account-feed-history-escaped-departure-preflight) [FOCUSED TESTS PASS]
 - [Active work crossed or was lost at an identity threshold](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-010-active-work-crossed-or-was-lost-at-an-identity-threshold) [FOCUSED TESTS PASS; DEVICE PROOF OPEN]
+- [Offline promoted Theory disappeared after remote refresh](file:///E:/Bread-Lab/docs/bug_tracker.md#bt-011-offline-promoted-theory-disappeared-after-remote-refresh) [FOCUSED TESTS PASS; DEVICE RECOVERY OPEN]
 - [C/C++ Configuration Timeout (Windows)](file:///E:/Bread-Lab/docs/bug_tracker.md#1-cc-configuration-timeout-windows) [WATCHLIST]
 - [Active Issues & Watchlist](file:///E:/Bread-Lab/docs/bug_tracker.md)
 

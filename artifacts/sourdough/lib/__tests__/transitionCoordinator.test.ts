@@ -63,6 +63,29 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(await AsyncStorage.getItem("bread_lab_auth_user_v1")).toBe(JSON.stringify({ id: "user-A" }));
   });
 
+  it.each([true, false])("blocks only a linked Candidate and Theory before outgoing sync (linked: %s)", async linked => {
+    const owner = "user-A";
+    const candidateKey = "bread_lab_candidates_v1_user-A";
+    const recipeKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, owner);
+    const candidate = JSON.stringify([{ id: "candidate-1", extractionResult: {} }]);
+    const recipe = JSON.stringify([{
+      id: "theory-1", name: "Test Loaf", userId: owner, phases: [],
+      provenance: { sourceCandidateId: linked ? "candidate-1" : "completed-candidate" },
+    }]);
+    await AsyncStorage.setItem(candidateKey, candidate);
+    await AsyncStorage.setItem(recipeKey, recipe);
+    const beforeTransition = jest.fn(async () => { throw new Error("Reached outgoing sync"); });
+
+    await expect(executeWorkspaceTransition(owner, null, null, null,
+      { activeFeedAcknowledged: true, beforeTransition }))
+      .rejects.toThrow(linked ? /Open Candidates and retry promoting “Test Loaf”/ : /Reached outgoing sync/);
+
+    expect(beforeTransition).toHaveBeenCalledTimes(linked ? 0 : 1);
+    expect(await AsyncStorage.getItem(candidateKey)).toBe(candidate);
+    expect(await AsyncStorage.getItem(recipeKey)).toBe(recipe);
+    expect(getCoordinatorState()).toBe("IDLE");
+  });
+
   it("refuses a pending native share before identity, sync, or storage changes", async () => {
     const options = await explicitDiscard();
     const beforeTransition = jest.fn(async () => {});

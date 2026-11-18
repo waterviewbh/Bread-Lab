@@ -72,6 +72,7 @@ export type ApiRecipe = {
   diagnosticHypothesis?: string;
   isUneditedIteration?: boolean;
   clonedFromBakeName?: string;
+  provenance?: { sourceCandidateId?: string; originalAuthorName?: string; sharedByAuthorName?: string; sourceUrl?: string; importedAt?: number };
 };
 
 export type ApiFeedSession = {
@@ -221,6 +222,7 @@ function rowToApiRecipe(r: RecipeRow): ApiRecipe {
     diagnosticHypothesis: r.recipe_data?.diagnosticHypothesis ?? undefined,
     isUneditedIteration: r.recipe_data?.isUneditedIteration ?? undefined,
     clonedFromBakeName: r.recipe_data?.clonedFromBakeName ?? undefined,
+    provenance: r.recipe_data?.provenance ?? undefined,
   };
 }
 

@@ -617,6 +617,7 @@ export async function loadAll(): Promise<{
           diagnosticHypothesis: r.diagnosticHypothesis ?? existingLocal?.diagnosticHypothesis,
           isUneditedIteration: r.isUneditedIteration ?? existingLocal?.isUneditedIteration,
           clonedFromBakeName: r.clonedFromBakeName ?? existingLocal?.clonedFromBakeName,
+          provenance: r.provenance ?? existingLocal?.provenance,
         };
       });
 
@@ -629,10 +630,26 @@ export async function loadAll(): Promise<{
     await assertWorkspaceOperationCurrent(context);
 
     if (token || (apiRecipes && apiRecipes.length > 0)) {
-      recipes = mapped;
       await storageMutex.run(async () => {
         await assertWorkspaceOperationCurrent(context);
-        await AsyncStorage.setItem(recipesKey, JSON.stringify(mapped));
+        // A promoted Theory may have been committed while the remote request was in flight,
+        // or its remote upsert may still be pending. Preserve that exact local source until
+        // a remote row with matching owner and Candidate lineage is observed.
+        const currentRaw = await AsyncStorage.getItem(recipesKey);
+        const current: unknown = currentRaw === null ? [] : JSON.parse(currentRaw);
+        if (!Array.isArray(current)) throw new Error(`Recipe store ${recipesKey} is not a list.`);
+        const merged = [...mapped];
+        for (const local of current as SavedRecipe[]) {
+          const candidateId = local?.provenance?.sourceCandidateId;
+          if (!candidateId || local.userId !== owner || deletedRecipeIds.includes(local.id)) continue;
+          const remote = (apiRecipes || []).find(r => r.id === local.id);
+          if (remote && (remote.userId !== owner || remote.provenance?.sourceCandidateId !== candidateId)) {
+            throw new Error(`Promoted Theory ${local.id} has conflicting remote ownership or lineage.`);
+          }
+          if (!remote) merged.push(local);
+        }
+        await AsyncStorage.setItem(recipesKey, JSON.stringify(merged));
+        recipes = merged;
       });
     }
 
@@ -756,11 +773,33 @@ export async function appendRecipeLocal(newRecipe: SavedRecipe): Promise<SavedRe
   };
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(recipesKey);
-    const existing = safeParse<SavedRecipe[]>(raw, [], Array.isArray).filter(
-      r => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
+    // Promotion must never replace unreadable or unclassified Recipe data on retry.
+    const parsed = stampedRecipe.provenance?.sourceCandidateId && raw !== null ? JSON.parse(raw) : safeParse<SavedRecipe[]>(raw, [], Array.isArray);
+    if (!Array.isArray(parsed)) throw new Error(`Recipe store ${recipesKey} is not a list.`);
+    const existing: SavedRecipe[] = stampedRecipe.provenance?.sourceCandidateId ? parsed : parsed.filter(
+      (r: SavedRecipe) => r && ((typeof r.name === "string" && r.name.trim() !== "") || (Array.isArray(r.phases) && r.phases.length > 0))
     );
+    const prior = existing.find(r => r.id === stampedRecipe.id);
+    if (prior) {
+      if (!stampedRecipe.provenance?.sourceCandidateId ||
+          prior.userId !== owner ||
+          prior.provenance?.sourceCandidateId !== stampedRecipe.provenance.sourceCandidateId) {
+        throw new Error(`Recipe ${stampedRecipe.id} already exists with different lineage.`);
+      }
+      return existing;
+    }
+    if (stampedRecipe.provenance?.sourceCandidateId && existing.some(
+      r => r.provenance?.sourceCandidateId === stampedRecipe.provenance?.sourceCandidateId
+    )) {
+      throw new Error(`Candidate ${stampedRecipe.provenance.sourceCandidateId} already has a different Theory.`);
+    }
     const updated = [stampedRecipe, ...existing];
     await AsyncStorage.setItem(recipesKey, JSON.stringify(updated));
+    const back = await AsyncStorage.getItem(recipesKey);
+    if (!back || !JSON.parse(back).some((r: SavedRecipe) =>
+      r.id === stampedRecipe.id && r.userId === owner &&
+      r.provenance?.sourceCandidateId === stampedRecipe.provenance?.sourceCandidateId
+    )) throw new Error(`Recipe ${stampedRecipe.id} did not read back after save.`);
     return updated;
   });
 }
@@ -877,6 +916,7 @@ export function upsertRecipeRemote(recipe: SavedRecipe): Promise<void> {
         diagnosticHypothesis: recipe.diagnosticHypothesis,
         isUneditedIteration: recipe.isUneditedIteration,
         clonedFromBakeName: recipe.clonedFromBakeName,
+        provenance: recipe.provenance,
       })
     )
     .then(() => undefined);
