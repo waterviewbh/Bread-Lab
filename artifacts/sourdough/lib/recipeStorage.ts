@@ -1094,70 +1094,62 @@ export async function updateBakeOutcomeInHistory(
 
     return storageMutex.run(async () => {
         try {
-            const storedHistory = await AsyncStorage.getItem(bakeHistoryKey);
+            const flatHistoryKey = BAKE_HISTORY_KEY;
+            const [storedHistory, storedFlatHistory] = await Promise.all([
+                AsyncStorage.getItem(bakeHistoryKey),
+                AsyncStorage.getItem(flatHistoryKey),
+            ]);
             let history = safeParse<ActiveBake[]>(storedHistory, [], Array.isArray);
+            let flatHistory = safeParse<ActiveBake[]>(storedFlatHistory, [], Array.isArray);
             const index = history.findIndex(h => h.id === bakeId);
+            const flatIndex = flatHistory.findIndex(h => h.id === bakeId);
+            const candidate = index !== -1 ? history[index] : flatIndex !== -1 ? flatHistory[flatIndex] : null;
+            if (!candidate) throw new Error(`Bake ${bakeId} was not found in review history.`);
+            if (candidate.userId !== owner) throw new Error("Bake owner does not match the current workspace.");
+            if (index !== -1 && flatIndex !== -1 && flatHistory[flatIndex].userId !== owner) {
+                throw new Error("Flat bake owner does not match the current workspace.");
+            }
 
-            let updatedBake: ActiveBake | null = null;
-
-            if (index !== -1) {
-                updatedBake = {
-                    ...history[index],
-                    userId: history[index].userId ?? owner,
-                    outcome: outcome
-                };
-                history[index] = updatedBake;
-                await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(history));
-
-                // Also defensively remove from active bakes if a zombie duplicate resides there
-                const storedActive = await AsyncStorage.getItem(bakeKey).catch(() => null);
-                if (storedActive) {
-                    let activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
-                    const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
-                    if (activeIndex !== -1) {
-                        activeBakes.splice(activeIndex, 1);
-                        await AsyncStorage.setItem(bakeKey, JSON.stringify(activeBakes));
-                    }
+            const updatedBake: ActiveBake = { ...candidate, outcome };
+            const deviceId = await getDeviceId();
+            if (owner !== "anonymous") {
+                const remote = (await api.history.bakes.list(deviceId, owner)).find(b => b.id === bakeId);
+                if (!remote || remote.userId !== owner) {
+                    throw new Error("Bake is not available for review in the current account.");
                 }
-            } else {
-                const storedActive = await AsyncStorage.getItem(bakeKey);
-                if (storedActive) {
-                    let activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
-                    const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
-                    if (activeIndex !== -1) {
-                        updatedBake = {
-                            ...activeBakes[activeIndex],
-                            userId: activeBakes[activeIndex].userId ?? owner,
-                            outcome: outcome,
-                            status: 'completed',
-                            completedAt: activeBakes[activeIndex].completedAt || Date.now()
-                        };
-                        activeBakes.splice(activeIndex, 1);
-                        await AsyncStorage.setItem(bakeKey, JSON.stringify(activeBakes));
-
-                        history.unshift(updatedBake);
-                        await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(history.slice(0, 500)));
-                    }
+                const saved = await api.history.bakes.upsert({
+                    ...remote,
+                    outcome,
+                    deviceId: remote.deviceId,
+                    userId: owner,
+                    yield_value: remote.yield_value,
+                    savedAt: Date.now(),
+                    inProgress: false,
+                } as any);
+                if (saved.id !== bakeId || !saved.outcome ||
+                    (["crumbScore", "crustScore", "flavorScore", "overallScore", "defects", "reflectionNotes"] as const)
+                        .some(key => JSON.stringify((saved.outcome as any)[key]) !== JSON.stringify((outcome as any)[key]))) {
+                    throw new Error("Review outcome was not verified after cloud save.");
                 }
             }
 
-            if (updatedBake) {
-                (async () => {
-                    try {
-                        const deviceId = await getDeviceId();
-
-                        await api.history.bakes.upsert({
-                            ...updatedBake,
-                            deviceId,
-                            userId: updatedBake.userId ?? owner ?? undefined,
-                            yield_value: updatedBake.yieldValue ? parseInt(updatedBake.yieldValue, 10) : 0,
-                            savedAt: Date.now(),
-                            inProgress: false
-                        } as any);
-                    } catch (remoteError) {
-                        console.warn("[recipeStorage] Remote sync failed, but local save succeeded", remoteError);
-                    }
-                })();
+            if (index !== -1) {
+                history[index] = updatedBake;
+                await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(history));
+            }
+            if (flatIndex !== -1) {
+                flatHistory[flatIndex] = updatedBake;
+                await AsyncStorage.setItem(flatHistoryKey, JSON.stringify(flatHistory));
+            }
+            const storedActive = await AsyncStorage.getItem(bakeKey);
+            const activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
+            const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
+            if (activeIndex !== -1) {
+                if (activeBakes[activeIndex].userId !== owner) {
+                    throw new Error("Active bake owner does not match the current workspace.");
+                }
+                activeBakes.splice(activeIndex, 1);
+                await AsyncStorage.setItem(bakeKey, JSON.stringify(activeBakes));
             }
         } catch (e) {
             console.error("[recipeStorage] updateBakeOutcomeInHistory failed", e);

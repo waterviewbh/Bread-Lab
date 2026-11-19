@@ -11,7 +11,7 @@ import { BAKE_HISTORY_KEY, BAKE_KEY, BakeHistoryItem, SavedRecipe, DefectSlug } 
 import { DEFECT_LIBRARY, generateDiagnosticSummary, DiagnosticPayload, GlossaryCategory } from "@/lib/diagnosticLogic";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { writeRecipesLocal, archiveIntermediateIterations, loadAll, updateBakeOutcomeInHistory, upsertRecipeRemote } from "@/lib/recipeStorage";
+import { writeRecipesLocal, archiveIntermediateIterations, loadAll, updateBakeOutcomeInHistory, upsertRecipeRemote, getWorkspaceIdentity } from "@/lib/recipeStorage";
 import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
@@ -43,17 +43,18 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
         AsyncStorage.getItem(BAKE_KEY),
       ]);
 
+      const { owner } = await getWorkspaceIdentity();
       let combined: BakeHistoryItem[] = [];
       if (historyRaw) {
         const parsed = JSON.parse(historyRaw);
-        if (Array.isArray(parsed)) combined = [...parsed];
+        if (Array.isArray(parsed)) combined = parsed.filter((b: BakeHistoryItem) => b?.userId === owner);
       }
 
       if (activeRaw) {
         const parsedActive = JSON.parse(activeRaw);
         const activeBakes: BakeHistoryItem[] = Array.isArray(parsedActive) ? parsedActive : [parsedActive];
         activeBakes.forEach(ab => {
-          if (ab && ab.id && !combined.some(h => h.id === ab.id)) {
+          if (ab && ab.id && ab.userId === owner && !combined.some(h => h.id === ab.id)) {
             combined.push(ab);
           }
         });
