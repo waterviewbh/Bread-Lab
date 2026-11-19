@@ -771,19 +771,30 @@ export async function restoreOperationalData(incomingUserId: string): Promise<vo
     };
 
     const scopedRestore = [
-      { field: "scopedRecipes" as const, baseKey: APP_STORAGE_KEYS.RECIPES },
-      { field: "scopedBakeHistory" as const, baseKey: APP_STORAGE_KEYS.BAKE_HISTORY },
-    ];
-    const writes = await Promise.all(scopedRestore.flatMap(({ field, baseKey }) => {
-      if (storedQ[field] === undefined) return [];
+      { fields: ["scopedRecipes", "recipes"], baseKey: APP_STORAGE_KEYS.RECIPES },
+      { fields: ["scopedBakeHistory", "bakeHistory"], baseKey: APP_STORAGE_KEYS.BAKE_HISTORY },
+    ] as const;
+    const { stableStringify } = require("./nlaWorkspace") as typeof import("./nlaWorkspace");
+    const writes = await Promise.all(scopedRestore.flatMap(({ fields, baseKey }) => {
+      const presentFields = fields.filter(field => storedQ[field] !== undefined);
+      if (presentFields.length === 0) return [];
       return [(async () => {
         const key = getOwnerStorageKey(baseKey, incomingUserId);
-        const parked = validateOwnedQuarantineRecords(storedQ[field], incomingUserId, qKey);
         const existing = validateOwnedQuarantineRecords(
           JSON.parse(await AsyncStorage.getItem(key) ?? "[]"), incomingUserId, key
         );
-        const existingIds = new Set(existing.map(record => record.id));
-        return { field, key, data: JSON.stringify([...existing, ...parked.filter(record => !existingIds.has(record.id))]) };
+        const parked = presentFields.flatMap(field =>
+          validateOwnedQuarantineRecords(storedQ[field], incomingUserId, `${qKey}.${field}`)
+        );
+        const byId = new Map<string, (typeof existing)[number]>();
+        for (const record of [...existing, ...parked]) {
+          const prior = byId.get(record.id);
+          if (prior && stableStringify(prior) !== stableStringify(record)) {
+            throw new Error(`Conflicting quarantine restore copies for ${record.id} at ${key}.`);
+          }
+          byId.set(record.id, record);
+        }
+        return { fields: presentFields, key, data: JSON.stringify([...byId.values()]) };
       })()];
     }));
     for (const { key, data } of writes) {
@@ -791,14 +802,12 @@ export async function restoreOperationalData(incomingUserId: string): Promise<vo
       if (await AsyncStorage.getItem(key) !== data) throw new Error(`Restore verification failed for ${key}.`);
     }
     if (writes.length) {
-      for (const { field } of writes) delete storedQ[field];
+      for (const field of writes.flatMap(write => write.fields)) delete storedQ[field];
       const remaining = JSON.stringify(storedQ);
       await AsyncStorage.setItem(qKey, remaining);
       if (await AsyncStorage.getItem(qKey) !== remaining) throw new Error("Quarantine update could not be verified.");
     }
 
-    await restoreListKey(APP_STORAGE_KEYS.RECIPES, storedQ.recipes);
-    await restoreListKey(APP_STORAGE_KEYS.BAKE_HISTORY, storedQ.bakeHistory);
     await restoreListKey(APP_STORAGE_KEYS.FEED_HISTORY, storedQ.feedHistory);
     // Unfinished Bakes are never restored across an identity transition. Older buckets
     // retain their bytes for ownership review, but cannot revive an active session.

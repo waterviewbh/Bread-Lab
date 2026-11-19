@@ -106,6 +106,12 @@ This file is Bread Lab's central tracker for confirmed defects, unresolved test 
 - **Change:** Validated completed quarantine records join the normal import inventory. Conflicting copies block import before upload. Purge requires verified IDs and checks that the quarantine contents still match the authorized plan.
 - **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 lib/__tests__/nlaTransition.test.ts lib/__tests__/nlaImport.test.ts lib/__tests__/nlaWorkspace.test.ts components/__tests__/AuthModal.nla.test.tsx` exited 0 with 116 tests passing across four suites. Regression coverage includes an acknowledged but missing remote Recipe, successful retry, conflicting copies, and a quarantine change after verification. The tests used a modeled remote service. Emulator, Maestro, and deployed Supabase were outside this verification run.
 
+### BT-024 Legacy account quarantine restored Recipes and completed Bakes to shared keys
+
+- **Problem and root cause:** Account sign-in restored legacy quarantine fields to the shared base keys even though normal account readers use owner-scoped keys.
+- **Change:** Both quarantine formats now restore explicitly owned Recipes and completed Bakes to the canonical account keys. The restore rejects invalid ownership, unreadable stores, and conflicting copies. It verifies writes before retiring the restored quarantine fields.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 lib/__tests__/transitionCoordinator.test.ts lib/__tests__/activeFeedTransition.test.ts lib/__tests__/ownerScopedStorage.test.ts lib/__tests__/bulletproofImport.test.ts` exited 0 with 137 tests passing across four suites. Coordinator tests cover a partial write followed by recovery and retry, duplicate consolidation, unproven ownership, malformed destination data, and conflicting copies. Emulator, Maestro, and deployed Supabase were outside this run.
+
 ### BT-001 NLA transition test authorization failures
 
 - **First observed**: 2026-11-13

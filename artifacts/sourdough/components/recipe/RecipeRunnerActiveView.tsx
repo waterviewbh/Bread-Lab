@@ -418,6 +418,7 @@ export function RecipeRunnerActiveView({
         presentationStyle="pageSheet"
         onRequestClose={onCloseNotesOverlay}
       >
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
         {/* Header */}
         <View style={[s.sheetHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
           <Text style={[s.sheetTitle, { color: colors.foreground }]}>Bake Notes</Text>
@@ -448,6 +449,7 @@ export function RecipeRunnerActiveView({
           colors={colors}
           bottomInset={insets.bottom}
         />
+        </View>
       </Modal>
 
       <BulkEstimatorSettingsModal

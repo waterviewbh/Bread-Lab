@@ -42,6 +42,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useColorScheme,
   View,
 } from "react-native";
 import { fonts } from "@/constants/theme";
@@ -120,6 +121,7 @@ export default function SegmentedNotepad({
   colors,
   bottomInset,
 }: SegmentedNotepadProps) {
+  const isDark = useColorScheme() === "dark";
   const [segs, setSegs] = useState<Segment[]>(() => parse(initialValue));
   // ID of the text segment that currently holds focus
   const activeIdRef = useRef<string | null>(null);
@@ -403,14 +405,14 @@ const insertChip = useCallback(
               style={({ pressed }) => [
                 styles.tag,
                 {
-                  backgroundColor: pressed ? colors.primary : colors.muted,
-                  borderColor: pressed ? colors.primary : colors.border,
+                  backgroundColor: isDark || pressed ? colors.primary : colors.muted,
+                  borderColor: isDark || pressed ? colors.primary : colors.border,
                 },
               ]}
               accessibilityLabel={`Insert ${p.name} header`}
               accessibilityRole="button"
             >
-              <Text style={[styles.tagText, { color: colors.foreground }]}>
+              <Text style={[styles.tagText, { color: isDark ? colors.primaryForeground : colors.foreground }]}>
                 {p.name}
               </Text>
             </Pressable>

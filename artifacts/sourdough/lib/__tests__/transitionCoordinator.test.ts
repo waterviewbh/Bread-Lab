@@ -71,6 +71,66 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     expect(JSON.parse((await AsyncStorage.getItem(QUARANTINE_KEY(owner)))!)).not.toHaveProperty("scopedRecipes");
   });
 
+  it("restores legacy parked Recipes and Bakes to their owner stores after a partial write", async () => {
+    const owner = "user-A";
+    const recipeKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, owner);
+    const bakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.BAKE_HISTORY, owner);
+    const quarantineKey = QUARANTINE_KEY(owner);
+    const recipe = { id: "r", userId: owner, name: "Loaf", phases: [] };
+    const bake = { id: "b", userId: owner, recipeId: recipe.id, savedAt: 2, phases: [] };
+    const raw = JSON.stringify({ recipes: [recipe], scopedRecipes: [recipe], bakeHistory: [bake] });
+    await AsyncStorage.setItem(quarantineKey, raw);
+
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    const originalSetItem = setItem.getMockImplementation()!;
+    let failBakeWrite = true;
+    setItem.mockImplementation(async (key, value) => {
+      if (key === bakeKey && failBakeWrite) throw new Error("Bake restore write failed");
+      await originalSetItem(key, value);
+    });
+    const signIn = async () => executeWorkspaceTransition(null, owner, owner,
+      { id: owner, firstName: "A", starterName: "S" }, await explicitDiscard());
+
+    await expect(signIn()).rejects.toThrow("Bake restore write failed");
+    expect(await AsyncStorage.getItem(APP_STORAGE_KEYS.AUTH_TOKEN)).toBeNull();
+    expect(await AsyncStorage.getItem(quarantineKey)).toBe(raw);
+    expect(await AsyncStorage.getItem(recipeKey)).toBe(JSON.stringify([recipe]));
+    expect(await AsyncStorage.getItem(bakeKey)).toBeNull();
+
+    failBakeWrite = false;
+    setItem.mockImplementation(originalSetItem);
+    await expect(signIn()).rejects.toThrow(/recovery required/);
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    jest.spyOn(api.auth, "getSession").mockResolvedValue({ data: { session: null }, error: null } as any);
+    await expect(recoverTransition()).resolves.toEqual({ remoteSignout: true, localClear: true });
+    await signIn();
+    expect(await AsyncStorage.getItem(APP_STORAGE_KEYS.AUTH_TOKEN)).toBe(owner);
+    expect(await AsyncStorage.getItem(recipeKey)).toBe(JSON.stringify([recipe]));
+    expect(await AsyncStorage.getItem(bakeKey)).toBe(JSON.stringify([bake]));
+    expect(await AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES)).toBeNull();
+    expect(await AsyncStorage.getItem(APP_STORAGE_KEYS.BAKE_HISTORY)).toBeNull();
+    expect(await AsyncStorage.getItem(quarantineKey)).toBe("{}");
+  });
+
+  it.each([
+    ["unproven ownership", { id: "r", name: "Loaf" }, null, /ownership or shape/],
+    ["unreadable destination", { id: "r", userId: "user-A" }, "{", /JSON|property name|Unexpected/],
+    ["conflicting copies", { id: "r", userId: "user-A", name: "Different" },
+      JSON.stringify([{ id: "r", userId: "user-A", name: "Loaf" }]), /Conflicting quarantine restore/],
+  ])("blocks legacy restore with %s", async (_label, parked, destination, error) => {
+    const owner = "user-A";
+    const quarantineKey = QUARANTINE_KEY(owner);
+    const recipeKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, owner);
+    const raw = JSON.stringify({ recipes: [parked] });
+    await AsyncStorage.setItem(quarantineKey, raw);
+    if (destination !== null) await AsyncStorage.setItem(recipeKey, destination);
+    await expect(executeWorkspaceTransition(null, owner, owner,
+      { id: owner, firstName: "A", starterName: "S" }, await explicitDiscard())).rejects.toThrow(error);
+    expect(await AsyncStorage.getItem(APP_STORAGE_KEYS.AUTH_TOKEN)).toBeNull();
+    expect(await AsyncStorage.getItem(quarantineKey)).toBe(raw);
+    expect(await AsyncStorage.getItem(recipeKey)).toBe(destination);
+  });
+
   it("validates ownership correctly rejecting ownerless records", () => {
     const validRec = { id: "1", userId: "user-1", name: "Bread" };
     const invalidRec1 = { id: "2", userId: "", name: "Bad" };
