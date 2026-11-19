@@ -27,11 +27,15 @@ import { fakeServer } from "../testSupport/fakeApi";
 let mockStore: Record<string, string> = {};
 let mockFailRemoveKey: string | null = null;
 let mockKeepJournal = false;
+let mockFailRestoredRecipeRead = false;
 let mockFailMultiSet = false;
 let mockOnRemove: ((key: string) => void) | null = null;
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
-  getItem: jest.fn(async (k: string) => (k in mockStore ? mockStore[k] : null)),
+  getItem: jest.fn(async (k: string) => {
+    if (mockFailRestoredRecipeRead && k === "bread_lab_recipes_v1_acct-1" && mockStore[k]?.includes('"q1"')) return null;
+    return k in mockStore ? mockStore[k] : null;
+  }),
   setItem: jest.fn(async (k: string, v: string) => { mockStore[k] = v; }),
   removeItem: jest.fn(async (k: string) => {
     if (mockFailRemoveKey && k === mockFailRemoveKey) throw new Error("simulated crash");
@@ -87,8 +91,8 @@ const seedOthers = () => {
   mockStore["global_bulk_estimator_v1"] = JSON.stringify({ x: 1 });
 };
 const OTHER_KEYS = [
-  "bread_lab_recipes_v1_acct-1", "bread_lab_recipes_v1_acct-2", "bread_lab_bake_v2_acct-2", "bread_lab_deleted_feed_ids_v1_acct-2",
-  "bread_lab_candidates_v1_acct-2", "bread_lab_quarantine_acct-1", "bread_lab_quarantine_acct-2", "bread_lab_quarantine_unknown",
+  "bread_lab_recipes_v1_acct-2", "bread_lab_bake_v2_acct-2", "bread_lab_deleted_feed_ids_v1_acct-2",
+  "bread_lab_candidates_v1_acct-2", "bread_lab_quarantine_acct-2", "bread_lab_quarantine_unknown",
   "bread_lab_device_id_v1", "bread_lab_temp_unit_v1", "bread_lab_starter_tutorial_active_v1", "font_size_large_v1", "global_bulk_estimator_v1",
 ];
 const snapshotOthers = () => Object.fromEntries(OTHER_KEYS.map((k) => [k, mockStore[k] ?? null]));
@@ -132,6 +136,7 @@ describe("NLA -> account transition (real coordinator)", () => {
     mockStore = {};
     mockFailRemoveKey = null;
     mockKeepJournal = false;
+    mockFailRestoredRecipeRead = false;
     mockFailMultiSet = false;
     mockOnRemove = null;
     fakeServer.reset();
@@ -237,8 +242,8 @@ describe("NLA -> account transition (real coordinator)", () => {
     expect(mockStore).toEqual(before);
   });
 
-  describe.each(["import", "discard"] as const)("%s: the device is left clean and nothing else is disturbed", (mode) => {
-    it("removes the whole NLA workspace from BOTH cabinets, signs in, and leaves every other key byte-for-byte unchanged", async () => {
+  describe.each(["import", "discard"] as const)("%s: NLA cleanup and incoming-account restoration", (mode) => {
+    it("clears eligible NLA data, restores the incoming account, and preserves unrelated storage", async () => {
       seedNla();
       seedOthers();
       const others = snapshotOthers();
@@ -248,7 +253,12 @@ describe("NLA -> account transition (real coordinator)", () => {
       expect(getCoordinatorState()).toBe("IDLE");
       expectNoNlaWorkspaceLeft();                                                  // owner-named keys, residue, tombstones, and every NLA record
       expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();                    // journal cleared
-      expect(snapshotOthers()).toEqual(others);                                    // other accounts, quarantines, preferences, device id
+      expect(snapshotOthers()).toEqual(others);                                    // other accounts, unknown quarantine, device settings
+      expect(get("bread_lab_recipes_v1_acct-1")).toEqual([
+        { id: "r-1", name: "Account's own r-1", userId: TOKEN },
+        { id: "q1", userId: TOKEN },
+      ]);
+      expect(get("bread_lab_quarantine_acct-1")).toEqual({});
       expect(mockStore["bread_lab_auth_token_v1"]).toBe(TOKEN);                    // signed in
       const after = await inventoryNlaWorkspace();
       expect(after.counts.eligibleTotal + after.counts.tombstones + after.counts.residue).toBe(0);
@@ -263,11 +273,29 @@ describe("NLA -> account transition (real coordinator)", () => {
       expect(fakeServer.tables.bake.has("ab-legacy")).toBe(false);
     });
 
-    it("an account record with the same id as an NLA record is never touched", async () => {
+    it("preserves the incoming account's existing record and restores its parked record exactly once", async () => {
       seedNla();
       seedOthers();
+      const original = get("bread_lab_recipes_v1_acct-1")[0];
       await runTransition(mode);
-      expect(get("bread_lab_recipes_v1_acct-1")).toEqual([{ id: "r-1", name: "Account's own r-1", userId: "acct-1" }]);
+      const recipes = get("bread_lab_recipes_v1_acct-1");
+      expect(recipes.find((recipe: any) => recipe.id === "r-1")).toEqual(original);
+      expect(recipes.filter((recipe: any) => recipe.id === "r-1")).toHaveLength(1);
+      expect(recipes.filter((recipe: any) => recipe.id === "q1")).toEqual([{ id: "q1", userId: TOKEN }]);
+      expect(get("bread_lab_quarantine_acct-1")).toEqual({});
+    });
+
+    it("keeps the incoming account's quarantine when destination read-back fails", async () => {
+      seedNla();
+      seedOthers();
+      const parked = mockStore["bread_lab_quarantine_acct-1"];
+      const unrelated = snapshotOthers();
+      mockFailRestoredRecipeRead = true;
+      await expect(runTransition(mode)).rejects.toThrow(/Restore verification failed/);
+      expect(mockStore["bread_lab_quarantine_acct-1"]).toBe(parked);
+      expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();
+      expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+      expect(snapshotOthers()).toEqual(unrelated);
     });
 
     it("discards the NLA active bake (owner-named cabinet) and never uploads it", async () => {
