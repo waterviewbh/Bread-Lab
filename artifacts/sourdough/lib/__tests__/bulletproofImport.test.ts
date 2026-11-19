@@ -98,6 +98,35 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     );
   });
 
+  it("uploads identical account feed copies once and keeps their source bytes for retry", async () => {
+    const feed = { id: "feed-1", userId: "owner-1", savedAt: 1000, readings: [] };
+    const source = JSON.stringify([feed, { ...feed }, { id: "feed-2", userId: "owner-1", savedAt: 2000 }]);
+    mockStorage["sourdough_feed_history_v1"] = source;
+
+    const result = await migrateLocalDataToAccount("owner-1", { reportUploads: true });
+
+    expect(result.feed).toEqual({ ok: 2, failed: 0, unresolved: 0 });
+    expect(result.uploads?.filter((upload) => upload.kind === "feed").map((upload) => upload.destinationId)).toEqual(["feed-1", "feed-2"]);
+    expect(api.history.feed.upsert).toHaveBeenCalledTimes(2);
+    expect(mockStorage["sourdough_feed_history_v1"]).toBe(source);
+    const retry = await migrateLocalDataToAccount("owner-1", { reportUploads: true });
+    expect(retry.feed.ok).toBe(2);
+    expect(api.history.feed.upsert).toHaveBeenCalledTimes(4);
+  });
+
+  it("rejects conflicting account feed copies before any upload or ledger write", async () => {
+    const source = JSON.stringify([
+      { id: "feed-1", userId: "owner-1", savedAt: 1000 },
+      { id: "feed-1", userId: "owner-1", savedAt: 2000 },
+    ]);
+    mockStorage["sourdough_feed_history_v1"] = source;
+
+    await expect(migrateLocalDataToAccount("owner-1", { reportUploads: true })).rejects.toThrow(/Conflicting feed history records share ID feed-1/);
+    expect(api.history.feed.upsert).not.toHaveBeenCalled();
+    expect(mockStorage["bread_lab_import_ledger_owner-1"]).toBeUndefined();
+    expect(mockStorage["sourdough_feed_history_v1"]).toBe(source);
+  });
+
   it("succeeds as an empty migration when local data is genuinely absent", async () => {
     const result = await migrateLocalDataToAccount("empty-user-token");
 

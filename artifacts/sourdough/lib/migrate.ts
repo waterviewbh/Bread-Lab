@@ -4,6 +4,7 @@ import * as Crypto from "expo-crypto";
 import { api } from "./api";
 import { getDeviceId } from "./deviceId";
 import { supabase } from "./supabase";
+import { stableStringify } from "./nlaWorkspace";
 
 const HISTORY_KEY = "sourdough_feed_history_v1";
 const ACTIVE_FEED_KEY = "sourdough_feed_session_v1";
@@ -398,7 +399,16 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
   // An unfinished Bake never becomes a remote history row during transition. The coordinator
   // reconciles any old same-device remote row and retains the local original until verified sign-out.
   const activeBakesToMigrate: LocalBakeSession[] = [];
-  const feedHistoryToMigrate = feedHistory.filter(isAnonymousOrOwnedGuard);
+  const eligibleFeeds = feedHistory.filter(isAnonymousOrOwnedGuard);
+  const feedsById = new Map<string, LocalFeedSession>();
+  for (const feed of eligibleFeeds) {
+    const prior = feedsById.get(feed.id);
+    if (prior && stableStringify(prior) !== stableStringify(feed)) {
+      throw new Error(`Conflicting feed history records share ID ${feed.id}.`);
+    }
+    feedsById.set(feed.id, feed);
+  }
+  const feedHistoryToMigrate = Array.from(feedsById.values());
   // Active Feed work is device-local: it is never migrated or uploaded. Only finished feed history is.
 
   // Ensure active bakes without IDs get durable IDs assigned and persisted back to storage in original shape (array vs object)

@@ -2,6 +2,7 @@ import {
   importNlaWorkspace,
   rehomeCandidates,
   reconcileRows,
+  readBackUploadedRows,
   compareCriticalFields,
   describeImportReport,
   candidatesKeyFor,
@@ -477,6 +478,12 @@ describe("importNlaWorkspace", () => {
     it("accepts rows that match exactly (including bigint-as-string numbers)", () => {
       expect(reconcileRows("recipe", up("recipe", payloads.recipe) as any, [goodRecipeRow()], TOKEN)).toEqual([]);
       expect(reconcileRows("feed", up("feed", payloads.feed) as any, [goodFeedRow()], TOKEN)).toEqual([]);
+    });
+
+    it("still rejects duplicate feed destinations and duplicate returned feed rows", async () => {
+      const sent = up("feed", payloads.feed) as any;
+      await expect(readBackUploadedRows("feed", [...sent, ...sent], TOKEN)).rejects.toThrow("Duplicate feed upload destinations.");
+      expect(reconcileRows("feed", sent, [goodFeedRow(), goodFeedRow()], TOKEN)[0].reason).toBe("duplicate rows returned");
     });
 
     it("rejects each kind of discrepancy", () => {
