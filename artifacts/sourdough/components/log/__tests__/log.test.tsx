@@ -4,7 +4,6 @@ import { HistorySection } from '../log';
 import * as recipeStorage from '@/lib/recipeStorage';
 import { api } from '@/lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NlaSupabaseBoundaryError } from '@/lib/nlaBoundary';
 
 let mockStore: Record<string, string> = {};
 
@@ -222,10 +221,9 @@ describe('HistorySection — NLA workspace (no Supabase)', () => {
     expect(await recipeStorage.getBakeTombstone()).toEqual([]);
   });
 
-  it('N2 — A REFUSED remote list (the NLA boundary) is not an empty dataset: local history is kept on the device', async () => {
+  it('N2 — offline History preserves local records without querying Supabase', async () => {
     const local = [{ id: 'local-feed-1', userId: 'anonymous', savedAt: Date.now(), completedAt: Date.now(), readings: [] }];
     mockStore['sourdough_feed_history_v1'] = JSON.stringify(local);
-    (api.history.feed.list as jest.Mock).mockRejectedValue(new NlaSupabaseBoundaryError('history.feed.list'));
 
     await act(async () => {
       render(<HistorySection />);
@@ -233,10 +231,11 @@ describe('HistorySection — NLA workspace (no Supabase)', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Calendar')).toBeTruthy();
-      expect(api.history.feed.list).toHaveBeenCalled();
+      expect(screen.getAllByText('1').length).toBeGreaterThan(1);
     });
 
-    // The failed remote merge never overwrote local storage with an empty result.
+    expect(api.history.feed.list).not.toHaveBeenCalled();
+    expect(api.history.bakes.list).not.toHaveBeenCalled();
     expect(JSON.parse(mockStore['sourdough_feed_history_v1'])).toEqual(local);
   });
 });

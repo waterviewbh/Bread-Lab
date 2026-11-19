@@ -11,6 +11,22 @@ describe("Issue #24: Deterministic Workspace Transition & Lifecycle Safety", () 
     delete (global as any).__pausePrePersist;
   });
 
+  it("uses a cloud Recipe's explicit null parent instead of resurrecting the old local link", async () => {
+    const auth = require("../auth");
+    const owner = "acct-A";
+    await auth.saveAuth(owner, { id: owner, firstName: "A", starterName: "S" });
+    const key = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, owner);
+    await AsyncStorage.setItem(key, JSON.stringify([{ id: "child", name: "Child", userId: owner, parentRecipeId: "deleted", phases: [] }]));
+    const { api } = require("../api");
+    jest.spyOn(api.recipes, "list").mockResolvedValue([
+      { id: "child", name: "Child", userId: owner, parent_recipe_id: null, phases: [], createdAt: "2026-11-18T00:00:00Z" },
+    ]);
+    jest.spyOn(api.history.bakes, "active").mockResolvedValue(null);
+
+    expect((await loadAll()).recipes[0].parentRecipeId).toBeNull();
+    expect(JSON.parse((await AsyncStorage.getItem(key))!)[0].parentRecipeId).toBeNull();
+  });
+
   it("retains an offline-promoted Theory when a later remote refresh returns no row", async () => {
     const auth = require("../auth");
     jest.spyOn(auth, "getStoredToken").mockImplementation(() => AsyncStorage.getItem("bread_lab_auth_token_v1"));

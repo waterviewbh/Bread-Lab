@@ -38,6 +38,74 @@ This file is Bread Lab's central tracker for confirmed defects, unresolved test 
 - **Change:** History clears its records, details, and sync timestamp on the workspace notification. It waits for the transition lock before loading and checks the request and owner before caching remote results.
 - **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent components/log/__tests__/log.identity.test.tsx lib/__tests__/transitionCoordinator.test.ts` exited 0 with 55 tests passing across two suites. The new test keeps History mounted through real credential changes and verifies that a delayed account response cannot update the screen or local cache. The baker confirmed that the History refresh worked on the emulator during the sign-out and sign-in retest, without switching tabs.
 
+### BT-013 Legacy Candidates were treated as anonymous
+
+- **Problem:** Both NLA sign-in choices could act on Candidates from the legacy global bucket.
+- **Root cause:** Inventory treated a valid Candidate ID in either bucket as sufficient proof of NLA ownership.
+- **Change:** Inventory reports legacy records as unresolved. Import and Proceed Without Importing stop before destination preparation, and purge plan validation rejects operations on the global Candidate key.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent lib/__tests__/nlaTransition.test.ts lib/__tests__/nlaImport.test.ts lib/__tests__/transitionCoordinator.test.ts components/__tests__/AuthModal.nla.test.tsx` exited 0 with 109 tests passing across four suites. Tests assert no destination preparation, server calls, or local mutations with legacy drafts, and successful disposition of explicitly anonymous drafts. Device verification and legacy ownership resolution remain open.
+
+### BT-014 Interrupted offline purge could bypass recovery without an active-work snapshot
+
+- **Problem and cause:** The coordinator checked the active-work snapshot and sign-out marker at transition entry. A purge journal on its own could escape that gate and the coordinator’s purge replay branch.
+- **Change:** Startup and the transition coordinator detect the journal independently. Recovery resumes the authorized plan, verifies its operations and journal removal, and requires recovery to finish before another transition can proceed.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent lib/__tests__/nlaTransition.test.ts lib/__tests__/transitionCoordinator.test.ts lib/__tests__/activeFeedTransition.test.ts` exited 0 with 86 tests passing across three suites. The new test interrupts an authorized discard without active work, simulates a process restart, verifies the next transition is blocked, and proves retry completes the purge before sign-in. The first run exposed two regressions in the recovery result when remote sign-out fails. The return contract was corrected before the clean rerun. Device and Maestro were not run.
+
+### BT-015 Account sign-out skipped scoped Recipe and Bake History stores
+
+- **Problem and cause:** Sign-out sync read the account-scoped records, but quarantine and restore only addressed the fixed keys. Scoped cache entries could remain on the device after sign-out.
+- **Change:** Quarantine validates ownership of scoped Recipes and completed Bakes, verifies the quarantine copy before removing their source keys, and checks that those keys are absent. Sign-in restores these records to their original account keys and verifies them before retiring the scoped entries from quarantine. The older fixed-key paths remain available for their existing readers.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent lib/__tests__/transitionCoordinator.test.ts lib/__tests__/ownerScopedStorage.test.ts lib/__tests__/nlaTransition.test.ts lib/__tests__/bulletproofImport.test.ts` exited 0 with 132 tests passing across four suites. The new coordinator test uses mocked uploads and session closure, verifies that both scoped keys are removed and restored, and checks that another account's key remains unchanged. Two initial runs exposed missing mocks in the new fixture. Device and deployed Supabase verification remain open.
+
+### BT-016 Unverifiable remote session could be treated as signed out
+
+- **Problem and cause:** Starter Account defaulted a missing remote session field to null and ignored returned lookup errors.
+- **Change:** Identification and orphan session cleanup require an explicit no-session result or a valid session owner. Sign-out requires agreement with local identity and checks again under the transition lock before outgoing upload.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 components/__tests__/AuthModal.nla.test.tsx components/__tests__/AuthModal.workspaceChanged.test.tsx lib/__tests__/transitionCoordinator.test.ts` exited 0 with 61 tests passing across three suites. The new tests cover error responses, missing session fields, malformed owners, and a lookup failure before sign-out upload. The initial run without the timeout override had 59 passing and two failing tests. The test setup now resets the session mock for each case. Device and deployed Supabase verification remain open.
+
+### BT-017 Invalid offline quarantine could be counted as empty
+
+- **Problem and cause:** The inventory ignored malformed field shapes and unknown fields. Purge read-back checked only some record collections.
+- **Change:** Inventory and purge replay validate every present field of the offline quarantine. Unaccounted data blocks both sign-in choices, and purge completion requires the bucket to be absent.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 lib/__tests__/nlaTransition.test.ts lib/__tests__/nlaImport.test.ts components/__tests__/AuthModal.nla.test.tsx lib/__tests__/transitionCoordinator.test.ts` exited 0 with 120 tests passing across four suites. Both choices blocked before authentication and preserved storage for five invalid bucket shapes. Existing valid purge and recovery cases passed. Device verification remains open.
+
+### BT-018 Account deletion acknowledgement could retire a tombstone before remote absence was verified
+
+- **Change:** Recipe, Bake, and Feed retries require owner-scoped absence confirmation after a delete request. Failed or negative read-back preserves the tombstone. The ordinary delete controls queue intent for this shared path.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 lib/__tests__/pendingDeletionLifecycle.test.ts components/log/__tests__/log.test.tsx lib/__tests__/transitionCoordinator.test.ts` exited 0 with 58 tests passing across three suites. New cases exercise positive delete acknowledgements followed by negative and failed read-back for all three types, then verified retry. The initial run passed 57 of 58 tests. Its stale offline History expectation was updated to assert that offline History serves local data without a cloud request. No emulator or deployed Supabase run was performed.
+
+### BT-019 A deleted completed Bake could be uploaded again from its scoped archive
+
+- **Problem and cause:** A read-only inspection found Padme's Yum Food Bake in both the fixed History key and the account archive under the same ID. The History control removes the fixed-key copy, while sign-out sync reads both keys.
+- **Change:** After remote absence is verified, the shared authenticated Bake retry path removes and verifies explicitly owned copies from both history keys under the storage mutex before retiring the tombstone. Foreign copies are preserved. An ambiguous owner or an unverifiable local write leaves the tombstone queued.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 lib/__tests__/pendingDeletionLifecycle.test.ts components/log/__tests__/log.test.tsx lib/__tests__/transitionCoordinator.test.ts` exited 0 with 59 tests passing across three suites. The regression injects a write that acknowledges but does not persist, checks that intent survives, and verifies both account copies are removed on retry while foreign copies stay intact. No deletion was performed on the emulator or Supabase for this fix.
+
+### BT-020 Account sign-out recreated a deleted Recipe ID through an older import mapping
+
+- **Observed on device (2026-11-18):** Completed Padme → NLA → Luke → NLA → Padme using three authorized deletion fixtures. Padme’s scoped Recipe and Bake History keys were absent after departure. No Padme fixture or retained control Recipe appeared in the inspected Luke or shared History stores. On return, local checks found the retained Yum Food Recipe and neither the deleted Bake (`1795041797697`) nor Feed (`179504211029789lc7q4ny`). The deleted Recipe ID ending `1682b` returned.
+- **Confirmed cause:** Logcat showed outgoing migration successfully upserting the retained Yum Food Recipe ending `0e194` to destination ID `1682b`. The account-sync mapping in `migrate.ts` consults the historical import ledger before choosing a destination, even for a Recipe already owned by the departing account.
+- **Change:** Outgoing sync uses canonical IDs for account-owned records and resolves links through that same mapping. Import retries retain their historical mappings.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 lib/__tests__/bulletproofImport.test.ts lib/__tests__/nlaImport.test.ts lib/__tests__/transitionCoordinator.test.ts lib/__tests__/pendingDeletionLifecycle.test.ts` exited 0 with 148 tests passing across four suites. The regression checks that a retained Recipe and linked records sync under their canonical IDs even with a stale ledger entry targeting the deleted Recipe ID. Explicit import retry tests also passed. A patched device retest and independent deployed absence checks remain open.
+
+### BT-021 A surviving iteration kept the deleted Recipe's parent ID
+
+- **Observed:** The patched Padme retest synced the retained Yum Food Recipe to its own ID. Supabase rejected a different, surviving iteration with a missing parent constraint, and sign-out stopped. A read-only device check confirmed that iteration `e09f8ad0-5c7a-404e-9f59-6a9b0c95e5c0` still stored the deleted parent `88d903f1-15bb-4a65-8332-f1e17281682b`.
+- **Cause and change:** The checked-in schema uses `ON DELETE SET NULL`. The API mapper and local hydration now preserve explicit null parents. Before retiring account Recipe deletion intent, the retry path verifies removal of owned local copies and clears that parent link on owned iterations in both Recipe stores.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 lib/__tests__/ownerScopedStorage.test.ts lib/__tests__/pendingDeletionLifecycle.test.ts lib/__tests__/apiOwnership.test.ts lib/__tests__/transitionCoordinator.test.ts` exited 0 with 97 tests passing across four suites. The new tests cover reloading an explicit null and retaining intent after an unverifiable cleanup write. A patched emulator retest verified the explicit null in Padme’s scoped cache, absence of the deleted master, successful cloud upload of the surviving iteration under its own ID, and successful sign-out to NLA. After the baker signed back into Padme, the signed-in History screen showed no activity on November 18. A read-only emulator storage query confirmed that the retained Recipe and detached iteration returned to Padme’s scoped Recipe key. The deleted Recipe, Bake, and Feed IDs were absent from both Recipe keys, both Bake History keys, and the shared Feed History key. The baker independently verified Supabase counts of `0,0,0,1,1` for the deleted Recipe, Bake, and Feed, the retained Recipe, and the retained iteration under Padme with its parent cleared.
+
+### BT-022 Sign-out trusted uploads before reading saved account work back
+
+- **Problem and cause:** Starter Account relied on migration upload counts. A successful response did not prove that Supabase stored the expected record and owner.
+- **Change:** The sign-out callback verifies exact upload accounting and IDs, then uses the same targeted row read-back as offline import. Recipe and Feed payloads and persisted Bake fields, including serialized phases, must match. Verification runs under the coordinator lock before remote sign-out or local cleanup.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 components/__tests__/AuthModal.nla.test.tsx lib/__tests__/nlaImport.test.ts lib/__tests__/nlaTransition.test.ts lib/__tests__/transitionCoordinator.test.ts lib/__tests__/bulletproofImport.test.ts` exited 0 with 182 tests passing across five suites. The Starter Account tests inject an acknowledged but missing Recipe, altered Bake phases, and unavailable read-back. Each preserves credentials and local records until a verified retry succeeds. The tests use a modeled remote service; deployed verification of the new gate remains open.
+
+### BT-023 Import skipped completed work stored only in NLA quarantine
+
+- **Problem:** Import & Proceed could purge completed anonymous Recipes, Bakes, and Feeds that were stored only in quarantine.
+- **Root cause:** Inventory counted quarantine as residue but excluded its completed records from the import and remote verification lists.
+- **Change:** Validated completed quarantine records join the normal import inventory. Conflicting copies block import before upload. Purge requires verified IDs and checks that the quarantine contents still match the authorized plan.
+- **Verification:** From `artifacts/sourdough`, `pnpm.cmd exec jest --runInBand --silent --testTimeout=15000 lib/__tests__/nlaTransition.test.ts lib/__tests__/nlaImport.test.ts lib/__tests__/nlaWorkspace.test.ts components/__tests__/AuthModal.nla.test.tsx` exited 0 with 116 tests passing across four suites. Regression coverage includes an acknowledged but missing remote Recipe, successful retry, conflicting copies, and a quarantine change after verification. The tests used a modeled remote service. Emulator, Maestro, and deployed Supabase were outside this verification run.
+
 ### BT-001 NLA transition test authorization failures
 
 - **First observed**: 2026-11-13

@@ -234,6 +234,30 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(api.history.bakes.upsert).not.toHaveBeenCalled();
   });
 
+  it("does not recreate a deleted import destination when syncing the retained owned Recipe", async () => {
+    const owner = "outgoing-account";
+    const ledgerKey = `bread_lab_import_ledger_${owner}`;
+    const ledger = JSON.stringify({ "recipe:retained": "deleted-destination", "bake:completed": "old-bake-destination" });
+    mockStorage[ledgerKey] = ledger;
+    mockStorage[`bread_lab_recipes_v1_${owner}`] = JSON.stringify([
+      { id: "retained", userId: owner, name: "Yum Food", phases: [] },
+      { id: "child", userId: owner, name: "Iteration", parentRecipeId: "retained", phases: [] },
+    ]);
+    mockStorage[`bread_lab_bake_history_v1_${owner}`] = JSON.stringify([
+      { id: "completed", userId: owner, recipeId: "retained", recipeName: "Yum Food", startedAt: 1, savedAt: 2, phases: [] },
+    ]);
+
+    const result = await migrateLocalDataToAccount(owner);
+
+    expect(result.recipes.ok).toBe(2);
+    expect(result.bakes.ok).toBe(1);
+    expect(api.recipes.upsert).toHaveBeenCalledWith(expect.objectContaining({ id: "retained", userId: owner }));
+    expect(api.recipes.upsert).toHaveBeenCalledWith(expect.objectContaining({ id: "child", parentRecipeId: "retained" }));
+    expect(api.recipes.upsert).not.toHaveBeenCalledWith(expect.objectContaining({ id: "deleted-destination" }));
+    expect(api.history.bakes.upsert).toHaveBeenCalledWith(expect.objectContaining({ id: "completed", recipeId: "retained" }));
+    expect(mockStorage[ledgerKey]).toBe(ledger);
+  });
+
   it("ensures anonymous recipes receive stable destination IDs and reuse them on retry", async () => {
     const anonRecipe = { id: "anon-src-1", name: "Anon Recipe", userId: "anonymous", phases: [] };
     mockStorage["bread_lab_recipes_v1"] = JSON.stringify([anonRecipe]);

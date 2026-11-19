@@ -36,6 +36,13 @@ import { NLA_OWNER } from "./nlaBoundary";
 // Same strings as lib/candidateStorage.ts (asserted equal by a test); defined here to avoid importing the
 // share/extraction pipeline into the storage layer.
 export const LEGACY_GLOBAL_CANDIDATES_KEY_NLA = "bread_lab_candidates_v1";
+export const LEGACY_CANDIDATE_OWNERSHIP_ERROR = "Some older Candidates have no confirmed workspace owner. They are still on this device. Sign-in is blocked until their ownership can be resolved.";
+
+export function assertLegacyCandidateOwnership(inventory: NlaInventory): void {
+  if (inventory.unresolved.some(item => item.sources.includes(LEGACY_GLOBAL_CANDIDATES_KEY_NLA))) {
+    throw new Error(LEGACY_CANDIDATE_OWNERSHIP_ERROR);
+  }
+}
 export const ANONYMOUS_CANDIDATES_KEY_NLA = "bread_lab_candidates_v1_anonymous";
 
 export const NLA_PURGE_JOURNAL_KEY = "bread_lab_nla_purge_journal_v1";
@@ -135,7 +142,7 @@ export interface EligibleRecord {
 
 export interface UnresolvedItem {
   type: RecordType | "tombstones" | "residue";
-  reason: "conflict" | "foreign" | "conflicting-stamp" | "malformed" | "unreadable";
+  reason: "conflict" | "foreign" | "conflicting-stamp" | "malformed" | "unreadable" | "unknown-owner";
   id?: string;
   sources: string[];
   detail?: string;
@@ -217,6 +224,23 @@ export async function inventoryNlaWorkspace(): Promise<NlaInventory> {
     }
   }
 
+  // Residue: NLA data parked by earlier sign-ins.
+  const residue = { present: false, nlaRecords: 0, byType: {} as Record<string, number> };
+  const residueRaw = fetched.get(NLA_SCOPE.residue) ?? null;
+  let parked: ReturnType<typeof inspectNlaResidue>["completed"] = {};
+  if (residueRaw !== null) {
+    residue.present = true;
+    try {
+      const inspected = inspectNlaResidue(residueRaw);
+      residue.byType = inspected.counts;
+      parked = inspected.completed;
+      residue.nlaRecords = Object.values(residue.byType).reduce((count, size) => count + size, 0);
+    } catch (error) {
+      readable = false;
+      unresolved.push({ type: "residue", reason: "unreadable", sources: [NLA_SCOPE.residue], detail: (error as Error).message });
+    }
+  }
+
   const eligible = {} as Record<RecordType, EligibleRecord[]>;
   let unstamped = 0;
 
@@ -226,17 +250,25 @@ export async function inventoryNlaWorkspace(): Promise<NlaInventory> {
     const copiesById = new Map<string, Array<{ rec: any; source: string }>>();
     const order: string[] = [];
 
-    for (const key of keys) {
+    const parkedRecords = type === "recipes" || type === "bakeHistory" || type === "feedHistory" ? parked[type] : undefined;
+    const sourcesToRead = parkedRecords?.length ? [...keys, NLA_SCOPE.residue] : keys;
+    for (const key of sourcesToRead) {
       const rawValue = fetched.get(key) ?? null;
       const allowObject = type === "activeBakes" || type === "activeFeed";
-      const { parsed, error } = parseItems(key, rawValue, allowObject);
+      const { parsed, error } = key === NLA_SCOPE.residue
+        ? { parsed: { items: parkedRecords ?? [] }, error: undefined }
+        : parseItems(key, rawValue, allowObject);
       if (error || !parsed) {
         readable = false;
         unresolved.push({ type, reason: "unreadable", sources: [key], detail: error });
         continue;
       }
       for (const rec of parsed.items) {
-        // Candidate drafts carry no owner stamp; their key location is their ownership.
+        if (key === LEGACY_GLOBAL_CANDIDATES_KEY_NLA) {
+          unresolved.push({ type, reason: "unknown-owner", sources: [key], id: typeof rec?.id === "string" ? rec.id : undefined });
+          continue;
+        }
+        // Only the explicitly anonymous Candidate bucket establishes NLA ownership.
         const cls: OwnershipClass =
           type === "candidates"
             ? rec && typeof rec === "object" && !Array.isArray(rec) && typeof rec.id === "string" && rec.id.trim() !== ""
@@ -264,7 +296,9 @@ export async function inventoryNlaWorkspace(): Promise<NlaInventory> {
       const allSame = copies.every((c) => sameModuloStamp(c.rec, copies[0].rec));
       const sources = Array.from(new Set(copies.map((c) => c.source)));
       if (!allSame) {
-        unresolved.push({ type, reason: "conflict", id, sources, detail: "Two different copies share this id." });
+        const parkedConflict = sources.includes(NLA_SCOPE.residue);
+        if (parkedConflict) readable = false;
+        unresolved.push({ type: parkedConflict ? "residue" : type, reason: "conflict", id, sources, detail: "Two different copies share this id." });
         continue;
       }
       // Prefer a stamped copy as the representative; ownership stamps are not part of content.
@@ -288,48 +322,6 @@ export async function inventoryNlaWorkspace(): Promise<NlaInventory> {
     tombstones[kind] = Array.from(new Set(parsed.items.filter((x) => typeof x === "string" && x.trim() !== ""))) as string[];
   });
 
-  // Residue: NLA data parked by earlier sign-ins.
-  const residue = { present: false, nlaRecords: 0, byType: {} as Record<string, number> };
-  const residueRaw = fetched.get(NLA_SCOPE.residue) ?? null;
-  if (residueRaw !== null) {
-    residue.present = true;
-    let bucket: any = null;
-    try {
-      bucket = JSON.parse(residueRaw);
-    } catch {
-      bucket = null;
-    }
-    if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) {
-      readable = false;
-      unresolved.push({ type: "residue", reason: "unreadable", sources: [NLA_SCOPE.residue], detail: "Malformed set-aside bucket" });
-    } else {
-      for (const field of ["recipes", "bakeHistory", "feedHistory", "activeBakes"]) {
-        const list = Array.isArray(bucket[field]) ? bucket[field] : [];
-        for (const rec of list) {
-          const cls = classifyOwnership(rec);
-          if (cls === "nla") {
-            residue.nlaRecords++;
-            residue.byType[field] = (residue.byType[field] ?? 0) + 1;
-          } else {
-            unresolved.push({ type: "residue", reason: cls === "malformed" ? "malformed" : cls === "unstamped" ? "malformed" : "foreign", id: rec?.id, sources: [NLA_SCOPE.residue] });
-          }
-        }
-      }
-      if (bucket.activeFeed && typeof bucket.activeFeed === "object") {
-        if (classifyOwnership(bucket.activeFeed) === "nla") {
-          residue.nlaRecords++;
-          residue.byType.activeFeed = 1;
-        } else {
-          unresolved.push({ type: "residue", reason: "foreign", id: bucket.activeFeed?.id, sources: [NLA_SCOPE.residue] });
-        }
-      }
-      for (const field of ["deletedRecipeIds", "deletedBakeIds", "deletedFeedIds"]) {
-        const list = Array.isArray(bucket[field]) ? bucket[field] : [];
-        residue.nlaRecords += list.length;
-        if (list.length) residue.byType[field] = list.length;
-      }
-    }
-  }
 
   const sortedRaw = Object.keys(raw).sort().map((k) => `${k}=${raw[k] ?? "∅"}`);
   const fingerprint = fnv1a(sortedRaw.join("\n"));
@@ -386,7 +378,7 @@ export function inventoryIsEmpty(inv: NlaInventory): boolean {
 export type PurgeOp =
   | { kind: "removeKey"; key: string }
   | { kind: "filterIds"; key: string; ids: string[]; candidates?: boolean }
-  | { kind: "residue"; key: string };
+  | { kind: "residue"; key: string; expectedRaw?: string };
 
 export interface PurgePlan {
   mode: "import" | "discard";
@@ -512,7 +504,7 @@ export function validatePurgePlan(
         throw new Error(`Purge plan security rejection: removeKey operation targets unauthorized key '${op.key}'.`);
       }
     } else if (op.kind === "residue") {
-      if (op.key !== NLA_SCOPE.residue) {
+      if (op.key !== NLA_SCOPE.residue || (p.mode === "import" && typeof op.expectedRaw !== "string")) {
         throw new Error(`Purge plan security rejection: residue operation targets unauthorized key '${op.key}'.`);
       }
     } else if (op.kind === "filterIds") {
@@ -525,7 +517,7 @@ export function validatePurgePlan(
         }
       }
       if (op.candidates) {
-        if (op.key !== LEGACY_GLOBAL_CANDIDATES_KEY_NLA && op.key !== ANONYMOUS_CANDIDATES_KEY_NLA) {
+        if (op.key !== ANONYMOUS_CANDIDATES_KEY_NLA) {
           throw new Error(`Purge plan security rejection: candidate filterIds targets unauthorized key '${op.key}'.`);
         }
       } else {
@@ -580,6 +572,7 @@ export function buildPurgePlan(inv: NlaInventory, mode: "import" | "discard", ve
     for (const rec of inv.eligible[type]) {
       if (!ids.has(rec.id)) continue;
       for (const source of rec.sources) {
+        if (source === NLA_SCOPE.residue) continue; // Removed as one verified bucket below.
         const list = byKey.get(source) ?? [];
         list.push(rec.id);
         byKey.set(source, list);
@@ -590,9 +583,65 @@ export function buildPurgePlan(inv: NlaInventory, mode: "import" | "discard", ve
     }
   }
   for (const key of NLA_TOMBSTONE_KEYS) ops.push({ kind: "removeKey", key });
-  if (inv.residue.present) ops.push({ kind: "residue", key: NLA_SCOPE.residue });
+  const residueRaw = inv.raw[NLA_SCOPE.residue];
+  if (inv.residue.present && residueRaw != null) {
+    const { completed } = inspectNlaResidue(residueRaw);
+    for (const type of ["recipes", "bakeHistory", "feedHistory"] as const) {
+      const ids = idsFor(type);
+      if (completed[type]?.some(record => !ids.has(record.id))) {
+        throw new Error("Offline quarantine has completed work that has not been verified for this choice.");
+      }
+    }
+    ops.push({ kind: "residue", key: NLA_SCOPE.residue, expectedRaw: residueRaw });
+  }
 
   return { mode, createdAt: Date.now(), ops };
+}
+
+function inspectNlaResidue(raw: string): {
+  counts: Record<string, number>;
+  completed: Partial<Record<"recipes" | "bakeHistory" | "feedHistory", Array<{ id: string }>>>;
+} {
+  const bucket: unknown = JSON.parse(raw);
+  if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) {
+    throw new Error("The offline quarantine must contain an object.");
+  }
+
+  const counts: Record<string, number> = {};
+  const completed: ReturnType<typeof inspectNlaResidue>["completed"] = {};
+  for (const [field, value] of Object.entries(bucket)) {
+    if (field === "activeFeed") {
+      if (value === null) continue;
+      if (classifyOwnership(value) !== "nla") throw new Error("Invalid or unowned active Feed in offline quarantine.");
+      counts[field] = 1;
+      continue;
+    }
+    if (["recipes", "bakeHistory", "feedHistory", "activeBakes"].includes(field)) {
+      if (!Array.isArray(value) || value.some(record => classifyOwnership(record) !== "nla")) {
+        throw new Error(`Invalid or unowned records in offline quarantine field ${field}.`);
+      }
+    } else if (["deletedRecipeIds", "deletedBakeIds", "deletedFeedIds"].includes(field)) {
+      if (!Array.isArray(value) || value.some(id => typeof id !== "string" || !id.trim())) {
+        throw new Error(`Invalid deletion IDs in offline quarantine field ${field}.`);
+      }
+    } else {
+      throw new Error(`Unknown offline quarantine field ${field}.`);
+    }
+    if (value.length) counts[field] = value.length;
+    if (field === "recipes" || field === "bakeHistory" || field === "feedHistory") completed[field] = value;
+  }
+  return { counts, completed };
+}
+
+async function verifyResidueBeforePurge(ops: PurgeOp[]): Promise<void> {
+  const op = ops.find(op => op.kind === "residue");
+  if (!op) return;
+  const raw = await AsyncStorage.getItem(NLA_SCOPE.residue);
+  if (raw === null) return; // A previous replay may already have removed it.
+  if (op.expectedRaw !== undefined && raw !== op.expectedRaw) {
+    throw new Error("Offline quarantine changed after the cleanup was planned. It was left untouched.");
+  }
+  inspectNlaResidue(raw);
 }
 
 async function applyOp(op: PurgeOp): Promise<void> {
@@ -631,27 +680,12 @@ async function applyOp(op: PurgeOp): Promise<void> {
     throw new Error(`Cannot purge ${op.key}: unexpected data shape (left untouched).`);
   }
 
-  // residue bucket: remove only provably-NLA contents; keep everything else.
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`Cannot purge ${op.key}: unexpected data shape (left untouched).`);
+  // Every field must be accounted for before the whole bucket can be removed.
+  if (op.expectedRaw !== undefined && rawValue !== op.expectedRaw) {
+    throw new Error("Offline quarantine changed after the cleanup was planned. It was left untouched.");
   }
-  const next: Record<string, any> = { ...value };
-  for (const field of ["recipes", "bakeHistory", "feedHistory", "activeBakes"]) {
-    if (Array.isArray(next[field])) {
-      next[field] = next[field].filter((rec: any) => classifyOwnership(rec) !== "nla");
-      if (next[field].length === 0) delete next[field];
-    }
-  }
-  if (next.activeFeed && typeof next.activeFeed === "object" && classifyOwnership(next.activeFeed) === "nla") delete next.activeFeed;
-  for (const field of ["deletedRecipeIds", "deletedBakeIds", "deletedFeedIds"]) {
-    delete next[field];
-  }
-  const remaining = Object.keys(next).filter((k) => {
-    const v = next[k];
-    return Array.isArray(v) ? v.length > 0 : v !== undefined && v !== null;
-  });
-  if (remaining.length === 0) await AsyncStorage.removeItem(op.key);
-  else await AsyncStorage.setItem(op.key, JSON.stringify(next));
+  inspectNlaResidue(rawValue);
+  await AsyncStorage.removeItem(op.key);
 }
 
 async function verifyOps(ops: PurgeOp[]): Promise<string[]> {
@@ -678,10 +712,7 @@ async function verifyOps(ops: PurgeOp[]): Promise<string[]> {
       );
       if (stillThere.length) problems.push(`${op.key} still holds ${stillThere.length} planned record(s)`);
     } else if (op.kind === "residue") {
-      const nla = ["recipes", "bakeHistory", "feedHistory", "activeBakes"].some(
-        (f) => Array.isArray(value[f]) && value[f].some((rec: any) => classifyOwnership(rec) === "nla")
-      );
-      if (nla) problems.push(`${op.key} still holds NLA records`);
+      problems.push(`${op.key} still present after purge`);
     }
   }
   return problems;
@@ -690,6 +721,7 @@ async function verifyOps(ops: PurgeOp[]): Promise<string[]> {
 /** Applies a plan. The caller MUST hold storageMutex (the transition coordinator does). Journaled and repeatable. */
 export async function applyNlaPurgeLocked(plan: PurgePlan): Promise<void> {
   validatePurgePlan(plan, plan?.mode, false);
+  await verifyResidueBeforePurge(plan.ops);
   const discardAuthorization = plan.mode === "discard"
     ? { kind: "explicit-user-choice", planFingerprint: stableStringify({ mode: plan.mode, createdAt: plan.createdAt, ops: plan.ops }) }
     : null;
@@ -714,6 +746,7 @@ export async function resumePendingNlaPurgeLocked(): Promise<boolean> {
   }
   const plan = journal?.plan as PurgePlan | undefined;
   validatePurgePlan(plan, plan?.mode, true, journal?.discardAuthorization);
+  await verifyResidueBeforePurge(plan.ops);
   for (const op of plan.ops) {
     await applyOp(op);
   }
@@ -811,8 +844,8 @@ export function summarizeInventory(inv: NlaInventory): InventorySummary {
   return {
     records: { recipes: c.recipes, bakes: c.bakeHistory, feeds: c.feedHistory, drafts: c.candidates },
     activeWork: c.activeBakes + c.activeFeed,
-    setAside: c.residue,
-    unresolved: { conflicts: c.conflicts, other: c.foreign + c.malformed + c.unreadable },
+    setAside: c.residue - (inv.residue.byType.recipes ?? 0) - (inv.residue.byType.bakeHistory ?? 0) - (inv.residue.byType.feedHistory ?? 0),
+    unresolved: { conflicts: c.conflicts, other: c.unresolvedTotal - c.conflicts },
     anything: !inventoryIsEmpty(inv),
   };
 }

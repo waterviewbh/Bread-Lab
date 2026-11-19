@@ -48,6 +48,7 @@ export interface ExplicitNlaImport {
 
 export interface MigrateOptions {
   explicitNlaImport?: ExplicitNlaImport;
+  reportUploads?: boolean;
 }
 
 interface LocalFeedSession {
@@ -458,44 +459,25 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
   // -------------------------------------------------------------
   const typeMapping = new Map<string, string>(); // "type:localId" -> targetUuid
 
-  for (const recipe of recipesToMigrate) {
-    const key = `recipe:${recipe.id}`;
-    if (!ledger[key]) {
-      const isAnonymous = explicit ? true : (recipe.userId ?? recipe.user_id) === "anonymous";
-      if (isAnonymous) {
-        // Deterministically allocate a new destination UUID for genuine anonymous recipes
-        // to avoid RLS-blind preflight collisions and guarantee collision safety.
-        ledger[key] = generateSecureUUID();
-      } else {
-        ledger[key] = recipe.id;
-      }
+  const mapDestination = (
+    kind: "recipe" | "bake" | "feed",
+    record: { id: string; userId?: unknown; user_id?: unknown }
+  ) => {
+    const key = `${kind}:${record.id}`;
+    // An account-owned record keeps its ID even if it was once an import source.
+    const owner = record.userId ?? record.user_id;
+    if (!explicit && typeof owner === "string" && owner.trim() === token) {
+      typeMapping.set(key, record.id);
+      return;
     }
+    if (!ledger[key]) ledger[key] = kind === "recipe" ? generateSecureUUID() : record.id;
     typeMapping.set(key, ledger[key]);
-  }
+  };
 
-  for (const bake of bakeHistoryToMigrate) {
-    const key = `bake:${bake.id}`;
-    if (!ledger[key]) {
-      ledger[key] = bake.id;
-    }
-    typeMapping.set(key, ledger[key]);
-  }
-
-  for (const bake of activeBakesToMigrate) {
-    const key = `bake:${bake.id}`;
-    if (!ledger[key]) {
-      ledger[key] = bake.id;
-    }
-    typeMapping.set(key, ledger[key]);
-  }
-
-  for (const feed of feedHistoryToMigrate) {
-    const key = `feed:${feed.id}`;
-    if (!ledger[key]) {
-      ledger[key] = feed.id;
-    }
-    typeMapping.set(key, ledger[key]);
-  }
+  for (const recipe of recipesToMigrate) mapDestination("recipe", recipe);
+  for (const bake of bakeHistoryToMigrate) mapDestination("bake", bake);
+  for (const bake of activeBakesToMigrate) mapDestination("bake", bake);
+  for (const feed of feedHistoryToMigrate) mapDestination("feed", feed);
 
   // Durably persist Pass 1 ledger state before uploading
   try {
@@ -521,7 +503,7 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
   let recipesFailed = 0;
   for (const r of sortedRecipesToMigrate) {
     const key = `recipe:${r.id}`;
-    let targetId = ledger[key];
+    const targetId = typeMapping.get(key)!;
     const ownerVal = r.userId ?? r.user_id ?? "missing";
 
     console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=recipe, localId=${r.id}, targetId=${targetId}, owner=${ownerVal}, name=${r.name}`);
@@ -572,7 +554,7 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
 
   for (const b of allBakes) {
     const key = `bake:${b.id}`;
-    const targetId = ledger[key];
+    const targetId = typeMapping.get(key)!;
     const ownerVal = (b as any).userId ?? (b as any).user_id ?? "missing";
 
     console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=bake, localId=${b.id}, targetId=${targetId}, owner=${ownerVal}, inProgress=${b.inProgress}`);
@@ -632,7 +614,7 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
 
   for (const s of feedHistoryToMigrate) {
     const key = `feed:${s.id}`;
-    const targetId = ledger[key];
+    const targetId = typeMapping.get(key)!;
     const ownerVal = s.userId ?? s.user_id ?? "missing";
 
     console.log(`[BL-DIAG-ASYNC] [Migration] ATTEMPT UPSERT category=feed, localId=${s.id}, targetId=${targetId}, owner=${ownerVal}, inProgress=false`);
@@ -678,7 +660,7 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
     bakes: { ok: bakesOk, failed: bakesFailed, unresolved: unresolvedBakes },
     recipes: { ok: recipesOk, failed: recipesFailed, unresolved: unresolvedRecipes },
   };
-  if (explicit) result.uploads = uploads;
+  if (explicit || options?.reportUploads) result.uploads = uploads;
 
   const totalFailed = feedFailed + bakesFailed + recipesFailed;
   const totalUnresolved = unresolvedFeeds + unresolvedBakes + unresolvedRecipes;

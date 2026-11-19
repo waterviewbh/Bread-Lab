@@ -63,7 +63,7 @@ const ownerFor = (kind: Kind, body: any): string | null => {
 
 export function makeApiModule() {
   const actual = jest.requireActual("../api");
-  const { packBakeOutcome } = actual;
+  const { flattenPhasesForLegacy, packBakeOutcome } = actual;
 
   const note = (name: string) => fakeServer.calls.push(name);
 
@@ -111,13 +111,14 @@ export function makeApiModule() {
             recipe_name: body.recipeName, yield_value: body.yield_value, saved_at: body.savedAt,
             started_at: body.startedAt, completed_at: body.completedAt ?? null, status: body.status ?? null,
             outcome: JSON.parse(JSON.stringify(packBakeOutcome(body.outcome, body.estimatorState, body.bulkCheckInHistory) ?? null)),
-            notes: body.notes ?? null, phases: JSON.parse(JSON.stringify(body.phases ?? [])), in_progress: body.inProgress ?? true,
+            notes: body.notes ?? null, phases: JSON.parse(JSON.stringify(flattenPhasesForLegacy(body.phases))), in_progress: body.inProgress ?? true,
           });
         }),
         delete: jest.fn(async () => { note("bakes.delete"); return true; }),
         verifyAbsent: jest.fn(async () => { note("bakes.verifyAbsent"); return true; }),
         list: jest.fn(async () => { note("bakes.list"); return []; }),
         active: jest.fn(async () => { note("bakes.active"); return null; }),
+        activeForDevice: jest.fn(async () => { note("bakes.activeForDevice"); return null; }),
       },
       feed: {
         upsert: jest.fn((body: any) => {

@@ -86,7 +86,6 @@ const seedWorkspace = () => {
   put(K.feedHist, [{ id: "f-1", userId: "anonymous" }, { id: "f-2" }]);               // one unstamped
   put(K.activeFeed, { id: "af-1", userId: "anonymous" });
   put(K.candAnon, [{ id: "c-1", sharedAt: "2026-02-02T00:00:00.000Z", extractionResult: { s: 1 } }]);
-  put(K.candLegacy, [{ id: "c-2", sharedAt: "2026-02-03T00:00:00.000Z", extractionResult: { s: 2 } }]);
   put(K.tombRecipe, ["r-gone"]);
   put(K.tombFeed, ["f-gone"]);
   put(K.residue, { recipes: [{ id: "old-r", userId: "anonymous" }], bakeHistory: [{ id: "old-b", userId: "anonymous" }] });
@@ -114,12 +113,12 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       const inv = await inventoryNlaWorkspace();
       expect(inv.readable).toBe(true);
       expect(inv.counts).toMatchObject({
-        recipes: 3,        // 1 fixed-name (unstamped) + 2 owner-named
-        bakeHistory: 2,
+        recipes: 4,        // fixed, owner-scoped, and quarantine
+        bakeHistory: 3,
         activeBakes: 1,
         feedHistory: 2,
         activeFeed: 1,
-        candidates: 2,     // legacy global key + anonymous key
+        candidates: 1,     // only the explicitly anonymous bucket
         tombstones: 2,
         residue: 2,
         unstamped: 2,      // r-legacy and f-2
@@ -156,15 +155,16 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       expect(inv.unresolved[0].sources.sort()).toEqual([K.recipesA, K.recipesB].sort());
     });
 
-    it("applies the conflict rule to bakes, feeds and candidates too", async () => {
+    it("detects Bake and Feed conflicts and reports legacy Candidate ownership separately", async () => {
       put(K.bakeHistA, [{ id: "b", recipeName: "One" }]);
       put(K.bakeHistB, [{ id: "b", recipeName: "Two", userId: "anonymous" }]);
       put(K.feedHist, [{ id: "f", n: 1 }, { id: "f", n: 2 }]);
       put(K.candLegacy, [{ id: "c", sharedAt: "x", extractionResult: { a: 1 } }]);
       put(K.candAnon, [{ id: "c", sharedAt: "x", extractionResult: { a: 2 } }]);
       const inv = await inventoryNlaWorkspace();
-      expect(inv.unresolved.filter((u) => u.reason === "conflict").map((u) => u.type).sort()).toEqual(["bakeHistory", "candidates", "feedHistory"]);
-      expect(inv.counts.eligibleTotal).toBe(0);
+      expect(inv.unresolved.filter((u) => u.reason === "conflict").map((u) => u.type).sort()).toEqual(["bakeHistory", "feedHistory"]);
+      expect(inv.unresolved).toContainEqual(expect.objectContaining({ type: "candidates", reason: "unknown-owner" }));
+      expect(inv.counts.eligibleTotal).toBe(1);
     });
 
     it("never treats foreign-owned, conflicting-stamp or malformed records as eligible", async () => {
@@ -188,14 +188,14 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       expect(() => buildPurgePlan(inv, "discard")).toThrow(/unreadable/);
     });
 
-    it("counts older set-aside records separately and leaves foreign contents of the bucket unresolved", async () => {
+    it("blocks quarantine inventory if it contains a foreign record", async () => {
       put(K.residue, {
         recipes: [{ id: "old", userId: "anonymous" }, { id: "other", userId: "acct-3" }],
         deletedFeedIds: ["x", "y"],
       });
       const inv = await inventoryNlaWorkspace();
-      expect(inv.counts.residue).toBe(3); // 1 NLA recipe + 2 queued ids
-      expect(inv.unresolved).toEqual([expect.objectContaining({ type: "residue", reason: "foreign", id: "other" })]);
+      expect(inv.readable).toBe(false);
+      expect(inv.unresolved).toEqual([expect.objectContaining({ type: "residue", reason: "unreadable" })]);
     });
 
     it("classifies ownership stamps correctly", () => {
@@ -273,14 +273,15 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       expect(get(K.bakeHistB)).toEqual([{ id: "bk", recipeName: "Rye", userId: "acct-9" }]);
     });
 
-    it("purges the residue bucket by verified NLA ownership and keeps non-NLA contents", async () => {
+    it("refuses to purge a bucket containing foreign records", async () => {
       put(K.residue, {
         recipes: [{ id: "old", userId: "anonymous" }, { id: "other", userId: "acct-3" }],
         activeFeed: { id: "af", userId: "anonymous" },
       });
       const inv = await inventoryNlaWorkspace();
-      await applyNlaPurgeLocked(authorizeDiscardPlan(buildPurgePlan(inv, "discard")));
-      expect(get(K.residue)).toEqual({ recipes: [{ id: "other", userId: "acct-3" }] });
+      const before = mockStore[K.residue];
+      expect(() => buildPurgePlan(inv, "discard")).toThrow(/unreadable/);
+      expect(mockStore[K.residue]).toBe(before);
     });
 
     it("is repeatable: purging an already-clean device changes nothing", async () => {
@@ -300,10 +301,10 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       seedWorkspace();
       const inv = await inventoryNlaWorkspace();
       const plan = authorizeImportPlan(buildPurgePlan(inv, "import", {
-        recipes: ["r-1", "r-legacy"],          // r-2 was NOT verified
-        bakeHistory: ["b-1", "b-2"],
+        recipes: ["r-1", "r-legacy", "old-r"],          // r-2 was NOT verified
+        bakeHistory: ["b-1", "b-2", "old-b"],
         feedHistory: ["f-1", "f-2"],
-        candidates: ["c-1", "c-2"],
+        candidates: ["c-1"],
       }));
       await applyNlaPurgeLocked(plan);
 
@@ -313,6 +314,19 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       expect(mockStore[K.activeFeed]).toBeUndefined();
       expect(mockStore[K.tombRecipe]).toBeUndefined();
       expect(mockStore[K.residue]).toBeUndefined();
+    });
+
+    it("does not purge a quarantine bucket that changed after verification", async () => {
+      put(K.residue, { recipes: [{ id: "verified", userId: "anonymous" }] });
+      const inv = await inventoryNlaWorkspace();
+      const plan = authorizeImportPlan(buildPurgePlan(inv, "import", {
+        recipes: ["verified"], bakeHistory: [], feedHistory: [], candidates: [],
+      }));
+      put(K.residue, { recipes: [{ id: "added-later", userId: "anonymous" }] });
+      const changed = mockStore[K.residue];
+      await expect(applyNlaPurgeLocked(plan)).rejects.toThrow(/quarantine changed/);
+      expect(mockStore[K.residue]).toBe(changed);
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();
     });
 
     it("refuses to build an import purge without the verified id sets", async () => {
@@ -410,8 +424,7 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
       seedWorkspace();
       const text = describeInventory(summarizeInventory(await inventoryNlaWorkspace()));
       expect(text).toBe(
-        "This device has 3 recipes, 2 bakes in your history, 2 feeds in your history, 2 recipe drafts that are not in an account. " +
-        "Also found: 2 older records set aside from earlier sign-ins."
+        "This device has 4 recipes, 3 bakes in your history, 2 feeds in your history, 1 recipe draft that are not in an account."
       );
       expect(text).not.toMatch(/anonymous|lost|warning|permanent|discard/i);
     });

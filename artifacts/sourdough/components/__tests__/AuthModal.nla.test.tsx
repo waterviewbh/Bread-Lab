@@ -79,6 +79,7 @@ describe("AuthModal: NLA -> account choice screen", () => {
     fakeServer.reset();
     setCoordinatorState("IDLE");
     jest.clearAllMocks();
+    jest.mocked(api.auth.getSession).mockReset().mockResolvedValue({ data: { session: null }, error: null });
     onClose = jest.fn();
     onAuthChange = jest.fn();
     (api.auth.identify as jest.Mock).mockResolvedValue({ token: TOKEN, user: USER });
@@ -91,6 +92,89 @@ describe("AuthModal: NLA -> account choice screen", () => {
     cleanup();
     await new Promise((r) => setTimeout(r, 0));
     jest.restoreAllMocks();
+  });
+
+  it.each([
+    { data: { session: null }, error: new Error("lookup failed") },
+    { data: {}, error: null },
+    { data: { session: { user: {} } }, error: null },
+  ])("blocks identification when the remote session cannot be verified", async response => {
+    seedRecords();
+    const before = { ...mockStore };
+    jest.mocked(api.auth.getSession).mockResolvedValueOnce(response as any);
+    await submitIdentification();
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Identification Failed", expect.stringMatching(/Couldn’t verify/)));
+    expect(api.auth.identify).not.toHaveBeenCalled();
+    expect(api.auth.signout).not.toHaveBeenCalled();
+    expect(mockStore).toEqual(before);
+  });
+
+  it("stops sign-out sync if the session becomes unverifiable before the upload", async () => {
+    put("bread_lab_auth_user_v1", USER);
+    mockStore["bread_lab_auth_token_v1"] = TOKEN;
+    put(`bread_lab_recipes_v1_${TOKEN}`, [{ id: "r-1", userId: TOKEN, name: "Loaf", phases }]);
+    const before = { ...mockStore };
+    jest.mocked(api.auth.getSession)
+      .mockResolvedValueOnce({ data: { session: { user: { id: TOKEN } } }, error: null } as any)
+      .mockResolvedValueOnce({ data: { session: null }, error: new Error("lookup failed") } as any);
+    await render(<AuthModal visible currentUser={USER} onClose={onClose} onAuthChange={onAuthChange} />);
+    await fireEvent.press(screen.getByText("Sign Out / Remove Name"));
+    const confirm = alertSpy.mock.calls.find(([title]) => title === "Sign out?")?.[2]?.find((button: any) => button.text === "Sign out");
+    if (!confirm?.onPress) throw new Error("Sign-out confirmation was not shown");
+    await confirm.onPress();
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Sign-out failed", expect.stringMatching(/Couldn’t verify/)));
+    expect(api.recipes.upsert).not.toHaveBeenCalled();
+    expect(api.auth.signout).not.toHaveBeenCalled();
+    expect(mockStore).toEqual(before);
+  });
+
+  it.each(["missing", "mismatched", "unavailable"] as const)("keeps the account and local work when sign-out read-back is %s", async failure => {
+    put("bread_lab_auth_user_v1", USER);
+    mockStore["bread_lab_auth_token_v1"] = TOKEN;
+    const recipeKey = `bread_lab_recipes_v1_${TOKEN}`;
+    const bakeKey = `bread_lab_bake_history_v1_${TOKEN}`;
+    const feedKey = "sourdough_feed_history_v1";
+    put(recipeKey, [{ id: "r", userId: TOKEN, name: "Loaf", phases }]);
+    put(bakeKey, [{ id: "b", userId: TOKEN, recipeId: "r", recipeName: "Loaf", savedAt: 2, startedAt: 1, phases }]);
+    put(feedKey, [{ id: "f", userId: TOKEN, savedAt: 3, readings: [] }]);
+    const local = { ...mockStore };
+    if (failure === "missing") fakeServer.dropUpsert = kind => kind === "recipe";
+    if (failure === "mismatched") fakeServer.corruptRow = (kind, row) =>
+      kind === "bake" ? { ...row, phases: [] } : row;
+    if (failure === "unavailable") fakeServer.fetchError = new Error("read-back unavailable");
+
+    await render(<AuthModal visible currentUser={USER} onClose={onClose} onAuthChange={onAuthChange} />);
+    const signOut = async () => {
+      const session = { data: { session: { user: { id: TOKEN } } }, error: null } as any;
+      jest.mocked(api.auth.getSession).mockResolvedValueOnce(session).mockResolvedValueOnce(session);
+      await fireEvent.press(screen.getByText("Sign Out / Remove Name"));
+      const confirm = alertSpy.mock.calls.filter(([title]) => title === "Sign out?").at(-1)?.[2]?.find((button: any) => button.text === "Sign out");
+      if (!confirm?.onPress) throw new Error("Sign-out confirmation was not shown");
+      await confirm.onPress();
+    };
+
+    await signOut();
+    expect(alertSpy).toHaveBeenCalledWith("Sign-out failed", expect.stringMatching(/couldn’t verify your saved work/));
+    expect(api.recipes.upsert).toHaveBeenCalled();
+    expect(api.auth.signout).not.toHaveBeenCalled();
+    expect(onAuthChange).not.toHaveBeenCalled();
+    for (const key of [recipeKey, bakeKey, feedKey, "bread_lab_auth_token_v1", "bread_lab_auth_user_v1"]) {
+      expect(mockStore[key]).toBe(local[key]);
+    }
+    expect(mockStore["bread_lab_pending_account_signout_v1"]).toBeUndefined();
+
+    fakeServer.dropUpsert = null;
+    fakeServer.corruptRow = null;
+    fakeServer.fetchError = null;
+    await signOut();
+    expect(api.auth.signout).toHaveBeenCalledTimes(1);
+    expect(onAuthChange).toHaveBeenCalledWith(null);
+    expect(mockStore[recipeKey]).toBeUndefined();
+    expect(mockStore[bakeKey]).toBeUndefined();
+    expect(mockStore[feedKey]).toBeUndefined();
+    expect(fakeServer.tables.recipe.size).toBe(1);
+    expect(fakeServer.tables.bake.size).toBe(1);
+    expect(fakeServer.tables.feed.size).toBe(1);
   });
 
   describe("choice screen visibility", () => {

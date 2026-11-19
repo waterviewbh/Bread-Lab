@@ -10,6 +10,20 @@
 // and the closing is CONFIRMED by looking again. If that cannot be confirmed, the caller must stop.
 import { api } from "./api";
 
+export async function getVerifiedRemoteSessionOwner(): Promise<string | null> {
+  const message = "Couldn’t verify your account session. Check your connection and try again.";
+  const result = await api.auth.getSession().catch(() => { throw new Error(message); });
+  if (result?.error != null || !result?.data ||
+      !Object.prototype.hasOwnProperty.call(result.data, "session")) {
+    throw new Error(message);
+  }
+  const session = result.data.session;
+  if (session === null) return null;
+  const owner = session?.user?.id;
+  if (typeof owner !== "string" || !owner.trim() || owner !== owner.trim()) throw new Error(message);
+  return owner;
+}
+
 export class OrphanRemoteSessionError extends Error {
   constructor() {
     super("An earlier account session is still open on this device and could not be closed, so nothing was changed. Check your connection and try again.");
@@ -27,9 +41,7 @@ export async function closeOrphanRemoteSession(): Promise<void> {
   // Success means "no session now", not "the call returned".
   let remaining: unknown = null;
   try {
-    const res = await api.auth.getSession();
-    if (res?.error) throw res.error;
-    remaining = res?.data?.session ?? null;
+    remaining = await getVerifiedRemoteSessionOwner();
   } catch {
     throw new OrphanRemoteSessionError();
   }

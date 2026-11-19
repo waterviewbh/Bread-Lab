@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { APP_STORAGE_KEYS } from "./storageUtils";
-import { resumePendingNlaPurge } from "./nlaWorkspace";
-import { hasPendingNlaActiveRecovery, recoverTransition } from "./transitionCoordinator";
+import { hasPendingNlaRecovery, recoverTransition } from "./transitionCoordinator";
 
 const CURRENT_SCHEMA_VERSION = 2;
 
@@ -27,10 +26,8 @@ export async function runSchemaMigrations(): Promise<void> {
   // Crash recovery: if the app stopped part-way through cleaning up the offline workspace after a verified
   // import (or an explicit discard), finish exactly the journaled work. A no-op when there is no journal.
   try {
-    if (await hasPendingNlaActiveRecovery()) {
+    if (await hasPendingNlaRecovery()) {
       await recoverTransition();
-    } else {
-      await resumePendingNlaPurge();
     }
   } catch (error) {
     console.error("[Migration] Could not finish an interrupted offline-workspace cleanup", error);

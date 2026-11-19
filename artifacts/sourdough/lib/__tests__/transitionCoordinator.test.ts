@@ -25,6 +25,52 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     return { nlaDisposition: { mode: "discard" as const, plan, snapshotRaw: inventory.raw } };
   };
 
+  it("parks verified account transit data and restores it to its canonical keys on return", async () => {
+    const owner = "user-A";
+    const recipeKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, owner);
+    const bakeKey = getOwnerStorageKey(APP_STORAGE_KEYS.BAKE_HISTORY, owner);
+    const otherKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, "user-B");
+    const recipe = [{ id: "recipe-A", userId: owner, name: "Loaf", phases: [] }];
+    const bake = [{ id: "bake-A", userId: owner, recipeId: "recipe-A", recipeName: "Loaf", savedAt: 2, startedAt: 1, phases: [] }];
+    await AsyncStorage.setItem(recipeKey, JSON.stringify(recipe));
+    await AsyncStorage.setItem(bakeKey, JSON.stringify(bake));
+    await AsyncStorage.setItem(otherKey, JSON.stringify([{ id: "other", userId: "user-B" }]));
+    const other = await AsyncStorage.getItem(otherKey);
+    jest.spyOn(api.history.bakes, "activeForDevice").mockResolvedValue(null);
+    const uploadRecipe = jest.spyOn(api.recipes, "upsert").mockResolvedValue({} as any);
+    const uploadBake = jest.spyOn(api.history.bakes, "upsert").mockResolvedValue({} as any);
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    jest.spyOn(api.auth, "getSession").mockImplementation(async () => {
+      expect(await AsyncStorage.getItem(recipeKey)).toBe(JSON.stringify(recipe));
+      expect(await AsyncStorage.getItem(bakeKey)).toBe(JSON.stringify(bake));
+      return { data: { session: null }, error: null } as any;
+    });
+
+    await executeWorkspaceTransition(owner, null, null, null, {
+      activeFeedAcknowledged: true,
+      closeRemoteSession: true,
+      beforeTransition: async () => {
+        const result = await migrateLocalDataToAccount(owner);
+        expect(result.recipes.ok).toBe(1);
+        expect(result.bakes.ok).toBe(1);
+      },
+    });
+    expect(uploadRecipe).toHaveBeenCalledWith(expect.objectContaining({ id: "recipe-A", userId: owner }));
+    expect(uploadBake).toHaveBeenCalledWith(expect.objectContaining({ id: "bake-A", userId: owner }));
+    expect(await AsyncStorage.getItem(recipeKey)).toBeNull();
+    expect(await AsyncStorage.getItem(bakeKey)).toBeNull();
+    expect(JSON.parse((await AsyncStorage.getItem(QUARANTINE_KEY(owner)))!)).toMatchObject({
+      scopedRecipes: recipe, scopedBakeHistory: bake,
+    });
+
+    await executeWorkspaceTransition(null, owner, owner, { id: owner, firstName: "A", starterName: "S" }, await explicitDiscard());
+    expect(await AsyncStorage.getItem(recipeKey)).toBe(JSON.stringify(recipe));
+    expect(await AsyncStorage.getItem(bakeKey)).toBe(JSON.stringify(bake));
+    expect(await AsyncStorage.getItem(APP_STORAGE_KEYS.RECIPES)).toBeNull();
+    expect(await AsyncStorage.getItem(otherKey)).toBe(other);
+    expect(JSON.parse((await AsyncStorage.getItem(QUARANTINE_KEY(owner)))!)).not.toHaveProperty("scopedRecipes");
+  });
+
   it("validates ownership correctly rejecting ownerless records", () => {
     const validRec = { id: "1", userId: "user-1", name: "Bread" };
     const invalidRec1 = { id: "2", userId: "", name: "Bad" };

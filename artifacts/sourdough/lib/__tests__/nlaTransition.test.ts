@@ -64,9 +64,8 @@ const seedNla = () => {
   put("sourdough_feed_history_v1", [{ id: "f-1", userId: "anonymous", savedAt: 5, readings: [] }]);
   put("sourdough_feed_session_v1", { id: "af-1", userId: "anonymous", savedAt: 7 });
   put("bread_lab_candidates_v1_anonymous", [{ id: "c-1", sharedAt: "2026-02-02T00:00:00.000Z", extractionResult: { s: 1 } }]);
-  put("bread_lab_candidates_v1", [{ id: "c-2", sharedAt: "2026-02-03T00:00:00.000Z", extractionResult: { s: 2 } }]);
   put("bread_lab_deleted_feed_ids_v1_anonymous", ["gone"]);
-  put("bread_lab_quarantine_anonymous", { recipes: [{ id: "old", userId: "anonymous" }] });
+  put("bread_lab_quarantine_anonymous", { recipes: [{ id: "old", name: "Parked Recipe", userId: "anonymous", phases }] });
 };
 
 // Everything that belongs to ANOTHER account (or to nobody): must survive every transition untouched.
@@ -141,6 +140,100 @@ describe("NLA -> account transition (real coordinator)", () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  it.each(["import", "discard"] as const)("blocks %s before mutation when a legacy Candidate has unknown ownership", async mode => {
+    seedNla();
+    put("bread_lab_candidates_v1", [{ id: "legacy-candidate", extractionResult: {} }]);
+    const before = { ...mockStore };
+    const inventory = await inventoryNlaWorkspace();
+    expect(inventory.eligible.candidates.map(candidate => candidate.id)).toEqual(["c-1"]);
+    expect(inventory.unresolved).toContainEqual(expect.objectContaining({
+      id: "legacy-candidate", reason: "unknown-owner", sources: ["bread_lab_candidates_v1"],
+    }));
+
+    const { authorizeNlaTransitionIntent } = require("../nlaWorkspace");
+    const intent = authorizeNlaTransitionIntent(mode, inventory.raw);
+    const prepareIncoming = jest.fn();
+    await expect(executeWorkspaceTransition(null, null, null, null, {
+      nlaTransitionIntent: intent, prepareIncoming, activeFeedAcknowledged: true,
+    })).rejects.toThrow(/no confirmed workspace owner/);
+    expect(prepareIncoming).not.toHaveBeenCalled();
+
+    if (mode === "import") {
+      const result = await importNlaWorkspace(TOKEN);
+      expect(result.report.ok).toBe(false);
+      expect(result.purgePlan).toBeNull();
+    }
+    expect(fakeServer.calls).toEqual([]);
+    expect(mockStore).toEqual(before);
+    expect(getCoordinatorState()).toBe("IDLE");
+  });
+
+  it.each([
+    { recipes: "unexpected malformed content" },
+    { unknownField: [] },
+    { activeFeed: [] },
+    { deletedFeedIds: [null] },
+    { bakeHistory: [{ id: "ownerless" }] },
+  ])("blocks both sign-in choices when offline quarantine cannot be accounted for (%j)", async residue => {
+    seedNla();
+    put("bread_lab_quarantine_anonymous", residue);
+    const before = { ...mockStore };
+    const inventory = await inventoryNlaWorkspace();
+    expect(inventory.readable).toBe(false);
+    expect(inventory.unresolved).toContainEqual(expect.objectContaining({ type: "residue" }));
+
+    for (const mode of ["import", "discard"] as const) {
+      const { authorizeNlaTransitionIntent } = require("../nlaWorkspace");
+      const prepareIncoming = jest.fn();
+      await expect(executeWorkspaceTransition(null, null, null, null, {
+        nlaTransitionIntent: authorizeNlaTransitionIntent(mode, inventory.raw),
+        prepareIncoming, activeFeedAcknowledged: true,
+      })).rejects.toThrow(/offline quarantine/);
+      expect(prepareIncoming).not.toHaveBeenCalled();
+    }
+    expect((await importNlaWorkspace(TOKEN)).purgePlan).toBeNull();
+    expect(fakeServer.calls).toEqual([]);
+    expect(mockStore).toEqual(before);
+  });
+
+  it("imports quarantine-only completed work and preserves it until remote verification succeeds", async () => {
+    const key = "bread_lab_quarantine_anonymous";
+    put(key, {
+      recipes: [{ id: "parked-recipe", userId: "anonymous", name: "Parked Loaf", phases }],
+      bakeHistory: [{ id: "parked-bake", userId: "anonymous", recipeId: "parked-recipe", recipeName: "Parked Loaf", savedAt: 2, startedAt: 1, phases }],
+      feedHistory: [{ id: "parked-feed", userId: "anonymous", savedAt: 3 }],
+    });
+    const original = mockStore[key];
+    fakeServer.dropUpsert = kind => kind === "recipe";
+    const failed = await importNlaWorkspace(TOKEN);
+    expect(failed.report.ok).toBe(false);
+    expect(failed.purgePlan).toBeNull();
+    expect(mockStore[key]).toBe(original);
+    expect(mockStore.bread_lab_auth_token_v1).toBeUndefined();
+
+    fakeServer.dropUpsert = null;
+    await runTransition("import");
+    expect(mockStore[key]).toBeUndefined();
+    expect(mockStore.bread_lab_auth_token_v1).toBe(TOKEN);
+    const [recipe] = [...fakeServer.tables.recipe.values()];
+    expect(recipe).toMatchObject({ name: "Parked Loaf", user_id: TOKEN });
+    expect(fakeServer.tables.bake.get("parked-bake")).toMatchObject({ recipe_id: recipe.id, user_id: TOKEN });
+    expect(fakeServer.tables.feed.get("parked-feed")).toMatchObject({ user_id: TOKEN });
+  });
+
+  it("blocks import before upload when a quarantine Recipe conflicts with a live copy", async () => {
+    const key = "bread_lab_quarantine_anonymous";
+    put(key, { recipes: [{ id: "shared-id", userId: "anonymous", name: "Parked Loaf", phases }] });
+    put("bread_lab_recipes_v1_anonymous", [{ id: "shared-id", userId: "anonymous", name: "Different Loaf", phases }]);
+    const before = { ...mockStore };
+
+    const result = await importNlaWorkspace(TOKEN);
+    expect(result.report.ok).toBe(false);
+    expect(result.inventory.unresolved).toContainEqual(expect.objectContaining({ type: "residue", reason: "conflict" }));
+    expect(fakeServer.calls).toEqual([]);
+    expect(mockStore).toEqual(before);
+  });
+
   describe.each(["import", "discard"] as const)("%s: the device is left clean and nothing else is disturbed", (mode) => {
     it("removes the whole NLA workspace from BOTH cabinets, signs in, and leaves every other key byte-for-byte unchanged", async () => {
       seedNla();
@@ -197,10 +290,10 @@ describe("NLA -> account transition (real coordinator)", () => {
     it("the account really has the data: recipes, bakes, feeds uploaded and drafts re-homed (not promoted, not uploaded)", async () => {
       seedNla();
       await runTransition("import");
-      expect(fakeServer.tables.recipe.size).toBe(2);
+      expect(fakeServer.tables.recipe.size).toBe(3);
       expect(fakeServer.tables.bake.size).toBe(2);
       expect(fakeServer.tables.feed.size).toBe(1);
-      expect(get(candidatesKeyFor(TOKEN)).map((c: any) => c.id).sort()).toEqual(["c-1", "c-2"]);
+      expect(get(candidatesKeyFor(TOKEN)).map((c: any) => c.id).sort()).toEqual(["c-1"]);
     });
   });
 
@@ -269,6 +362,34 @@ describe("NLA -> account transition (real coordinator)", () => {
   });
 
   describe("crash safety and recovery", () => {
+    it("blocks a fresh transition and recovers an interrupted purge without an active-work snapshot", async () => {
+      const { recoverTransition } = require("../transitionCoordinator");
+      put("bread_lab_candidates_v1_anonymous", [{ id: "draft", extractionResult: {} }]);
+      put("bread_lab_quarantine_anonymous", { recipes: [{ id: "parked", userId: "anonymous" }] });
+      mockFailRemoveKey = "bread_lab_quarantine_anonymous";
+      await expect(runTransition("discard")).rejects.toThrow("simulated crash");
+      const journal = mockStore[NLA_PURGE_JOURNAL_KEY];
+      expect(journal).toBeDefined();
+      expect(mockStore["bread_lab_pending_nla_active_snapshot_v1"]).toBeUndefined();
+
+      setCoordinatorState("IDLE"); // A new process has only the durable journal.
+      const beforeTransition = jest.fn();
+      await expect(runTransition("discard", { beforeTransition })).rejects.toThrow(/recovery required/i);
+      expect(beforeTransition).not.toHaveBeenCalled();
+      expect(await recoverTransition()).toMatchObject({ localClear: false });
+      expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBe(journal);
+      expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();
+
+      mockFailRemoveKey = null;
+      expect(await recoverTransition()).toEqual({ remoteSignout: true, localClear: true });
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();
+      expectNoNlaWorkspaceLeft();
+      expect(getCoordinatorState()).toBe("IDLE");
+      await runTransition("discard");
+      expect(mockStore["bread_lab_auth_token_v1"]).toBe(TOKEN);
+    });
+
     it("a crash part-way through the purge preserves active NLA work through startup recovery", async () => {
       seedNla();
       seedOthers();
@@ -324,7 +445,7 @@ describe("NLA -> account transition (real coordinator)", () => {
       ).rejects.toThrow();
 
       expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();   // still NLA, but the verified records live in the account
-      expect(fakeServer.tables.recipe.size).toBe(2);
+      expect(fakeServer.tables.recipe.size).toBe(3);
       expect(fakeServer.tables.bake.size).toBe(2);
       expect(get("bread_lab_bake_v2_anonymous").map((b: any) => b.id)).toEqual(["ab-1"]);
       expect(get("sourdough_feed_session_v1").id).toBe("af-1");
@@ -334,7 +455,7 @@ describe("NLA -> account transition (real coordinator)", () => {
       setCoordinatorState("IDLE");
       await expect(runTransition("import")).resolves.toBeUndefined();
       expect(mockStore["bread_lab_auth_token_v1"]).toBe(TOKEN);
-      expect(fakeServer.tables.recipe.size).toBe(2); // no duplicates from the second pass
+      expect(fakeServer.tables.recipe.size).toBe(3); // no duplicates from the second pass
     });
   });
 

@@ -25,6 +25,7 @@ import {
   resumePendingNlaPurgeLocked,
   NLA_PURGE_JOURNAL_KEY,
   inventoryNlaWorkspace,
+  assertLegacyCandidateOwnership,
   NLA_SCOPE,
   snapshotProtectedKeys,
   verifyNlaCleanliness,
@@ -125,6 +126,11 @@ export async function hasPendingNlaActiveRecovery(): Promise<boolean> {
   return (await AsyncStorage.getItem(NLA_ACTIVE_SNAPSHOT_KEY)) !== null;
 }
 
+export async function hasPendingNlaRecovery(): Promise<boolean> {
+  return await hasPendingNlaActiveRecovery() ||
+    (await AsyncStorage.getItem(NLA_PURGE_JOURNAL_KEY)) !== null;
+}
+
 export function setCoordinatorState(state: CoordinatorState): void {
   console.log(`[TransitionCoordinator] State transition: ${currentState} -> ${state}`);
   currentState = state;
@@ -217,7 +223,7 @@ export async function executeWorkspaceTransition(
 ): Promise<void> {
   return storageMutex.run(async () => {
     if (currentState === "RECOVERY_REQUIRED" || await readSignoutMarker() ||
-        await AsyncStorage.getItem(NLA_ACTIVE_SNAPSHOT_KEY) !== null) {
+        await hasPendingNlaRecovery()) {
       setCoordinatorState("RECOVERY_REQUIRED");
       throw new Error("Transition refused: recovery required due to an incomplete previous transition. Please reconcile session first.");
     }
@@ -243,6 +249,13 @@ export async function executeWorkspaceTransition(
     const hasIncomingAuth = incomingOwnerId !== null || deferredNlaLogin;
     if (outgoingIsNla && hasIncomingAuth && !disposition && !intent) {
       throw new Error("Workspace transition refused: an explicit Import or Discard choice is required for the offline workspace.");
+    }
+    if (outgoingIsNla && hasIncomingAuth) {
+      const inventory = await inventoryNlaWorkspace();
+      assertLegacyCandidateOwnership(inventory);
+      if (inventory.unresolved.some(item => item.type === "residue")) {
+        throw new Error("Some offline quarantine data couldn’t be verified. It was left on this device. Sign-in is blocked.");
+      }
     }
     if (disposition) {
       validatePurgePlan(disposition.plan, disposition.mode);
@@ -486,13 +499,16 @@ export async function recoverTransition(): Promise<TransitionRecoveryResult> {
       } catch (error) {
         console.error(`[TransitionCoordinator] Account sign-out recovery remains incomplete:`, error);
       }
-    } else if (await hasPendingNlaActiveRecovery()) {
+    } else if (await hasPendingNlaRecovery()) {
       try {
         await closeAndVerifyRemoteSession();
         remoteSignout = true;
         // Finish the already authorized, journaled finished-record purge, then restore
         // the original unfinished work into NLA before clearing credentials.
         await resumePendingNlaPurgeLocked();
+        if (await AsyncStorage.getItem(NLA_PURGE_JOURNAL_KEY) !== null) {
+          throw new Error("Offline cleanup journal removal could not be verified");
+        }
         await restoreNlaActiveSnapshot();
         await clearAuth();
         await clearNlaActiveSnapshot();
@@ -515,8 +531,8 @@ export async function recoverTransition(): Promise<TransitionRecoveryResult> {
       }
     }
 
-    if (remoteSignout && localClear && !(await readSignoutMarker()) &&
-        !(await hasPendingNlaActiveRecovery())) {
+    const pendingNlaRecovery = await hasPendingNlaRecovery();
+    if (remoteSignout && localClear && !(await readSignoutMarker()) && !pendingNlaRecovery) {
       setCoordinatorState("IDLE");
       console.log(`[TransitionCoordinator] Recovery verified local and remote cleanup; state reset to IDLE.`);
     } else {
@@ -524,6 +540,6 @@ export async function recoverTransition(): Promise<TransitionRecoveryResult> {
       console.warn(`[TransitionCoordinator] Recovery remains required (remoteSignout=${remoteSignout}, localClear=${localClear}).`);
     }
 
-    return { remoteSignout, localClear };
+    return { remoteSignout, localClear: localClear && !pendingNlaRecovery };
   });
 }

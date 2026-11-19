@@ -14,7 +14,7 @@ import type { SessionForAnalytics, StarterAnalytics } from "./analytics";
  * flattenPhasesForLegacy — Converts rich CheckableLine arrays back into
  * newline-separated strings so older app versions don't crash.
  */
-function flattenPhasesForLegacy(phases: any[]): any[] {
+export function flattenPhasesForLegacy(phases: any[]): any[] {
   if (!Array.isArray(phases)) return [];
 
   return phases.map(p => {
@@ -66,7 +66,7 @@ export type ApiRecipe = {
   yield_value: number;
   total_flour_g?: number;
   hydration_pct?: number;
-  parent_recipe_id?: string;
+  parent_recipe_id?: string | null;
   version_label?: string;
   isArchived?: boolean;
   diagnosticHypothesis?: string;
@@ -216,7 +216,7 @@ function rowToApiRecipe(r: RecipeRow): ApiRecipe {
     yield_value: r.yield_value,
     total_flour_g: r.total_flour_g,
     hydration_pct: r.hydration_pct,
-    parent_recipe_id: r.parent_recipe_id ?? undefined,
+    parent_recipe_id: r.parent_recipe_id,
     version_label: r.version_label ?? undefined,
     isArchived: r.is_archived,
     diagnosticHypothesis: r.recipe_data?.diagnosticHypothesis ?? undefined,

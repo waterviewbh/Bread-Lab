@@ -503,6 +503,8 @@ export const QUARANTINE_KEY = (ownerId: string) => `bread_lab_quarantine_${owner
 export const UNKNOWN_QUARANTINE_KEY = "bread_lab_quarantine_unknown";
 
 interface QuarantinedStore {
+  scopedRecipes?: any[];
+  scopedBakeHistory?: any[];
   recipes?: any[];
   bakeHistory?: any[];
   feedHistory?: any[];
@@ -585,6 +587,14 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     return store as QuarantinedStore;
   }
 
+  const scopedStores = departingUserId && departingUserId !== "anonymous" ? [
+    { field: "scopedRecipes" as const, key: getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, departingUserId) },
+    { field: "scopedBakeHistory" as const, key: getOwnerStorageKey(APP_STORAGE_KEYS.BAKE_HISTORY, departingUserId) },
+  ] : [];
+  const scopedRecords = await Promise.all(scopedStores.map(async ({ key, field }) => ({
+    field,
+    records: validateOwnedQuarantineRecords(JSON.parse(await AsyncStorage.getItem(key) ?? "[]"), departingUserId!, key),
+  })));
   const recipes = parseOrThrow(recipeRaw, "recipe record");
   const bakes = parseOrThrow(bakeHistRaw, "bake history");
   const feeds = parseOrThrow(feedHistRaw, "feed history");
@@ -635,6 +645,10 @@ export async function quarantineOperationalData(departingUserId?: string | null)
   if (delBakes.length > 0) addToBucket(tombstoneOwner, "deletedBakeIds", delBakes);
   if (delFeeds.length > 0) addToBucket(tombstoneOwner, "deletedFeedIds", delFeeds);
 
+  for (const { field, records } of scopedRecords) {
+    if (records.length) addToBucket(departingUserId!, field, records);
+  }
+
   for (const [ownerKey, bucketStore] of ownerBuckets.entries()) {
     const qKey = ownerKey === "unknown" ? UNKNOWN_QUARANTINE_KEY : QUARANTINE_KEY(ownerKey);
     let existing: QuarantinedStore = {};
@@ -663,6 +677,13 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     };
 
     const mergedQ: QuarantinedStore = {
+      ...existing,
+      scopedRecipes: bucketStore.scopedRecipes
+        ? mergeList(bucketStore.scopedRecipes, validateOwnedQuarantineRecords(existing.scopedRecipes ?? [], ownerKey, qKey))
+        : existing.scopedRecipes,
+      scopedBakeHistory: bucketStore.scopedBakeHistory
+        ? mergeList(bucketStore.scopedBakeHistory, validateOwnedQuarantineRecords(existing.scopedBakeHistory ?? [], ownerKey, qKey))
+        : existing.scopedBakeHistory,
       recipes: mergeList(existing.recipes, bucketStore.recipes),
       bakeHistory: mergeList(existing.bakeHistory, bucketStore.bakeHistory),
       feedHistory: mergeList(existing.feedHistory, bucketStore.feedHistory),
@@ -705,7 +726,25 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     APP_STORAGE_KEYS.DELETED_FEED_IDS,
   ]);
 
+  for (const { key } of scopedStores) {
+    await AsyncStorage.removeItem(key);
+    if (await AsyncStorage.getItem(key) !== null) {
+      throw new Error(`Quarantine could not verify removal of ${key}.`);
+    }
+  }
+
   console.log(`[BL-DIAG] [Quarantine] ownership-aware quarantineOperationalData completed successfully.`);
+}
+
+function validateOwnedQuarantineRecords(value: unknown, owner: string, key: string): any[] {
+  if (!Array.isArray(value) || value.some(record =>
+    !record || typeof record.id !== "string" || !record.id.trim() ||
+    (record.userId ?? record.user_id) !== owner ||
+    (record.userId != null && record.user_id != null && record.userId !== record.user_id)
+  )) {
+    throw new Error(`Cannot verify the ownership or shape of records at ${key}.`);
+  }
+  return value;
 }
 
 export async function restoreOperationalData(incomingUserId: string): Promise<void> {
@@ -730,6 +769,33 @@ export async function restoreOperationalData(incomingUserId: string): Promise<vo
         await AsyncStorage.setItem(storageKey, JSON.stringify(merged));
       }
     };
+
+    const scopedRestore = [
+      { field: "scopedRecipes" as const, baseKey: APP_STORAGE_KEYS.RECIPES },
+      { field: "scopedBakeHistory" as const, baseKey: APP_STORAGE_KEYS.BAKE_HISTORY },
+    ];
+    const writes = await Promise.all(scopedRestore.flatMap(({ field, baseKey }) => {
+      if (storedQ[field] === undefined) return [];
+      return [(async () => {
+        const key = getOwnerStorageKey(baseKey, incomingUserId);
+        const parked = validateOwnedQuarantineRecords(storedQ[field], incomingUserId, qKey);
+        const existing = validateOwnedQuarantineRecords(
+          JSON.parse(await AsyncStorage.getItem(key) ?? "[]"), incomingUserId, key
+        );
+        const existingIds = new Set(existing.map(record => record.id));
+        return { field, key, data: JSON.stringify([...existing, ...parked.filter(record => !existingIds.has(record.id))]) };
+      })()];
+    }));
+    for (const { key, data } of writes) {
+      await AsyncStorage.setItem(key, data);
+      if (await AsyncStorage.getItem(key) !== data) throw new Error(`Restore verification failed for ${key}.`);
+    }
+    if (writes.length) {
+      for (const { field } of writes) delete storedQ[field];
+      const remaining = JSON.stringify(storedQ);
+      await AsyncStorage.setItem(qKey, remaining);
+      if (await AsyncStorage.getItem(qKey) !== remaining) throw new Error("Quarantine update could not be verified.");
+    }
 
     await restoreListKey(APP_STORAGE_KEYS.RECIPES, storedQ.recipes);
     await restoreListKey(APP_STORAGE_KEYS.BAKE_HISTORY, storedQ.bakeHistory);

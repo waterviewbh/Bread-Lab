@@ -11,7 +11,7 @@
 // intact. Retrying is idempotent (the import ledger keeps destination ids stable; candidate re-homing treats
 // identical drafts as already imported).
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { api, packBakeOutcome } from "./api";
+import { api, flattenPhasesForLegacy, packBakeOutcome } from "./api";
 import {
   migrateLocalDataToAccount,
   setMigrationPending,
@@ -22,6 +22,7 @@ import {
 } from "./migrate";
 import {
   inventoryNlaWorkspace,
+  assertLegacyCandidateOwnership,
   resumePendingNlaPurge,
   resumePendingNlaPurgeLocked,
   buildPurgePlan,
@@ -112,17 +113,8 @@ export function compareCriticalFields(kind: "recipe" | "bake" | "feed", payload:
     check("notes", sameVal(row.notes, payload.notes));
     check("in_progress", (row.in_progress ?? false) === (payload.inProgress ?? true));
     check("outcome", sameJson(row.outcome, packBakeOutcome(payload.outcome, payload.estimatorState, payload.bulkCheckInHistory)));
-    const sent: any[] = Array.isArray(payload.phases) ? payload.phases : [];
-    const stored: any[] = Array.isArray(row.phases) ? row.phases : [];
-    let phasesOk = sent.length === stored.length;
-    for (let i = 0; phasesOk && i < sent.length; i++) {
-      phasesOk =
-        sameVal(stored[i]?.key, sent[i]?.key) &&
-        sameNum(stored[i]?.startedAt, sent[i]?.startedAt) &&
-        sameNum(stored[i]?.completedAt, sent[i]?.completedAt) &&
-        (stored[i]?.readings ?? []).length === (sent[i]?.readings ?? []).length;
-    }
-    check("phases", phasesOk);
+    check("yield_value", sameNum(row.yield_value, payload.yield_value));
+    check("phases", sameJson(row.phases, flattenPhasesForLegacy(payload.phases)));
   } else {
     check("saved_at", sameNum(row.saved_at, payload.savedAt));
     check("started_at", sameNum(row.started_at, payload.startedAt));
@@ -176,6 +168,19 @@ export function reconcileRows(
     if (bad.length) failures.push({ stage: "verify", kind, id, reason: `stored values differ: ${bad.join(", ")}` });
   }
   return failures;
+}
+
+export async function readBackUploadedRows(
+  kind: UploadRecord["kind"],
+  uploads: UploadRecord[],
+  ownerId: string,
+): Promise<ImportFailure[]> {
+  if (!uploads.length) return [];
+  const apiKind = kind === "recipe" ? "recipes" : kind === "bake" ? "bakes" : "feed";
+  const ids = uploads.map(upload => upload.destinationId);
+  if (new Set(ids).size !== ids.length) throw new Error(`Duplicate ${kind} upload destinations.`);
+  const { rows } = await api.fetchRowsByIds(apiKind, ids, ownerId);
+  return reconcileRows(kind, uploads, rows, ownerId);
 }
 
 // ───────────────────────── candidate drafts (interim preservation; lifecycle belongs to CLI-5) ─────────────────────────
@@ -293,6 +298,12 @@ export async function importNlaWorkspace(
 
   const inventory = await inventoryNlaWorkspace();
   report.unresolved = inventory.unresolved;
+  try {
+    assertLegacyCandidateOwnership(inventory);
+  } catch (error) {
+    report.failures.push({ stage: "plan", reason: (error as Error).message });
+    return { report, inventory, purgePlan: null };
+  }
   if (!inventory.readable) {
     report.failures.push({ stage: "plan", reason: "Some data on this device could not be read, so nothing was imported." });
     return { report, inventory, purgePlan: null };
@@ -347,15 +358,14 @@ export async function importNlaWorkspace(
     // Read-back + exact reconciliation, by kind. A failed batch throws and fails the import (no partial result).
     const verifiedLocal = { recipes: [] as string[], bakeHistory: [] as string[], feedHistory: [] as string[] };
     try {
-      for (const [kind, apiKind, bucket] of [
-        ["recipe", "recipes", "recipes"],
-        ["bake", "bakes", "bakeHistory"],
-        ["feed", "feed", "feedHistory"],
+      for (const [kind, bucket] of [
+        ["recipe", "recipes"],
+        ["bake", "bakeHistory"],
+        ["feed", "feedHistory"],
       ] as const) {
         const sent = uploads.filter((u) => u.kind === kind && u.ok);
         if (sent.length === 0) continue;
-        const { rows } = await api.fetchRowsByIds(apiKind, sent.map((u) => u.destinationId), token);
-        const failures = reconcileRows(kind, sent, rows, token);
+        const failures = await readBackUploadedRows(kind, sent, token);
         const failedIds = new Set(failures.map((f) => f.id));
         report.failures.push(...failures);
         for (const u of sent) {

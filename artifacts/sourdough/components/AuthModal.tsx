@@ -36,13 +36,14 @@ import {
 } from "@/lib/nlaWorkspace";
 import {
   importNlaWorkspace,
+  readBackUploadedRows,
   describeImportReport,
   reportToMigrationResult,
   ImportNotVerifiedError,
   IMPORT_STILL_OFFLINE_SENTENCE,
   type ImportReport,
 } from "@/lib/nlaImport";
-import { closeOrphanRemoteSession } from "@/lib/remoteSessionGuard";
+import { closeOrphanRemoteSession, getVerifiedRemoteSessionOwner } from "@/lib/remoteSessionGuard";
 import { useMigrationToast } from "@/contexts/MigrationToastContext";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 
@@ -346,14 +347,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
     }
     setLoading(true);
     try {
-      let activeSession: any = null;
-      try {
-        const sessionResponse = await api.auth.getSession();
-        activeSession = sessionResponse?.data?.session ?? null;
-      } catch (err) {
-        throw new Error(`Supabase session lookup failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      let sessionUserId = activeSession?.user?.id ?? null;
+      let sessionUserId = await getVerifiedRemoteSessionOwner();
       let hasOrphanRemoteSession = false;
       const storedToken = await getStoredToken();
 
@@ -416,18 +410,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
           }
           throw new Error("Sign-out recovery is still incomplete. Keep this screen open and retry Sign Out / Remove Name.");
         }
-        let activeSession: any = null;
-        try {
-          const sessionResponse = await api.auth.getSession();
-          activeSession = sessionResponse?.data?.session ?? null;
-        } catch (err) {
-          throw new Error(`Supabase session lookup failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
-        const sessionUserId = activeSession?.user?.id ?? null;
-        const storedToken = await getStoredToken();
-        const currentToken = sessionUserId ?? storedToken;
-        if (!currentToken) {
-          throw new Error("No active account found to sign out from.");
+        const currentToken = await getVerifiedRemoteSessionOwner();
+        if (!currentToken || await getStoredToken() !== currentToken) {
+          throw new Error("Identity consistency conflict: stored sign-in could not be confirmed.");
         }
         const storedUser = await getStoredUser();
         if (!storedUser || storedUser.id !== currentToken) {
@@ -440,12 +425,31 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         await executeWorkspaceTransition(currentToken, null, null, null, {
           activeFeedAcknowledged: activeFeedAckRef.current,
           beforeTransition: async () => {
-            const migrationResult = await migrateLocalDataToAccount(currentToken);
+            if (await getVerifiedRemoteSessionOwner() !== currentToken || await getStoredToken() !== currentToken) {
+              throw new Error("Identity consistency conflict: stored sign-in could not be confirmed.");
+            }
+            const migrationResult = await migrateLocalDataToAccount(currentToken, { reportUploads: true });
             const totalFailed = migrationResult.feed.failed + migrationResult.bakes.failed + migrationResult.recipes.failed;
             const totalUnresolved = migrationResult.feed.unresolved + migrationResult.bakes.unresolved + migrationResult.recipes.unresolved;
             if (totalFailed > 0 || totalUnresolved > 0) {
               console.warn("[AuthModal] Sign-out sync incomplete", { totalUnresolved, totalFailed });
               throw new Error("You’re still signed in. We couldn’t finish syncing your saved work. Check your connection and try again.");
+            }
+            try {
+              const uploads = migrationResult.uploads;
+              const counts = { recipe: migrationResult.recipes.ok, bake: migrationResult.bakes.ok, feed: migrationResult.feed.ok };
+              if (!uploads || uploads.some(upload => !upload.ok || upload.destinationId !== upload.localId)) {
+                throw new Error("Outgoing uploads are missing or changed record IDs.");
+              }
+              for (const kind of ["recipe", "bake", "feed"] as const) {
+                const sent = uploads.filter(upload => upload.kind === kind);
+                if (sent.length !== counts[kind]) throw new Error(`Incomplete ${kind} upload accounting.`);
+                const failures = await readBackUploadedRows(kind, sent, currentToken);
+                if (failures.length) throw new Error(failures.map(failure => failure.reason).join("; "));
+              }
+            } catch (error) {
+              console.warn("[AuthModal] Sign-out read-back incomplete", error);
+              throw new Error("You’re still signed in. We couldn’t verify your saved work in the cloud. Try signing out again.");
             }
           },
           closeRemoteSession: true,

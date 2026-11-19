@@ -74,6 +74,7 @@ describe("Authenticated-account Pending Deletion Processing Suite (existing sema
     expect(await getFeedTombstone()).toContain("feed-tomb-1");
 
     (api.history.feed.delete as jest.Mock).mockResolvedValueOnce(true);
+    (api.history.feed.verifyAbsent as jest.Mock).mockResolvedValueOnce(true);
 
     await processPendingDeletions();
 
@@ -85,9 +86,7 @@ describe("Authenticated-account Pending Deletion Processing Suite (existing sema
     await addToFeedTombstone("feed-fail-1");
     expect(await getFeedTombstone()).toContain("feed-fail-1");
 
-    // Simulate delete failure and remote absence verification failure
     (api.history.feed.delete as jest.Mock).mockRejectedValueOnce(new Error("Network error"));
-    (api.history.feed.verifyAbsent as jest.Mock).mockResolvedValueOnce(false);
 
     await processPendingDeletions();
 
@@ -108,6 +107,7 @@ describe("Authenticated-account Pending Deletion Processing Suite (existing sema
     const p1 = processPendingDeletions();
     const p2 = processPendingDeletions(); // Should coalesce / skip overlapping execution
 
+    (api.history.feed.verifyAbsent as jest.Mock).mockResolvedValueOnce(true);
     resolveDelete(true);
     await Promise.all([p1, p2]);
 
@@ -143,6 +143,77 @@ describe("Authenticated-account Pending Deletion Processing Suite (existing sema
 
     expect(await getFeedTombstone()).toEqual(["feed-a"]);
     expect(await getRecipeTombstone()).toEqual(["rec-a"]);
+  });
+
+  it.each([
+    ["recipe", addToRecipeTombstone, getRecipeTombstone, () => api.recipes],
+    ["bake", addToBakeTombstone, getBakeTombstone, () => api.history.bakes],
+    ["feed", addToFeedTombstone, getFeedTombstone, () => api.history.feed],
+  ] as const)("keeps a %s tombstone after an acknowledged delete until absence is verified", async (kind, add, get, endpoint) => {
+    const id = `pending-${kind}`;
+    await add(id);
+    const remote = endpoint();
+    jest.mocked(remote.delete).mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    jest.mocked(remote.verifyAbsent).mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error("read-back unavailable"))
+      .mockResolvedValueOnce(true);
+
+    await processPendingDeletions();
+    expect(remote.verifyAbsent).toHaveBeenCalledWith(id, expect.any(String), ACCT);
+    expect(await get()).toEqual([id]);
+    await processPendingDeletions();
+    expect(await get()).toEqual([id]);
+    await processPendingDeletions();
+    expect(remote.verifyAbsent).toHaveBeenCalledTimes(3);
+    expect(await get()).toEqual([]);
+  });
+
+  it("removes the deleted Recipe and detaches its owned iterations before retiring intent", async () => {
+    const id = "deleted-master";
+    const legacyKey = "bread_lab_recipes_v1";
+    const scopedKey = `${legacyKey}_${ACCT}`;
+    const master = { id, userId: ACCT };
+    const iteration = { id: "iteration", userId: ACCT, name: "Survivor", parentRecipeId: id };
+    const foreign = { id: "foreign-iteration", userId: "acct-2", parentRecipeId: id };
+    mockStore[legacyKey] = JSON.stringify([master, { ...iteration, parent_recipe_id: id, parentRecipeId: undefined }, foreign]);
+    mockStore[scopedKey] = JSON.stringify([master, iteration]);
+    await addToRecipeTombstone(id);
+
+    jest.mocked(AsyncStorage.setItem).mockResolvedValueOnce(undefined);
+    await processPendingDeletions();
+    expect(await getRecipeTombstone()).toEqual([id]);
+
+    await processPendingDeletions();
+
+    expect(await getRecipeTombstone()).toEqual([]);
+    expect(JSON.parse(mockStore[legacyKey])).toEqual([{ ...iteration, parentRecipeId: null }, foreign]);
+    expect(JSON.parse(mockStore[scopedKey])).toEqual([{ ...iteration, parentRecipeId: null }]);
+  });
+
+  it("keeps Bake intent until both local copies are gone and preserves other account records", async () => {
+    const id = "duplicated-bake";
+    const legacyKey = "bread_lab_bake_history_v1";
+    const scopedKey = `${legacyKey}_${ACCT}`;
+    const otherKey = `${legacyKey}_acct-2`;
+    const owned = { id, userId: ACCT };
+    const foreign = { id, userId: "acct-2" };
+    mockStore[legacyKey] = JSON.stringify([owned, foreign]);
+    mockStore[scopedKey] = JSON.stringify([owned]);
+    mockStore[otherKey] = JSON.stringify([foreign]);
+    await addToBakeTombstone(id);
+
+    jest.mocked(AsyncStorage.setItem).mockResolvedValueOnce(undefined);
+    await processPendingDeletions();
+
+    expect(await getBakeTombstone()).toEqual([id]);
+    expect(JSON.parse(mockStore[scopedKey])).toEqual([owned]);
+
+    await processPendingDeletions();
+
+    expect(await getBakeTombstone()).toEqual([]);
+    expect(JSON.parse(mockStore[legacyKey])).toEqual([foreign]);
+    expect(JSON.parse(mockStore[scopedKey])).toEqual([]);
+    expect(JSON.parse(mockStore[otherKey])).toEqual([foreign]);
   });
 
   it("6. Only the active account's tombstones are processed; another account's stay put", async () => {

@@ -98,6 +98,42 @@ export async function addToRecipeTombstone(id: string): Promise<void> {
   });
 }
 
+async function reconcileDeletedRecipeLocked(id: string, owner: string): Promise<void> {
+  const keys = [RECIPES_KEY, getOwnerStorageKey(RECIPES_KEY, owner)];
+  const updates = await Promise.all(keys.map(async key => {
+    const raw = await AsyncStorage.getItem(key);
+    if (raw === null) return null;
+    const recipes: unknown = JSON.parse(raw);
+    if (!Array.isArray(recipes)) throw new Error(`Invalid Recipe storage at ${key}.`);
+
+    let changed = false;
+    const remaining = recipes.flatMap(recipe => {
+      const referencesDeletedRecipe = recipe?.parentRecipeId === id || recipe?.parent_recipe_id === id;
+      if (recipe?.id !== id && !referencesDeletedRecipe) return [recipe];
+      const recordOwner = recipe.userId ?? recipe.user_id;
+      if (typeof recordOwner !== "string" || !recordOwner.trim() ||
+          (recipe.userId != null && recipe.user_id != null && recipe.userId !== recipe.user_id)) {
+        throw new Error(`Cannot confirm Recipe ownership at ${key}.`);
+      }
+      if (recordOwner !== owner) return [recipe];
+
+      changed = true;
+      if (recipe.id === id) return [];
+      // Match the database's ON DELETE SET NULL while preserving the iteration.
+      const { parent_recipe_id: _legacyParent, ...iteration } = recipe;
+      return [{ ...iteration, parentRecipeId: null }];
+    });
+    return changed ? { key, data: JSON.stringify(remaining) } : null;
+  }));
+  for (const update of updates) {
+    if (!update) continue;
+    await AsyncStorage.setItem(update.key, update.data);
+    if (await AsyncStorage.getItem(update.key) !== update.data) {
+      throw new Error(`Could not verify Recipe deletion cleanup at ${update.key}.`);
+    }
+  }
+}
+
 export async function removeFromRecipeTombstone(id: string, context?: WorkspaceOperationContext): Promise<void> {
   return storageMutex.run(async () => {
     if (context) await assertWorkspaceOperationCurrent(context);
@@ -108,6 +144,9 @@ export async function removeFromRecipeTombstone(id: string, context?: WorkspaceO
     const set = JSON.parse(raw);
     if (!Array.isArray(set)) {
       throw new Error("Tombstone schema corruption: expected array for recipe tombstones.");
+    }
+    if (set.includes(id) && !isNlaOwner(owner)) {
+      await reconcileDeletedRecipeLocked(id, owner);
     }
     await AsyncStorage.setItem(
       tombstoneKey,
@@ -144,6 +183,35 @@ export async function addToBakeTombstone(id: string): Promise<void> {
   });
 }
 
+/** The same Bake can be present in the History cache and the account's archive. */
+async function removeCompletedBakeCopiesLocked(id: string, owner: string): Promise<void> {
+  const keys = [BAKE_HISTORY_KEY, getOwnerStorageKey(BAKE_HISTORY_KEY, owner)];
+  const updates = await Promise.all(keys.map(async key => {
+    const raw = await AsyncStorage.getItem(key);
+    if (raw === null) return null;
+    const records: unknown = JSON.parse(raw);
+    if (!Array.isArray(records)) throw new Error(`Invalid Bake History at ${key}.`);
+    const remaining = records.filter(record => {
+      if (record?.id !== id) return true;
+      const { userId, user_id: legacyOwner } = record;
+      const recordOwner = userId ?? legacyOwner;
+      if (typeof recordOwner !== "string" || !recordOwner.trim() ||
+          (userId != null && legacyOwner != null && userId !== legacyOwner)) {
+        throw new Error(`Cannot confirm ownership of Bake ${id} at ${key}.`);
+      }
+      return recordOwner !== owner;
+    });
+    return remaining.length === records.length ? null : { key, data: JSON.stringify(remaining) };
+  }));
+  for (const update of updates) {
+    if (!update) continue;
+    await AsyncStorage.setItem(update.key, update.data);
+    if (await AsyncStorage.getItem(update.key) !== update.data) {
+      throw new Error(`Could not verify Bake History deletion at ${update.key}.`);
+    }
+  }
+}
+
 export async function removeFromBakeTombstone(id: string, context?: WorkspaceOperationContext): Promise<void> {
   return storageMutex.run(async () => {
     if (context) await assertWorkspaceOperationCurrent(context);
@@ -154,6 +222,9 @@ export async function removeFromBakeTombstone(id: string, context?: WorkspaceOpe
     const set = JSON.parse(raw);
     if (!Array.isArray(set)) {
       throw new Error("Tombstone schema corruption: expected array for bake tombstones.");
+    }
+    if (set.includes(id) && !isNlaOwner(owner)) {
+      await removeCompletedBakeCopiesLocked(id, owner);
     }
     await AsyncStorage.setItem(tombstoneKey, JSON.stringify(set.filter((x: string) => x !== id)));
   });
@@ -413,14 +484,10 @@ export async function processPendingDeletions(): Promise<void> {
     for (const id of recipeTombstones) {
       await assertWorkspaceOperationCurrent(context);
       try {
-        const deleted = await api.recipes.delete(id, deviceId, token ?? undefined);
-        if (deleted) {
+        await api.recipes.delete(id, deviceId, token ?? undefined);
+        await assertWorkspaceOperationCurrent(context);
+        if (await verifyRemoteAbsence('recipe', id, deviceId, token ?? undefined)) {
           await removeFromRecipeTombstone(id, context);
-        } else {
-          const absent = await verifyRemoteAbsence('recipe', id, deviceId, token ?? undefined);
-          if (absent) {
-            await removeFromRecipeTombstone(id, context);
-          }
         }
       } catch (e: any) {
         console.warn(`[recipeStorage] Recipe deletion retry failed for id ${id}:`, e);
@@ -431,14 +498,10 @@ export async function processPendingDeletions(): Promise<void> {
     for (const id of bakeTombstones) {
       await assertWorkspaceOperationCurrent(context);
       try {
-        const deleted = await api.history.bakes.delete(id, deviceId, token ?? undefined);
-        if (deleted) {
+        await api.history.bakes.delete(id, deviceId, token ?? undefined);
+        await assertWorkspaceOperationCurrent(context);
+        if (await verifyRemoteAbsence('bake', id, deviceId, token ?? undefined)) {
           await removeFromBakeTombstone(id, context);
-        } else {
-          const absent = await verifyRemoteAbsence('bake', id, deviceId, token ?? undefined);
-          if (absent) {
-            await removeFromBakeTombstone(id, context);
-          }
         }
       } catch (e: any) {
         console.warn(`[recipeStorage] Bake deletion retry failed for id ${id}:`, e);
@@ -449,14 +512,10 @@ export async function processPendingDeletions(): Promise<void> {
     for (const id of feedTombstones) {
       await assertWorkspaceOperationCurrent(context);
       try {
-        const deleted = await api.history.feed.delete(id, deviceId, token ?? undefined);
-        if (deleted) {
+        await api.history.feed.delete(id, deviceId, token ?? undefined);
+        await assertWorkspaceOperationCurrent(context);
+        if (await verifyRemoteAbsence('feed', id, deviceId, token ?? undefined)) {
           await removeFromFeedTombstone(id, context);
-        } else {
-          const absent = await verifyRemoteAbsence('feed', id, deviceId, token ?? undefined);
-          if (absent) {
-            await removeFromFeedTombstone(id, context);
-          }
         }
       } catch (e: any) {
         console.warn(`[recipeStorage] Feed deletion retry failed for id ${id}:`, e);
@@ -611,7 +670,7 @@ export async function loadAll(): Promise<{
             ingredients: Array.isArray(p.ingredients) ? p.ingredients : textToCheckableLines(p.ingredients || "", 'ing'),
             instructions: Array.isArray(p.instructions) ? p.instructions : textToCheckableLines(p.instructions || "", 'ins'),
           }))),
-          parentRecipeId: r.parent_recipe_id ?? existingLocal?.parentRecipeId,
+          parentRecipeId: r.parent_recipe_id === undefined ? existingLocal?.parentRecipeId : r.parent_recipe_id,
           versionLabel: r.version_label ?? existingLocal?.versionLabel,
           isArchived: r.isArchived ?? existingLocal?.isArchived,
           diagnosticHypothesis: r.diagnosticHypothesis ?? existingLocal?.diagnosticHypothesis,
