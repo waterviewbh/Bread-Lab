@@ -4,6 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { formatDate } from "@/lib/recipeUtils";
 import type { SavedRecipe } from "@/lib/recipeTypes";
+import { getDisplayRecipeName, getDisplayVersionLabel } from "@/lib/recipeCanonical";
 import { fonts, radius, spacing } from "@/constants/theme";
 
 export interface RecipeCardProps {
@@ -46,12 +47,12 @@ export function RecipeCard({
             style={[s.recipeName, { color: colors.foreground }]}
             numberOfLines={2}
           >
-            {recipe.name}
+            {getDisplayRecipeName(recipe)}
           </Text>
-          {recipe.versionLabel && (
+          {getDisplayVersionLabel(recipe) && (
             <View style={[s.versionBadge, { backgroundColor: colors.muted }]}>
               <Text style={[s.versionText, { color: colors.mutedForeground }]}>
-                {recipe.versionLabel}
+                {getDisplayVersionLabel(recipe)}
               </Text>
             </View>
           )}

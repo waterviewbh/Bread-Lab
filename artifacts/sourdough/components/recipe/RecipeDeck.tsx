@@ -11,7 +11,7 @@ import { fonts, radius, spacing } from "@/constants/theme";
 import { SavedRecipe } from "@/lib/recipeTypes";
 import { calculateRecipeMetrics, formatDate } from "@/lib/recipeUtils";
 import { getRecipeDelta } from "@/lib/recipeDiff";
-import { findMatchingLineageVersion } from "@/lib/recipeCanonical";
+import { findMatchingLineageVersion, getDisplayRecipeName, getDisplayVersionLabel } from "@/lib/recipeCanonical";
 
 interface Props {
   master: SavedRecipe;
@@ -84,7 +84,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
               <View style={[s.badge, { backgroundColor: colors.primary + '15' }]}>
                 <Text selectable={true} style={[s.badgeText, { color: colors.primary }]}>MASTER FORMULA · UNTOUCHED</Text>
               </View>
-              <Text selectable={true} style={[s.title, { color: colors.foreground }]} numberOfLines={2}>{master.name}</Text>
+              <Text selectable={true} style={[s.title, { color: colors.foreground }]} numberOfLines={2}>{getDisplayRecipeName(master)}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               {onPrintRecipe && (
@@ -134,7 +134,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
           const isMaster = recipe.id === master.id;
           const isLatest = !isMaster && recipe.id === iterations[0].id;
 
-          let label = isMaster ? "Master" : (recipe.versionLabel || `v${iterations.length - (iterations.findIndex(it => it.id === recipe.id))}`);
+          let label = isMaster ? "Master" : (getDisplayVersionLabel(recipe) || `v${iterations.length - (iterations.findIndex(it => it.id === recipe.id)) + 1}`);
           if (isLatest) label += " (Latest)";
 
           return (
@@ -143,19 +143,19 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
               onPress={() => setActiveRecipeId(recipe.id)}
               style={[
                 s.tabItem,
-                isActive ? s.activeTab : s.inactiveTab,
+                { backgroundColor: isActive ? colors.card : colors.secondary },
                 { borderColor: colors.border, borderBottomColor: isActive ? colors.card : colors.border }
               ]}
             >
               {isMaster ? (
-                <Feather name="shield" size={12} color={isActive ? colors.primary : colors.mutedForeground} />
+                <Feather name="shield" size={12} color={isActive ? colors.primary : colors.secondaryForeground} />
               ) : (
-                <Feather name="clock" size={12} color={isActive ? colors.accent : colors.mutedForeground} />
+                <Feather name="clock" size={12} color={isActive ? colors.accent : colors.secondaryForeground} />
               )}
               <Text
                 style={[
                   s.tabText,
-                  { color: isActive ? colors.foreground : colors.mutedForeground },
+                  { color: isActive ? colors.foreground : colors.secondaryForeground },
                   isActive && { fontFamily: fonts.sansSemiBold }
                 ]}
                 numberOfLines={1}
@@ -186,7 +186,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
               {isMasterActive ? 'MASTER BASELINE' : 'ITERATION'} · {iterations.length} {iterations.length === 1 ? 'Iteration' : 'Iterations'}
             </Text>
             <Text selectable={true} style={[s.title, { color: colors.foreground }]} numberOfLines={2}>
-              {cleanTitle(activeRecipe.name)}
+              {cleanTitle(getDisplayRecipeName(activeRecipe))}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -296,12 +296,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     maxWidth: 140,
-  },
-  activeTab: {
-    backgroundColor: '#ffffff',
-  },
-  inactiveTab: {
-    backgroundColor: '#f5ebe0',
   },
   tabText: {
     fontFamily: fonts.sans,

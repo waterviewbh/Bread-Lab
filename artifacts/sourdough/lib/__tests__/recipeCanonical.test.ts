@@ -1,5 +1,5 @@
 // lib/__tests__/recipeCanonical.test.ts
-import { getCanonicalRecipeContent, areCanonicalContentsEqual, findMatchingLineageVersion } from "../recipeCanonical";
+import { getCanonicalRecipeContent, areCanonicalContentsEqual, findMatchingLineageVersion, getDisplayVersionLabel } from "../recipeCanonical";
 import { SavedRecipe } from "../recipeTypes";
 
 describe("Recipe Canonicalization & Lineage Matching", () => {
@@ -86,7 +86,13 @@ describe("Recipe Canonicalization & Lineage Matching", () => {
   test("Lineage matching finds most recent matching earlier version", () => {
     const allRecipes = [masterRecipe, iteration1, iteration2, iterationReverted];
     const match = findMatchingLineageVersion(iterationReverted, allRecipes);
-    expect(match).toBe("v1.1");
+    expect(match).toBe("v2");
+  });
+
+  test("legacy iteration labels display as sequential versions", () => {
+    expect(getDisplayVersionLabel(masterRecipe)).toBe("Master");
+    expect(getDisplayVersionLabel(iterationReverted)).toBe("v4");
+    expect(getDisplayVersionLabel({ ...iterationReverted, versionLabel: "v4" })).toBe("v4");
   });
 
   test("Lineage matching finds Master when Master is the only earlier match", () => {

@@ -6,6 +6,7 @@ import { SavedRecipe } from "@/lib/recipeTypes";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { getRecipeDelta, RecipeDelta } from "@/lib/recipeDiff";
 import { calculateRecipeMetrics } from "@/lib/recipeUtils";
+import { getDisplayRecipeName, getDisplayVersionLabel } from "@/lib/recipeCanonical";
 
 const CARD_GAP = 12;
 
@@ -75,7 +76,7 @@ export function IterationStack({ master, iterations, bakeHistory = [], onSelect 
 
       return (
         <View style={s.summaryBox}>
-          <Text style={[s.summaryLabel, { color: colors.mutedForeground }]}>SCIENTIFIC BASELINE (v1.6)</Text>
+          <Text style={[s.summaryLabel, { color: colors.mutedForeground }]}>SCIENTIFIC BASELINE (v1)</Text>
           <View style={s.deltaGrid}>
             <View style={s.deltaItem}>
                <Text style={[s.deltaItemText, { color: colors.mutedForeground, fontSize: 11 }]}>
@@ -173,7 +174,7 @@ export function IterationStack({ master, iterations, bakeHistory = [], onSelect 
                   ) : (
                     <View style={s.versionRow}>
                       <Text style={[s.versionBadge, { color: colors.mutedForeground }]}>
-                        {recipe.versionLabel || `Iter #${index}`}
+                        {getDisplayVersionLabel(recipe) || `v${index + 1}`}
                       </Text>
                       {recipeScore > 0 && (
                          <View style={s.miniScore}>
@@ -192,7 +193,7 @@ export function IterationStack({ master, iterations, bakeHistory = [], onSelect 
                   )}
                 </View>
 
-                <Text style={s.recipeName} numberOfLines={1}>{recipe.name}</Text>
+                <Text style={s.recipeName} numberOfLines={1}>{getDisplayRecipeName(recipe)}</Text>
 
                 {isMaster ? (
                   <View style={s.scoreRow}>

@@ -2,6 +2,18 @@
 import { SavedRecipe } from "./recipeTypes";
 import { resolveRootMasterId } from "./recipeUtils";
 
+/** Hides the suffix previously added by Log Diagnostics to generated iterations. */
+export function getDisplayRecipeName(recipe: SavedRecipe): string {
+  return recipe.name.replace(/\s*\(Iterated\)/gi, "").trim();
+}
+
+/** Normalizes legacy iteration labels while leaving master and import labels unchanged. */
+export function getDisplayVersionLabel(recipe: SavedRecipe): string | undefined {
+  const label = recipe.versionLabel;
+  const legacyIteration = recipe.parentRecipeId && label?.match(/^v1\.(\d+)$/i);
+  return legacyIteration ? `v${Number(legacyIteration[1]) + 1}` : label;
+}
+
 export interface CanonicalPhase {
   key: string;
   name: string;
@@ -60,7 +72,7 @@ export function areCanonicalContentsEqual(a: SavedRecipe, b: SavedRecipe): boole
 
 /**
  * Finds the most recent earlier version in the recipe's lineage that matches its canonical content.
- * Returns the version label (e.g. "Master", "v1.1") or null if no earlier version matches.
+ * Returns the display version label (e.g. "Master", "v2") or null if no earlier version matches.
  */
 export function findMatchingLineageVersion(currentRecipe: SavedRecipe, allRecipes: SavedRecipe[]): string | null {
   const rootId = resolveRootMasterId(currentRecipe, allRecipes);
@@ -87,9 +99,9 @@ export function findMatchingLineageVersion(currentRecipe: SavedRecipe, allRecipe
     if (areCanonicalContentsEqual(currentRecipe, candidate)) {
       const isMaster = !candidate.parentRecipeId;
       if (isMaster) {
-        return candidate.versionLabel || "Master";
+        return getDisplayVersionLabel(candidate) || "Master";
       }
-      return candidate.versionLabel || `v1.${i}`;
+      return getDisplayVersionLabel(candidate) || `v${i + 1}`;
     }
   }
 

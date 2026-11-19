@@ -240,7 +240,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               };
               await updateBakeOutcomeInHistory(selectedBake.id, outcome);
 
-              const newName = sourceRecipe.name.includes('(Iterated)') ? sourceRecipe.name : `${sourceRecipe.name} (Iterated)`;
+              const newName = sourceRecipe.name.replace(/\s*\(Iterated\)/gi, "").trim();
               const duplicated = await api.recipes.duplicate(
                 sourceRecipe.id,
                 newName,
@@ -264,7 +264,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
                   instructions: Array.isArray(p.instructions) ? p.instructions : [],
                 })),
                 parentRecipeId: masterId,
-                versionLabel: `v1.${versionNumber}`,
+                versionLabel: `v${versionNumber + 1}`,
                 yieldValue: sourceRecipe.yieldValue,
                 isUneditedIteration: true,
                 clonedFromBakeName: selectedBake.recipeName,
