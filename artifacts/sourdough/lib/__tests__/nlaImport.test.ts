@@ -17,14 +17,17 @@ import { api } from "../api";
 let mockStore: Record<string, string> = {};
 let mockCorruptKey: string | null = null;
 let mockWriteTransform: ((key: string, value: string) => string) | null = null;
+let mockIgnoreSetKey: string | null = null;
+let mockIgnoreRemoveKey: string | null = null;
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   getItem: jest.fn(async (k: string) => (k in mockStore ? mockStore[k] : null)),
   setItem: jest.fn(async (k: string, v: string) => {
+    if (k === mockIgnoreSetKey) return;
     const corrupted = mockCorruptKey && k === mockCorruptKey ? v.replace(/c-1/g, "c-X") : v;
     mockStore[k] = mockWriteTransform ? mockWriteTransform(k, corrupted) : corrupted;
   }),
-  removeItem: jest.fn(async (k: string) => { delete mockStore[k]; }),
+  removeItem: jest.fn(async (k: string) => { if (k !== mockIgnoreRemoveKey) delete mockStore[k]; }),
   getAllKeys: jest.fn(async () => Object.keys(mockStore)),
   multiGet: jest.fn(async (ks: string[]) => ks.map((k) => [k, k in mockStore ? mockStore[k] : null])),
   multiRemove: jest.fn(async (ks: string[]) => { ks.forEach((k) => delete mockStore[k]); }),
@@ -61,6 +64,8 @@ describe("importNlaWorkspace", () => {
     mockStore = {};
     mockCorruptKey = null;
     mockWriteTransform = null;
+    mockIgnoreSetKey = null;
+    mockIgnoreRemoveKey = null;
     fakeServer.reset();
     jest.clearAllMocks();
     jest.spyOn(console, "log").mockImplementation(() => {});
@@ -295,6 +300,35 @@ describe("importNlaWorkspace", () => {
       expect(out.report.ok).toBe(true);
       expect(fakeServer.tables.bake.size).toBe(0);
       expect(out.report.unresolved).toEqual([expect.objectContaining({ reason: "conflict", id: "dup-b" })]);
+      expectDeviceUntouched(before);
+    });
+
+    it("does not upload when the pending marker write acknowledges without persisting", async () => {
+      seedImportable();
+      const before = nlaRaw();
+      mockIgnoreSetKey = "bread_lab_migration_pending_v1";
+      await expect(importNlaWorkspace(TOKEN)).rejects.toThrow(/marker write could not be verified/);
+      expect(fakeServer.calls).toEqual([]);
+      expect(mockStore["bread_lab_migration_pending_v1"]).toBeUndefined();
+      expectDeviceUntouched(before);
+    });
+
+    it("keeps the source and pending marker when removal does not persist, then reuses IDs on retry", async () => {
+      seedImportable();
+      const before = nlaRaw();
+      mockIgnoreRemoveKey = "bread_lab_migration_pending_v1";
+      const failed = await importNlaWorkspace(TOKEN);
+      expect(failed.report.ok).toBe(false);
+      expect(failed.purgePlan).toBeNull();
+      expect(mockStore["bread_lab_migration_pending_v1"]).toBe("1");
+      expectDeviceUntouched(before);
+      const firstIds = [...fakeServer.tables.recipe.keys()].sort();
+
+      mockIgnoreRemoveKey = null;
+      const retry = await importNlaWorkspace(TOKEN);
+      expect(retry.report.ok).toBe(true);
+      expect([...fakeServer.tables.recipe.keys()].sort()).toEqual(firstIds);
+      expect(mockStore["bread_lab_migration_pending_v1"]).toBeUndefined();
       expectDeviceUntouched(before);
     });
 

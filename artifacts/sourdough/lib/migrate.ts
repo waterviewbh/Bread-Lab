@@ -179,10 +179,16 @@ export function generateSecureUUID(): string {
 
 export async function setMigrationPending(): Promise<void> {
   await AsyncStorage.setItem(MIGRATION_PENDING_KEY, "1");
+  if (await AsyncStorage.getItem(MIGRATION_PENDING_KEY) !== "1") {
+    throw new Error("Migration pending marker write could not be verified.");
+  }
 }
 
 export async function clearMigrationPending(): Promise<void> {
   await AsyncStorage.removeItem(MIGRATION_PENDING_KEY);
+  if (await AsyncStorage.getItem(MIGRATION_PENDING_KEY) !== null) {
+    throw new Error("Migration pending marker removal could not be verified.");
+  }
 }
 
 export async function hasPendingMigration(): Promise<boolean> {
@@ -479,9 +485,13 @@ export async function migrateLocalDataToAccount(token: string, options?: Migrate
   for (const bake of activeBakesToMigrate) mapDestination("bake", bake);
   for (const feed of feedHistoryToMigrate) mapDestination("feed", feed);
 
-  // Durably persist Pass 1 ledger state before uploading
+  // Durably persist and verify Pass 1 ledger state before uploading.
+  const serializedLedger = JSON.stringify(ledger);
   try {
-    await AsyncStorage.setItem(ledgerKey, JSON.stringify(ledger));
+    await AsyncStorage.setItem(ledgerKey, serializedLedger);
+    if (await AsyncStorage.getItem(ledgerKey) !== serializedLedger) {
+      throw new Error("migration ledger read-back did not match the planned ID map");
+    }
   } catch (error) {
     throw new Error(`Failed to persist migration ledger: ${error instanceof Error ? error.message : String(error)}`);
   }

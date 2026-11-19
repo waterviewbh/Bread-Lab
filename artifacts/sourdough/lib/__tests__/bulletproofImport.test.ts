@@ -234,6 +234,29 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
     expect(api.history.bakes.upsert).not.toHaveBeenCalled();
   });
 
+  it("refuses uploads when a successful ledger write did not persist, then retries safely", async () => {
+    const sourceKey = "bread_lab_recipes_v1";
+    const ledgerKey = "bread_lab_import_ledger_ledger-noop-token";
+    const source = JSON.stringify([{ id: "rec-1", name: "Valid Recipe", userId: "anonymous" }]);
+    mockStorage[sourceKey] = source;
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const originalSetItem = setItem.getMockImplementation()!;
+    setItem.mockImplementation((key: string, value: string) =>
+      key === ledgerKey ? Promise.resolve() : originalSetItem(key, value)
+    );
+
+    await expect(migrateLocalDataToAccount("ledger-noop-token")).rejects.toThrow(/ledger read-back did not match/);
+    expect(mockStorage[ledgerKey]).toBeUndefined();
+    expect(mockStorage[sourceKey]).toBe(source);
+    expect(api.recipes.upsert).not.toHaveBeenCalled();
+
+    setItem.mockImplementation(originalSetItem);
+    const retry = await migrateLocalDataToAccount("ledger-noop-token");
+    expect(retry.recipes.ok).toBe(1);
+    expect(JSON.parse(mockStorage[ledgerKey])).toHaveProperty("recipe:rec-1");
+    expect(api.recipes.upsert).toHaveBeenCalledTimes(1);
+  });
+
   it("does not recreate a deleted import destination when syncing the retained owned Recipe", async () => {
     const owner = "outgoing-account";
     const ledgerKey = `bread_lab_import_ledger_${owner}`;
