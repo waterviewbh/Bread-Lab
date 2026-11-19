@@ -25,6 +25,31 @@ describe("Workspace Transition Coordinator & UDL Contract", () => {
     return { nlaDisposition: { mode: "discard" as const, plan, snapshotRaw: inventory.raw } };
   };
 
+  it("keeps sign-out in recovery when base source cleanup leaves a key behind", async () => {
+    const owner = "user-A";
+    const sourceKey = APP_STORAGE_KEYS.ACTIVE_FEED;
+    await AsyncStorage.setItem(APP_STORAGE_KEYS.AUTH_TOKEN, owner);
+    await AsyncStorage.setItem(APP_STORAGE_KEYS.AUTH_USER, JSON.stringify({ id: owner, firstName: "A", starterName: "Starter" }));
+    await AsyncStorage.setItem(sourceKey, JSON.stringify({ id: "local-feed" }));
+    jest.spyOn(api.history.bakes, "activeForDevice").mockResolvedValue(null);
+    jest.spyOn(api.auth, "signout").mockResolvedValue({ signedOut: true });
+    jest.spyOn(api.auth, "getSession").mockResolvedValue({ data: { session: null }, error: null } as any);
+    const remove = jest.mocked(AsyncStorage.multiRemove);
+    const originalRemove = remove.getMockImplementation()!;
+    remove.mockImplementation(async keys => {
+      if (keys.includes(sourceKey)) return;
+      return originalRemove(keys);
+    });
+
+    await expect(executeWorkspaceTransition(owner, null, null, null, {
+      activeFeedAcknowledged: true, closeRemoteSession: true,
+    })).rejects.toThrow(`Quarantine could not verify removal of ${sourceKey}`);
+    expect(await AsyncStorage.getItem(sourceKey)).not.toBeNull();
+    expect(await AsyncStorage.getItem(APP_STORAGE_KEYS.AUTH_TOKEN)).toBe(owner);
+    expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+    remove.mockImplementation(originalRemove);
+  });
+
   it("parks verified account transit data and restores it to its canonical keys on return", async () => {
     const owner = "user-A";
     const recipeKey = getOwnerStorageKey(APP_STORAGE_KEYS.RECIPES, owner);

@@ -715,7 +715,7 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     console.log(`[BL-DIAG] [Quarantine] Safely partitioned, quarantined, and verified records for owner=${ownerKey} under key=${qKey}`);
   }
 
-  await AsyncStorage.multiRemove([
+  const baseSourceKeys = [
     APP_STORAGE_KEYS.RECIPES,
     APP_STORAGE_KEYS.BAKE_HISTORY,
     APP_STORAGE_KEYS.FEED_HISTORY,
@@ -724,7 +724,13 @@ export async function quarantineOperationalData(departingUserId?: string | null)
     APP_STORAGE_KEYS.DELETED_RECIPE_IDS,
     APP_STORAGE_KEYS.DELETED_BAKE_IDS,
     APP_STORAGE_KEYS.DELETED_FEED_IDS,
-  ]);
+  ];
+  await AsyncStorage.multiRemove(baseSourceKeys);
+  for (const key of baseSourceKeys) {
+    if (await AsyncStorage.getItem(key) !== null) {
+      throw new Error(`Quarantine could not verify removal of ${key}. Verified quarantine data was retained for recovery.`);
+    }
+  }
 
   for (const { key } of scopedStores) {
     await AsyncStorage.removeItem(key);

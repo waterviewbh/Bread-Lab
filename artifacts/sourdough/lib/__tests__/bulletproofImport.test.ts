@@ -991,6 +991,38 @@ describe("Bulletproof Two-Pass Typed Import Engine & Collision Safety", () => {
       AsyncStorage.getItem = getItemOriginal;
     });
 
+    it("verifies the destination before retiring every base key, then safely retries partial cleanup", async () => {
+      const { quarantineOperationalData, APP_STORAGE_KEYS, QUARANTINE_KEY } = require("../storageUtils");
+      const sourceKey = APP_STORAGE_KEYS.BAKE_HISTORY;
+      const survivingKey = APP_STORAGE_KEYS.DELETED_FEED_IDS;
+      const owner = "user-1";
+      const qKey = QUARANTINE_KEY(owner);
+      const bake = { id: "b1", userId: owner };
+      mockStorage[sourceKey] = JSON.stringify([bake]);
+      mockStorage[survivingKey] = JSON.stringify(["deleted-feed"]);
+      const originalRemove = (AsyncStorage.multiRemove as jest.Mock).getMockImplementation()!;
+      let partial = true;
+      (AsyncStorage.multiRemove as jest.Mock).mockImplementation(async (keys: string[]) => {
+        expect(JSON.parse(mockStorage[qKey]).bakeHistory).toEqual([bake]);
+        if (partial) {
+          keys.filter(key => key !== survivingKey).forEach(key => delete mockStorage[key]);
+        } else {
+          await originalRemove(keys);
+        }
+      });
+
+      await expect(quarantineOperationalData(owner)).rejects.toThrow(`Quarantine could not verify removal of ${survivingKey}`);
+      const verifiedCopy = mockStorage[qKey];
+      expect(JSON.parse(verifiedCopy).bakeHistory).toEqual([bake]);
+      expect(mockStorage[survivingKey]).toBeDefined();
+      partial = false;
+      await expect(quarantineOperationalData(owner)).resolves.toBeUndefined();
+      expect(JSON.parse(mockStorage[qKey]).bakeHistory).toEqual([bake]);
+      for (const key of [APP_STORAGE_KEYS.RECIPES, APP_STORAGE_KEYS.BAKE_HISTORY, APP_STORAGE_KEYS.FEED_HISTORY, APP_STORAGE_KEYS.ACTIVE_BAKE, APP_STORAGE_KEYS.ACTIVE_FEED, APP_STORAGE_KEYS.DELETED_RECIPE_IDS, APP_STORAGE_KEYS.DELETED_BAKE_IDS, APP_STORAGE_KEYS.DELETED_FEED_IDS]) {
+        expect(mockStorage[key]).toBeUndefined();
+      }
+    });
+
     it("4.1: Ambiguous flat tombstones are isolated to unknown quarantine and kept inert", async () => {
       const { quarantineOperationalData, APP_STORAGE_KEYS, UNKNOWN_QUARANTINE_KEY, QUARANTINE_KEY } = require("../storageUtils");
       mockStorage[APP_STORAGE_KEYS.DELETED_RECIPE_IDS] = JSON.stringify(["rec-ambig-del"]);
