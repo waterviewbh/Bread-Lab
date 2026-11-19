@@ -336,6 +336,61 @@ describe("NLA workspace inventory, conflicts, purge and isolation", () => {
   });
 
   describe("crash safety", () => {
+    it("verifies journal persistence before changing source data", async () => {
+      seedWorkspace();
+      const plan = authorizeDiscardPlan(buildPurgePlan(await inventoryNlaWorkspace(), "discard"));
+      const source = mockStore[K.recipesA];
+      const originalSet = jest.mocked(AsyncStorage.setItem).getMockImplementation()!;
+      jest.spyOn(AsyncStorage, "setItem").mockImplementation(async (key, value) => {
+        if (key !== NLA_PURGE_JOURNAL_KEY) mockStore[key] = value;
+      });
+      await expect(applyNlaPurgeLocked(plan)).rejects.toThrow(/journal write could not be verified/);
+      expect(mockStore[K.recipesA]).toBe(source);
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();
+      jest.mocked(AsyncStorage.setItem).mockImplementation(originalSet);
+    });
+
+    it("fails initial retirement when the journal remains and resumes without losing new NLA data", async () => {
+      seedWorkspace();
+      const plan = authorizeDiscardPlan(buildPurgePlan(await inventoryNlaWorkspace(), "discard"));
+      const remove = jest.spyOn(AsyncStorage, "removeItem");
+      const original = jest.mocked(AsyncStorage.removeItem).getMockImplementation()!;
+      remove.mockImplementation(async key => {
+        if (key !== NLA_PURGE_JOURNAL_KEY) await original(key);
+      });
+      await expect(applyNlaPurgeLocked(plan)).rejects.toThrow(/journal remains after removal/);
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeDefined();
+      expect(mockStore[K.recipesA]).toBeUndefined();
+      put(K.recipesB, [{ id: "new", userId: "anonymous" }]);
+      await expect(resumePendingNlaPurgeLocked()).rejects.toThrow(/journal remains after removal/);
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeDefined();
+      expect(get(K.recipesB)).toEqual([{ id: "new", userId: "anonymous" }]);
+      remove.mockImplementation(original);
+      expect(await resumePendingNlaPurgeLocked()).toBe(true);
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();
+      expect(get(K.recipesB)).toEqual([{ id: "new", userId: "anonymous" }]);
+    });
+
+    it("fails closed when journal retirement read-back errors", async () => {
+      seedWorkspace();
+      const plan = authorizeDiscardPlan(buildPurgePlan(await inventoryNlaWorkspace(), "discard"));
+      const original = jest.mocked(AsyncStorage.getItem).getMockImplementation()!;
+      const originalRemove = jest.mocked(AsyncStorage.removeItem).getMockImplementation()!;
+      let afterRemoval = false;
+      jest.spyOn(AsyncStorage, "removeItem").mockImplementation(async key => {
+        if (key === NLA_PURGE_JOURNAL_KEY) afterRemoval = true;
+        else delete mockStore[key];
+      });
+      jest.spyOn(AsyncStorage, "getItem").mockImplementation(async key => {
+        if (key === NLA_PURGE_JOURNAL_KEY && afterRemoval) throw new Error("read unavailable");
+        return original(key);
+      });
+      await expect(applyNlaPurgeLocked(plan)).rejects.toThrow(/retirement could not be verified.*read unavailable/);
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeDefined();
+      jest.mocked(AsyncStorage.getItem).mockImplementation(original);
+      jest.mocked(AsyncStorage.removeItem).mockImplementation(originalRemove);
+    });
+
     it("a crash mid-purge leaves a journal; resuming finishes exactly the planned work", async () => {
       seedWorkspace();
       seedProtected();

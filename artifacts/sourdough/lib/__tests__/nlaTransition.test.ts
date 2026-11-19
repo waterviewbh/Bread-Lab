@@ -26,6 +26,7 @@ import { fakeServer } from "../testSupport/fakeApi";
 
 let mockStore: Record<string, string> = {};
 let mockFailRemoveKey: string | null = null;
+let mockKeepJournal = false;
 let mockFailMultiSet = false;
 let mockOnRemove: ((key: string) => void) | null = null;
 
@@ -34,6 +35,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   setItem: jest.fn(async (k: string, v: string) => { mockStore[k] = v; }),
   removeItem: jest.fn(async (k: string) => {
     if (mockFailRemoveKey && k === mockFailRemoveKey) throw new Error("simulated crash");
+    if (mockKeepJournal && k === "bread_lab_nla_purge_journal_v1") return;
     if (mockOnRemove) mockOnRemove(k);
     delete mockStore[k];
   }),
@@ -129,6 +131,7 @@ describe("NLA -> account transition (real coordinator)", () => {
   beforeEach(() => {
     mockStore = {};
     mockFailRemoveKey = null;
+    mockKeepJournal = false;
     mockFailMultiSet = false;
     mockOnRemove = null;
     fakeServer.reset();
@@ -362,6 +365,25 @@ describe("NLA -> account transition (real coordinator)", () => {
   });
 
   describe("crash safety and recovery", () => {
+    it("blocks transition and recovery while journal retirement remains unverified", async () => {
+      const { recoverTransition } = require("../transitionCoordinator");
+      put("bread_lab_candidates_v1_anonymous", [{ id: "draft", extractionResult: {} }]);
+      mockKeepJournal = true;
+      await expect(runTransition("discard")).rejects.toThrow(/journal remains after removal/);
+      expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeDefined();
+      expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();
+      setCoordinatorState("IDLE");
+      await expect(runTransition("discard")).rejects.toThrow(/recovery required/i);
+      expect(await recoverTransition()).toMatchObject({ localClear: false });
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeDefined();
+      mockKeepJournal = false;
+      expect(await recoverTransition()).toEqual({ remoteSignout: true, localClear: true });
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();
+      expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();
+      expectNoNlaWorkspaceLeft();
+    });
+
     it("blocks a fresh transition and recovers an interrupted purge without an active-work snapshot", async () => {
       const { recoverTransition } = require("../transitionCoordinator");
       put("bread_lab_candidates_v1_anonymous", [{ id: "draft", extractionResult: {} }]);

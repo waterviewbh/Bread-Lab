@@ -718,6 +718,19 @@ async function verifyOps(ops: PurgeOp[]): Promise<string[]> {
   return problems;
 }
 
+async function retireVerifiedPurgeJournal(): Promise<void> {
+  await AsyncStorage.removeItem(NLA_PURGE_JOURNAL_KEY);
+  let remaining: string | null;
+  try {
+    remaining = await AsyncStorage.getItem(NLA_PURGE_JOURNAL_KEY);
+  } catch (error: any) {
+    throw new Error(`Offline cleanup journal retirement could not be verified: ${error?.message ?? String(error)}`);
+  }
+  if (remaining !== null) {
+    throw new Error("Offline cleanup journal remains after removal; recovery is required.");
+  }
+}
+
 /** Applies a plan. The caller MUST hold storageMutex (the transition coordinator does). Journaled and repeatable. */
 export async function applyNlaPurgeLocked(plan: PurgePlan): Promise<void> {
   validatePurgePlan(plan, plan?.mode, false);
@@ -725,13 +738,17 @@ export async function applyNlaPurgeLocked(plan: PurgePlan): Promise<void> {
   const discardAuthorization = plan.mode === "discard"
     ? { kind: "explicit-user-choice", planFingerprint: stableStringify({ mode: plan.mode, createdAt: plan.createdAt, ops: plan.ops }) }
     : null;
-  await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, JSON.stringify({ version: 1, plan, discardAuthorization }));
+  const journal = JSON.stringify({ version: 1, plan, discardAuthorization });
+  await AsyncStorage.setItem(NLA_PURGE_JOURNAL_KEY, journal);
+  if (await AsyncStorage.getItem(NLA_PURGE_JOURNAL_KEY) !== journal) {
+    throw new Error("Offline cleanup journal write could not be verified; purge was not started.");
+  }
   for (const op of plan.ops) {
     await applyOp(op);
   }
   const problems = await verifyOps(plan.ops);
   if (problems.length) throw new NlaPurgeVerificationError(problems);
-  await AsyncStorage.removeItem(NLA_PURGE_JOURNAL_KEY);
+  await retireVerifiedPurgeJournal();
 }
 
 /** Finishes a purge that was interrupted (journal present). Caller MUST hold storageMutex. Returns whether one ran. */
@@ -752,7 +769,7 @@ export async function resumePendingNlaPurgeLocked(): Promise<boolean> {
   }
   const problems = await verifyOps(plan.ops);
   if (problems.length) throw new NlaPurgeVerificationError(problems);
-  await AsyncStorage.removeItem(NLA_PURGE_JOURNAL_KEY);
+  await retireVerifiedPurgeJournal();
   return true;
 }
 
