@@ -159,6 +159,7 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
         feed: { ok: 0, failed: 0, unresolved: 0 },
         bakes: { ok: 0, failed: 0, unresolved: 0 },
         recipes: { ok: 0, failed: 0, unresolved: 0 },
+        uploads: [],
       };
     });
 
@@ -189,6 +190,7 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
       feed: { ok: 0, failed: 0, unresolved: 0 },
       bakes: { ok: 0, failed: 0, unresolved: 0 },
       recipes: { ok: 0, failed: 0, unresolved: 0 },
+      uploads: [],
     });
 
     await render(<AuthModal visible currentUser={A} onClose={onClose} onAuthChange={onAuthChange} />);
@@ -205,7 +207,8 @@ describe("AuthModal: outgoing identity is resolved from the validated stored cre
     expect(migrate).toHaveBeenCalledTimes(1);
     expect(api.auth.signout).toHaveBeenCalledTimes(1);
     expect(remoteSession).toEqual({ user: { id: A.id } });
-    expect(mockStore[TOKEN_KEY]).toBeUndefined();
+    expect(mockStore[TOKEN_KEY]).toBe(A.id);
+    expect(JSON.parse(mockStore[USER_KEY])).toEqual(A);
     expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
     expect(onAuthChange).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
