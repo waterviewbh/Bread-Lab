@@ -481,7 +481,7 @@ export function LabHub() {
           {section === "analytics" && (
             <ScrollView contentContainerStyle={s.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.mutedForeground} />}>
               <View style={{ paddingHorizontal: 20 }}>
-                <Text style={s.hubTitle}>Vitality Analytics</Text>
+                <Text style={[s.hubTitle, { color: colors.foreground }]}>Vitality Analytics</Text>
                 <ReadingHint body={ACIDIFICATION_HINT} onAbout={() => router.navigate("/log")} colors={colors} />
                 <AcidificationChart data={acidSeries} hasLivePoint={false} />
                 <ReadingHint body={LIFTING_HINT} onAbout={() => router.navigate("/log")} colors={colors} />

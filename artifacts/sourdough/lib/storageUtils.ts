@@ -502,6 +502,27 @@ export async function clearOperationalData(currentUserId?: string | null): Promi
 export const QUARANTINE_KEY = (ownerId: string) => `bread_lab_quarantine_${ownerId}`;
 export const UNKNOWN_QUARANTINE_KEY = "bread_lab_quarantine_unknown";
 
+export async function hasAnyRestorableQuarantine(): Promise<boolean> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const qKeys = keys.filter(k => k.startsWith("bread_lab_quarantine_"));
+    for (const qKey of qKeys) {
+      const rawQ = await AsyncStorage.getItem(qKey);
+      if (rawQ) {
+        const storedQ = JSON.parse(rawQ);
+        if (storedQ && typeof storedQ === "object") {
+          if (Object.values(storedQ).some(val => Array.isArray(val) && val.length > 0)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 interface QuarantinedStore {
   scopedRecipes?: any[];
   scopedBakeHistory?: any[];

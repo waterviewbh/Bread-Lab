@@ -283,25 +283,25 @@ export default function FeedActiveSessionView({
       )}
 
       {isCool && (
-        <View style={{ backgroundColor: '#eff6ff', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8 }}>
-          <Text selectable={true} style={{ color: '#1e40af', fontSize: 12, fontFamily: fonts.sansMedium }}>
+        <View style={{ backgroundColor: colors.card, padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+          <Text selectable={true} style={{ color: colors.foreground, fontSize: 12, fontFamily: fonts.sansMedium }}>
             ❄️ Cool kitchen detected. Activity may take up to 36–48 hours to peak. Keep watching the volume!
           </Text>
         </View>
       )}
 
       {isWarm && (
-        <View style={{ backgroundColor: '#fff1f2', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8 }}>
-          <Text selectable={true} style={{ color: '#9f1239', fontSize: 12, fontFamily: fonts.sansMedium }}>
+        <View style={{ backgroundColor: colors.card, padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+          <Text selectable={true} style={{ color: colors.foreground, fontSize: 12, fontFamily: fonts.sansMedium }}>
             🔥 Warm kitchen detected. Yeast activity will be accelerated. Check volume frequently!
           </Text>
         </View>
       )}
 
       {showFalseRise && (
-        <View style={{ backgroundColor: '#fff7ed', padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: '#fdba74' }}>
-          <Text selectable={true} style={{ color: '#9a3412', fontWeight: '700', fontSize: 13, marginBottom: 4 }}>⚠️ Heads Up: The Early Bacterial Bloom</Text>
-          <Text selectable={true} style={{ color: '#9a3412', fontSize: 12, lineHeight: 16 }}>
+        <View style={{ backgroundColor: colors.card, padding: 12, marginHorizontal: 20, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+          <Text selectable={true} style={{ color: colors.foreground, fontWeight: '700', fontSize: 13, marginBottom: 4 }}>⚠️ Heads Up: The Early Bacterial Bloom</Text>
+          <Text selectable={true} style={{ color: colors.mutedForeground, fontSize: 12, lineHeight: 16 }}>
             Seeing sudden bubbling or a funky smell? This is a normal surge of bacteria, not yeast! Expect it to go flat and look "dead" soon. Do not stop feeding!
           </Text>
         </View>
@@ -622,13 +622,13 @@ export default function FeedActiveSessionView({
         {/* Sluggish Diagnostic Fallback */}
         {showSluggishDiagnostic && (
           <Animated.View entering={FadeInDown.delay(250).duration(400)} style={{ marginTop: 20 }}>
-            <View style={{ backgroundColor: '#fef2f2', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#fecaca' }}>
-              <Text style={{ color: '#991b1b', fontWeight: '700', fontSize: 14, marginBottom: 4 }}>Why hasn't my starter doubled yet?</Text>
-              <Text style={{ color: '#991b1b', fontSize: 13, lineHeight: 18, marginBottom: 12 }}>
+            <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14, marginBottom: 4 }}>Why hasn't my starter doubled yet?</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 18, marginBottom: 12 }}>
                 Your starter is taking longer than expected to mature. Most sluggish starters just need more time or a warmer environment.
               </Text>
-              <Pressable style={{ backgroundColor: '#991b1b', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>Run Starter Diagnostic Workflow →</Text>
+              <Pressable style={{ backgroundColor: colors.primary, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
+                <Text style={{ color: colors.primaryForeground, fontWeight: '600', fontSize: 13 }}>Run Starter Diagnostic Workflow →</Text>
               </Pressable>
             </View>
           </Animated.View>

@@ -74,7 +74,10 @@ export function PhasePickerModal({
             <Ionicons name="close" size={22} color={colors.foreground} />
           </Pressable>
         </View>
-        <ScrollView contentContainerStyle={{ paddingVertical: 8, paddingBottom: insets.bottom + 80 }}>
+        <ScrollView
+          style={{ flex: 1, backgroundColor: colors.background }}
+          contentContainerStyle={{ paddingVertical: 8, paddingBottom: insets.bottom + 80, flexGrow: 1 }}
+        >
           {availableCategories.map((cat) => (
             <View key={cat.key}>
               {/* Category group header */}

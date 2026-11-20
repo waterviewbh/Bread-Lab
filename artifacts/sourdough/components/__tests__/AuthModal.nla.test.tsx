@@ -101,7 +101,7 @@ describe("AuthModal: NLA -> account choice screen", () => {
   ])("blocks identification when the remote session cannot be verified", async response => {
     seedRecords();
     const before = { ...mockStore };
-    jest.mocked(api.auth.getSession).mockResolvedValueOnce(response as any);
+    jest.mocked(api.auth.getSession).mockResolvedValue(response as any);
     await submitIdentification();
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith("Identification Failed", expect.stringMatching(/Couldn’t verify/)));
     expect(api.auth.identify).not.toHaveBeenCalled();
@@ -202,6 +202,12 @@ describe("AuthModal: NLA -> account choice screen", () => {
       seedRecords();
       await openChoiceScreen();
       expect(screen.queryByText(NLA_LOCAL_WORK_TITLE)).toBeNull();
+    });
+
+    it("presents the choice screen when NLA workspace is empty but an account quarantine bucket has records", async () => {
+      put("bread_lab_quarantine_acct-1", { scopedRecipes: [{ id: "q-1", userId: TOKEN, name: "Parked", phases }] });
+      await submitIdentification();
+      await waitFor(() => expect(screen.getByText("Your offline workspace")).toBeTruthy());
     });
   });
 

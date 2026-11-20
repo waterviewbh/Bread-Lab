@@ -101,10 +101,10 @@ export function PasteCandidateModal({
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingTop: insets.top + webTop + 24, paddingBottom: 40 },
+            { paddingTop: insets.top + webTop + 24, paddingBottom: insets.bottom + 40, flexGrow: 1 },
           ]}
           keyboardShouldPersistTaps="handled"
-          style={{ flex: 1 }}
+          style={{ flex: 1, backgroundColor: colors.background }}
         >
           {/* Header */}
           <View style={styles.header}>

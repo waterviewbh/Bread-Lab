@@ -211,7 +211,11 @@ export function PhaseAssignmentModal({
         </View>
 
         {/* Scrollable Destination Phase List */}
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 100 }} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={{ flex: 1, backgroundColor: colors.background }}
+          contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 100, flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={[s.destinationListTitle, { color: colors.mutedForeground }]}>
             CHOOSE DESTINATION PHASE
           </Text>

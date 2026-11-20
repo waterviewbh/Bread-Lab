@@ -145,7 +145,11 @@ export function BulkEstimatorSettingsModal({
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 40 }]} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          style={{ flex: 1, backgroundColor: colors.background }}
+          contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 40, flexGrow: 1 }]}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={[s.metricsCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
             <View style={s.metricItem}>
               <Text style={[s.metricLabel, { color: colors.mutedForeground }]}>HYDRATION</Text>

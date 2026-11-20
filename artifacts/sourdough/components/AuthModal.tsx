@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
 import { getStoredToken, getStoredUser, type AuthUser } from "@/lib/auth";
-import { clearAllAppData, clearOperationalData, safeParse } from "@/lib/storageUtils";
+import { clearAllAppData, clearOperationalData, safeParse, hasAnyRestorableQuarantine } from "@/lib/storageUtils";
 import { executeWorkspaceTransition, recoverTransition, ActiveFeedNotAcknowledgedError, getCoordinatorState, hasPendingSignoutRecovery } from "@/lib/transitionCoordinator";
 import { getDeviceId } from "@/lib/deviceId";
 import { migrateLocalDataToAccount } from "@/lib/migrate";
@@ -379,7 +379,8 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         starterName: starterName.trim(),
         isSignUp: mode === "name",
       };
-      if (inventoryIsEmpty(inventory)) {
+      const hasQuarantine = await hasAnyRestorableQuarantine();
+      if (inventoryIsEmpty(inventory) && !hasQuarantine) {
         await handleChoiceProceedWithoutImport(pendingData, inventory);
       } else {
         setTransitionPendingData(pendingData);
@@ -503,9 +504,10 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
         style={{ flex: 1, backgroundColor: colors.background }}
       >
         <ScrollView
+          style={{ flex: 1, backgroundColor: colors.background }}
           contentContainerStyle={[
             s.content,
-            { paddingTop: insets.top + webTop + 28, paddingBottom: insets.bottom + 32 },
+            { paddingTop: insets.top + webTop + 28, paddingBottom: insets.bottom + 32, flexGrow: 1 },
           ]}
           keyboardShouldPersistTaps="handled"
         >
@@ -564,9 +566,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
                   style={[s.primaryButton, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#FFFFFF" />
+                    <ActivityIndicator color={colors.primaryForeground} />
                   ) : (
-                    <Text style={s.primaryButtonText}>Import & Proceed</Text>
+                    <Text style={[s.primaryButtonText, { color: colors.primaryForeground }]}>Import & Proceed</Text>
                   )}
                 </Pressable>
 
@@ -623,12 +625,12 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
             </View>
           ) : (
             <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={s.modeTabs}>
+              <View style={[s.modeTabs, { backgroundColor: colors.muted }]}>
                 <Pressable
                   onPress={() => setMode("name")}
                   style={[
                     s.modeTab,
-                    mode === "name" && { backgroundColor: colors.background, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+                    mode === "name" && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
                   ]}
                 >
                   <Text style={[s.modeTabText, { color: mode === "name" ? colors.foreground : colors.mutedForeground }]}>
@@ -639,7 +641,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
                   onPress={() => setMode("find")}
                   style={[
                     s.modeTab,
-                    mode === "find" && { backgroundColor: colors.background, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+                    mode === "find" && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
                   ]}
                 >
                   <Text style={[s.modeTabText, { color: mode === "find" ? colors.foreground : colors.mutedForeground }]}>
@@ -681,9 +683,9 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
                   style={[s.primaryButton, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#FFFFFF" />
+                    <ActivityIndicator color={colors.primaryForeground} />
                   ) : (
-                    <Text style={s.primaryButtonText}>
+                    <Text style={[s.primaryButtonText, { color: colors.primaryForeground }]}>
                       {mode === "find" ? "Recover Starter" : "Connect & Sync"}
                     </Text>
                   )}
@@ -783,7 +785,6 @@ const s = StyleSheet.create({
   },
   modeTabs: {
     flexDirection: "row",
-    backgroundColor: "rgba(0,0,0,0.04)",
     borderRadius: radius.md,
     padding: 3,
     marginBottom: 20,
@@ -822,7 +823,6 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   primaryButtonText: {
-    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
   },

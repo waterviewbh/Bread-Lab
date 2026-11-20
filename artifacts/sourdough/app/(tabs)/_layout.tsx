@@ -103,15 +103,14 @@ function ClassicTabLayout() {
           height: isWeb ? 84 : 60 + insets.bottom,
           ...(isWeb ? {} : { paddingBottom: 8 + insets.bottom }),
         },
-        tabBarBackground: () =>
-          isWeb ? (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: colors.background },
-              ]}
-            />
-          ) : null,
+        tabBarBackground: () => (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: colors.background },
+            ]}
+          />
+        ),
       }}
       initialRouteName="bench"
     >
