@@ -132,6 +132,7 @@ export const CHANGELOG: ChangelogVersion[] = [
       changes: [
         { type: "Added", content: "If sharing a recipe into the app runs into a network problem, the URL is stored until access is restored. This cache DOES NOT survive signing in or out before the candidate is brought in." },
         { type: "Fixed", content: "The overlay journal used for active bakes in Recipe Runner didn't have a dark mode treatment; now it does." },
+        { type: "Fixed", content: "Better functionality in the Diagnostic Review page (some recipes would get stuck and report completed without completing)." },
         { type: "Modified", content: "Added more detail to the (shared or printed) Feed Session report." },
         { type: "Modified", content: "Cleaned up the Select Recipe (picker) screen to look more like Recipe Builder - rather than a long list, the recipes now show as stacked cards." },
       ],

@@ -6,6 +6,7 @@ import {
   validateOperationalData,
   quarantineOperationalData,
   restoreOperationalData,
+  verifyRestorableOperationalData,
   safeParse,
 } from "./storageUtils";
 import type { NlaDisposition, NlaTransitionIntent } from "./nlaWorkspace";
@@ -65,6 +66,10 @@ export namespace UDL {
 
   export async function quarantineData(departingOwnerId?: string | null): Promise<void> {
     await quarantineOperationalData(departingOwnerId);
+  }
+
+  export async function verifyRestoreReadiness(incomingOwnerId: string): Promise<void> {
+    await verifyRestorableOperationalData(incomingOwnerId);
   }
 
   export async function restoreData(incomingOwnerId: string): Promise<void> {

@@ -368,6 +368,9 @@ export async function executeWorkspaceTransition(
         throw new Error("Workspace transition refused: a shared recipe is still pending. Open Candidates to save it, then try again.");
       }
 
+      // Reject incoming quarantine conflicts before the NLA purge can retire offline source records.
+      if (disposition && incomingOwnerId !== null) await UDL.verifyRestoreReadiness(incomingOwnerId);
+
       if (disposition) stagedNlaActive = await stageNlaActiveSnapshot();
 
       if (disposition) {

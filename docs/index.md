@@ -38,6 +38,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
 #### 📦 Version 2.6
+- [Session: Diagnostic Review Persistence for a Flat-Cache Bake (2026-11-19)](file:///E:/Bread-Lab/docs/journal/2026-11-19_diagnostic_review_persistence.artifact.md) [FOCUSED TESTS PASSED; PRODUCTION REVIEW OPEN]
 - [Session: Issue #24 Offline Theory Refresh Preservation (2026-11-16)](file:///E:/Bread-Lab/docs/journal/2026-11-16_issue_24_offline_theory_refresh.artifact.md) [FOCUSED TESTS PASSED; DEVICE RECOVERY OPEN]
 - [Session: Issue #24 Candidate Promotion Retry and Lineage (2026-11-16)](file:///E:/Bread-Lab/docs/journal/2026-11-16_issue_24_candidate_promotion_retry.artifact.md) [FOCUSED TESTS PASSED; ISSUE #24 OPEN]
 - [Session: Issue #24 Active Work Transition Thresholds (2026-11-16)](file:///E:/Bread-Lab/docs/journal/2026-11-16_issue_24_active_work_thresholds.artifact.md) [FOCUSED TESTS PASSED; ISSUE #24 OPEN]

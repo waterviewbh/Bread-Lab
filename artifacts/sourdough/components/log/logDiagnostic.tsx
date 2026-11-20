@@ -16,6 +16,8 @@ import { api } from "@/lib/api";
 import { getDeviceId } from "@/lib/deviceId";
 import { getStoredToken } from "@/lib/auth";
 import { resolveRootMasterId } from "@/lib/recipeUtils";
+import { getOwnerStorageKey } from "@/lib/storageUtils";
+import { randomUUID } from "expo-crypto";
 
 const CATEGORY_ORDER: GlossaryCategory[] = ['crumb', 'shape', 'crust', 'volume'];
 
@@ -26,6 +28,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   const [history, setHistory] = useState<BakeHistoryItem[]>([]);
   const [selectedBake, setSelectedBake] = useState<BakeHistoryItem | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Evaluation State
   const [crumbScore, setCrumbScore] = useState<number>(0);
@@ -38,16 +41,22 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
   const loadHistory = useCallback(async () => {
     try {
-      const [historyRaw, activeRaw] = await Promise.all([
-        AsyncStorage.getItem(BAKE_HISTORY_KEY),
-        AsyncStorage.getItem(BAKE_KEY),
-      ]);
-
       const { owner } = await getWorkspaceIdentity();
-      let combined: BakeHistoryItem[] = [];
-      if (historyRaw) {
-        const parsed = JSON.parse(historyRaw);
-        if (Array.isArray(parsed)) combined = parsed.filter((b: BakeHistoryItem) => b?.userId === owner);
+      const [historyRaw, flatHistoryRaw, activeRaw] = await Promise.all([
+        AsyncStorage.getItem(getOwnerStorageKey(BAKE_HISTORY_KEY, owner)),
+        AsyncStorage.getItem(BAKE_HISTORY_KEY),
+        AsyncStorage.getItem(getOwnerStorageKey(BAKE_KEY, owner)),
+      ]);
+      setLoadError(null);
+      const combined: BakeHistoryItem[] = [];
+      for (const raw of [historyRaw, flatHistoryRaw]) {
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const bake of parsed as BakeHistoryItem[]) {
+            if (bake?.id && bake.userId === owner && !combined.some(h => h.id === bake.id)) combined.push(bake);
+          }
+        }
       }
 
       if (activeRaw) {
@@ -69,6 +78,9 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
           setSelectedBake(found);
           return;
         }
+        setSelectedBake(null);
+        setLoadError("The requested bake is unavailable in this workspace. It may have been deleted or belong to another account.");
+        return;
       }
 
       // 2. If no specific bake or it was deleted, look for the first unrated bake
@@ -96,6 +108,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       console.error("[Diagnostic] loadHistory failed", e);
       setHistory([]);
       setSelectedBake(null);
+      setLoadError("Unable to load bake history. Please try again.");
     }
   }, [selectedBake?.id, bakeId]);
 
@@ -228,8 +241,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               if (!sourceRecipe) throw new Error("Source recipe not found");
 
               const masterId = resolveRootMasterId(sourceRecipe, recipes);
-              const deviceId = await getDeviceId();
-              const token = await getStoredToken(); // null = NLA; an uncertain identity throws into the catch below, before anything is written
+              const token = await getStoredToken(); // null = NLA; an uncertain identity throws before any write
 
               const outcome = {
                 crumbScore: crumbScore as any,
@@ -242,12 +254,9 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
               await updateBakeOutcomeInHistory(selectedBake.id, outcome);
 
               const newName = sourceRecipe.name.replace(/\s*\(Iterated\)/gi, "").trim();
-              const duplicated = await api.recipes.duplicate(
-                sourceRecipe.id,
-                newName,
-                deviceId,
-                token ?? undefined
-              );
+              const duplicated = token === null
+                ? { id: randomUUID(), name: newName, phases: sourceRecipe.phases }
+                : await api.recipes.duplicate(sourceRecipe.id, newName, await getDeviceId(), token);
 
               const childIterations = recipes.filter(r => r.id !== masterId && resolveRootMasterId(r, recipes) === masterId);
               const versionNumber = childIterations.length + 1;
@@ -274,7 +283,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
 
               const updated = [newSaved, ...recipes];
               await writeRecipesLocal(updated);
-              await upsertRecipeRemote(newSaved);
+              if (token !== null) await upsertRecipeRemote(newSaved);
               await archiveIntermediateIterations(masterId);
 
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -304,7 +313,7 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   if (!selectedBake) {
     return (
       <View style={s.empty}>
-        <Text style={{ color: colors.mutedForeground }}>No bakes found to evaluate.</Text>
+        <Text style={{ color: colors.mutedForeground }}>{loadError ?? "No bakes found to evaluate."}</Text>
       </View>
     );
   }

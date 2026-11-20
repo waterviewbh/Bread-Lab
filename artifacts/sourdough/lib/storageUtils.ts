@@ -753,6 +753,68 @@ function validateOwnedQuarantineRecords(value: unknown, owner: string, key: stri
   return value;
 }
 
+function normalizeForConflictCheck(record: any): any {
+  if (!record || typeof record !== "object") return record;
+  const clone = { ...record };
+  delete clone.updatedAt;
+  delete clone.updated_at;
+  return clone;
+}
+
+function getRecordTimestamp(record: any): number {
+  if (!record || typeof record !== "object") return 0;
+  const raw = record.updatedAt ?? record.updated_at ?? record.createdAt ?? record.created_at ?? 0;
+  const t = typeof raw === "number" ? raw : new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+async function planScopedRestore(incomingUserId: string, storedQ: QuarantinedStore) {
+  const qKey = QUARANTINE_KEY(incomingUserId);
+  const scopedRestore = [
+    { fields: ["scopedRecipes", "recipes"], baseKey: APP_STORAGE_KEYS.RECIPES },
+    { fields: ["scopedBakeHistory", "bakeHistory"], baseKey: APP_STORAGE_KEYS.BAKE_HISTORY },
+  ] as const;
+  const { stableStringify } = require("./nlaWorkspace") as typeof import("./nlaWorkspace");
+  return Promise.all(scopedRestore.flatMap(({ fields, baseKey }) => {
+    const presentFields = fields.filter(field => storedQ[field] !== undefined);
+    if (presentFields.length === 0) return [];
+    return [(async () => {
+      const key = getOwnerStorageKey(baseKey, incomingUserId);
+      const existing = validateOwnedQuarantineRecords(
+        JSON.parse(await AsyncStorage.getItem(key) ?? "[]"), incomingUserId, key
+      );
+      const parked = presentFields.flatMap(field =>
+        validateOwnedQuarantineRecords(storedQ[field], incomingUserId, `${qKey}.${field}`)
+      );
+      const byId = new Map<string, (typeof existing)[number]>();
+      for (const record of [...existing, ...parked]) {
+        const prior = byId.get(record.id);
+        if (prior) {
+          const normPrior = stableStringify(normalizeForConflictCheck(prior));
+          const normRecord = stableStringify(normalizeForConflictCheck(record));
+          if (normPrior !== normRecord) {
+            throw new Error(`Conflicting quarantine restore copies for ${record.id} at ${key}.`);
+          }
+          const priorTime = getRecordTimestamp(prior);
+          const recordTime = getRecordTimestamp(record);
+          if (recordTime > priorTime) {
+            byId.set(record.id, record);
+          }
+        } else {
+          byId.set(record.id, record);
+        }
+      }
+      return { fields: presentFields, key, data: JSON.stringify([...byId.values()]) };
+    })()];
+  }));
+}
+
+export async function verifyRestorableOperationalData(incomingUserId: string): Promise<void> {
+  const rawQ = await AsyncStorage.getItem(QUARANTINE_KEY(incomingUserId));
+  if (!rawQ) return;
+  await planScopedRestore(incomingUserId, JSON.parse(rawQ) as QuarantinedStore);
+}
+
 export async function restoreOperationalData(incomingUserId: string): Promise<void> {
   const qKey = QUARANTINE_KEY(incomingUserId);
   console.log(`[BL-DIAG] [Quarantine] restoreOperationalData starting for incomingUserId: ${incomingUserId}`);
@@ -776,33 +838,7 @@ export async function restoreOperationalData(incomingUserId: string): Promise<vo
       }
     };
 
-    const scopedRestore = [
-      { fields: ["scopedRecipes", "recipes"], baseKey: APP_STORAGE_KEYS.RECIPES },
-      { fields: ["scopedBakeHistory", "bakeHistory"], baseKey: APP_STORAGE_KEYS.BAKE_HISTORY },
-    ] as const;
-    const { stableStringify } = require("./nlaWorkspace") as typeof import("./nlaWorkspace");
-    const writes = await Promise.all(scopedRestore.flatMap(({ fields, baseKey }) => {
-      const presentFields = fields.filter(field => storedQ[field] !== undefined);
-      if (presentFields.length === 0) return [];
-      return [(async () => {
-        const key = getOwnerStorageKey(baseKey, incomingUserId);
-        const existing = validateOwnedQuarantineRecords(
-          JSON.parse(await AsyncStorage.getItem(key) ?? "[]"), incomingUserId, key
-        );
-        const parked = presentFields.flatMap(field =>
-          validateOwnedQuarantineRecords(storedQ[field], incomingUserId, `${qKey}.${field}`)
-        );
-        const byId = new Map<string, (typeof existing)[number]>();
-        for (const record of [...existing, ...parked]) {
-          const prior = byId.get(record.id);
-          if (prior && stableStringify(prior) !== stableStringify(record)) {
-            throw new Error(`Conflicting quarantine restore copies for ${record.id} at ${key}.`);
-          }
-          byId.set(record.id, record);
-        }
-        return { fields: presentFields, key, data: JSON.stringify([...byId.values()]) };
-      })()];
-    }));
+    const writes = await planScopedRestore(incomingUserId, storedQ);
     for (const { key, data } of writes) {
       await AsyncStorage.setItem(key, data);
       if (await AsyncStorage.getItem(key) !== data) throw new Error(`Restore verification failed for ${key}.`);

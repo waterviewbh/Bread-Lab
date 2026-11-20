@@ -1095,19 +1095,29 @@ export async function updateBakeOutcomeInHistory(
     return storageMutex.run(async () => {
         try {
             const flatHistoryKey = BAKE_HISTORY_KEY;
-            const [storedHistory, storedFlatHistory] = await Promise.all([
+            const [storedHistory, storedFlatHistory, storedActive] = await Promise.all([
                 AsyncStorage.getItem(bakeHistoryKey),
                 AsyncStorage.getItem(flatHistoryKey),
+                AsyncStorage.getItem(bakeKey),
             ]);
-            let history = safeParse<ActiveBake[]>(storedHistory, [], Array.isArray);
-            let flatHistory = safeParse<ActiveBake[]>(storedFlatHistory, [], Array.isArray);
+            const history = safeParse<ActiveBake[]>(storedHistory, [], Array.isArray);
+            const flatHistory = safeParse<ActiveBake[]>(storedFlatHistory, [], Array.isArray);
+            const activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
             const index = history.findIndex(h => h.id === bakeId);
             const flatIndex = flatHistory.findIndex(h => h.id === bakeId);
-            const candidate = index !== -1 ? history[index] : flatIndex !== -1 ? flatHistory[flatIndex] : null;
-            if (!candidate) throw new Error(`Bake ${bakeId} was not found in review history.`);
+            const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
+            const candidate = index !== -1 ? history[index] : flatIndex !== -1 ? flatHistory[flatIndex] : activeBakes[activeIndex] ?? null;
+            if (!candidate) throw new Error(`Bake ${bakeId} was not found in review history or active bakes.`);
             if (candidate.userId !== owner) throw new Error("Bake owner does not match the current workspace.");
-            if (index !== -1 && flatIndex !== -1 && flatHistory[flatIndex].userId !== owner) {
+            if (flatIndex !== -1 && flatHistory[flatIndex].userId !== owner) {
                 throw new Error("Flat bake owner does not match the current workspace.");
+            }
+            if (activeIndex !== -1 && activeBakes[activeIndex].userId !== owner) {
+                throw new Error("Active bake owner does not match the current workspace.");
+            }
+            if (index === -1 && flatIndex === -1 &&
+                (!candidate.phases?.length || !candidate.phases.every(p => !!p.completedAt))) {
+                throw new Error("Only a completed active bake can be moved into review history.");
             }
 
             const updatedBake: ActiveBake = { ...candidate, outcome };
@@ -1133,21 +1143,16 @@ export async function updateBakeOutcomeInHistory(
                 }
             }
 
-            if (index !== -1) {
-                history[index] = updatedBake;
+            if (index !== -1) history[index] = updatedBake;
+            else if (flatIndex === -1) history.unshift({ ...updatedBake, status: 'completed' });
+            if (index !== -1 || flatIndex === -1) {
                 await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(history));
             }
             if (flatIndex !== -1) {
                 flatHistory[flatIndex] = updatedBake;
                 await AsyncStorage.setItem(flatHistoryKey, JSON.stringify(flatHistory));
             }
-            const storedActive = await AsyncStorage.getItem(bakeKey);
-            const activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
-            const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
             if (activeIndex !== -1) {
-                if (activeBakes[activeIndex].userId !== owner) {
-                    throw new Error("Active bake owner does not match the current workspace.");
-                }
                 activeBakes.splice(activeIndex, 1);
                 await AsyncStorage.setItem(bakeKey, JSON.stringify(activeBakes));
             }

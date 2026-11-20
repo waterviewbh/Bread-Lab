@@ -285,6 +285,43 @@ describe("NLA -> account transition (real coordinator)", () => {
       expect(get("bread_lab_quarantine_acct-1")).toEqual({});
     });
 
+    it("keeps NLA source records when an incoming quarantine copy conflicts", async () => {
+      seedNla();
+      seedOthers();
+      const incomingId = "incoming-conflict";
+      put("bread_lab_recipes_v1_acct-1", [{ id: incomingId, userId: TOKEN, name: "Current" }]);
+      put("bread_lab_quarantine_acct-1", {
+        scopedRecipes: [{ id: incomingId, userId: TOKEN, name: "Parked" }],
+      });
+      const sourceKeys = [
+        "bread_lab_recipes_v1_anonymous",
+        "bread_lab_bake_history_v1_anonymous",
+        "sourdough_feed_history_v1",
+        "bread_lab_candidates_v1_anonymous",
+      ];
+      const sourceBefore = Object.fromEntries(sourceKeys.map(key => [key, mockStore[key]]));
+      const quarantineBefore = mockStore["bread_lab_quarantine_acct-1"];
+
+      await expect(runTransition(mode)).rejects.toThrow(/Conflicting quarantine restore copies/);
+
+      expect(Object.fromEntries(sourceKeys.map(key => [key, mockStore[key]]))).toEqual(sourceBefore);
+      expect(mockStore["bread_lab_quarantine_acct-1"]).toBe(quarantineBefore);
+      expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();
+      expect(mockStore["bread_lab_auth_token_v1"]).toBeUndefined();
+      expect(getCoordinatorState()).toBe("RECOVERY_REQUIRED");
+
+      const { recoverTransition } = require("../transitionCoordinator");
+      expect(await recoverTransition()).toEqual({ remoteSignout: true, localClear: true });
+      // A reviewed repair makes the parked copy identical to the existing owner-scoped copy.
+      put("bread_lab_quarantine_acct-1", {
+        scopedRecipes: [{ id: incomingId, userId: TOKEN, name: "Current" }],
+      });
+      await runTransition(mode);
+      expect(mockStore["bread_lab_auth_token_v1"]).toBe(TOKEN);
+      expect(get("bread_lab_recipes_v1_acct-1").filter((record: any) => record.id === incomingId)).toHaveLength(1);
+      expectNoNlaWorkspaceLeft();
+    });
+
     it("keeps the incoming account's quarantine when destination read-back fails", async () => {
       seedNla();
       seedOthers();
@@ -541,6 +578,36 @@ describe("NLA -> account transition (real coordinator)", () => {
       expect(mockStore[NLA_PURGE_JOURNAL_KEY]).toBeUndefined();
     });
   });
+
+  describe("Quarantine duplicate recipe reconciliation (Issue #24)", () => {
+    it("reconciles duplicate recipe records differing only in updatedAt, selecting the newer one", async () => {
+      seedOthers();
+      const recipeId = "dup-recipe-1";
+      put("bread_lab_recipes_v1_acct-1", [{ id: recipeId, userId: TOKEN, name: "Sourdough", updatedAt: 1000 }]);
+      put("bread_lab_quarantine_acct-1", {
+        scopedRecipes: [{ id: recipeId, userId: TOKEN, name: "Sourdough", updatedAt: 2000 }],
+      });
+
+      await runTransition("import");
+      const restored = get("bread_lab_recipes_v1_acct-1");
+      const match = restored.find((r: any) => r.id === recipeId);
+      expect(match).toBeDefined();
+      expect(match.updatedAt).toBe(2000);
+      expect(restored.filter((r: any) => r.id === recipeId)).toHaveLength(1);
+    });
+
+    it("rejects restoration as a genuine conflict when duplicate recipe copies have substantive content differences", async () => {
+      seedOthers();
+      const recipeId = "dup-recipe-conflict";
+      put("bread_lab_recipes_v1_acct-1", [{ id: recipeId, userId: TOKEN, name: "Sourdough A", updatedAt: 1000 }]);
+      put("bread_lab_quarantine_acct-1", {
+        scopedRecipes: [{ id: recipeId, userId: TOKEN, name: "Sourdough B Conflict", updatedAt: 2000 }],
+      });
+
+      await expect(runTransition("import")).rejects.toThrow(/Conflicting quarantine restore copies/);
+    });
+  });
+
   it("(support) protected snapshot ignores the NLA scope and the journal", async () => {
     seedNla();
     const snap = await snapshotProtectedKeys();
