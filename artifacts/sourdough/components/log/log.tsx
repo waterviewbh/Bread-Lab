@@ -36,6 +36,7 @@ import { typography, spacing, radius, fonts } from "@/constants/theme";
 import { SafePrint } from "@/lib/printUtils";
 import { storageMutex, subscribeToWorkspaceChange } from "@/lib/storageUtils";
 import { type BakeOutcome } from "@/lib/recipeTypes";
+import { isBakeEligibleForHistory } from "@/app/(tabs)/history";
 import {
   addToFeedTombstone,
   removeFromFeedTombstone,
@@ -314,10 +315,7 @@ export function HistorySection() {
       setHistory(parsedFeed.filter(isOwnerMatch));
       const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
       const validBakeList = bakeList.filter(
-        (b) =>
-          isOwnerMatch(b) &&
-          b.phases?.length > 0 &&
-          b.phases.every((p: any) => !!p.completedAt)
+        (b) => isOwnerMatch(b) && isBakeEligibleForHistory(b)
       );
       setBakeHistory(mergeActiveBake(validBakeList, activeStored));
     } catch {}
@@ -388,7 +386,7 @@ export function HistorySection() {
 
       const localOnlyBakes = localBakes.filter(b => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id) && isOwnerMatch(b));
       const finalBakes = [...mergedBakes.filter(b => !deletedBakeIds.has(b.id)), ...localOnlyBakes]
-        .filter((b) => b.phases?.length > 0 && b.phases.every((p: any) => !!p.completedAt))
+        .filter(isBakeEligibleForHistory)
         .sort((a, b) => (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt));
 
       if (loadSequenceRef.current !== sequenceId) return;

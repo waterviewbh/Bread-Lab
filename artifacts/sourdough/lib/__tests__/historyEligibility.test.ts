@@ -1,8 +1,49 @@
-import { mergeActiveBake, isOwnerMatch } from "../../app/(tabs)/history";
+import { mergeActiveBake, isOwnerMatch, isBakeEligibleForHistory } from "../../app/(tabs)/history";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-describe("Real Production History Eligibility & mergeActiveBake Tests (JA Assignment 1)", () => {
+describe("Production History Eligibility & Initial-Load / Reconciliation Filter Tests (JA Assignment 1)", () => {
   const token = "test-token-123";
+
+  it("Tests isBakeEligibleForHistory directly for initial-load and reconciliation paths (incomplete, unreviewed completed, reviewed bakes)", () => {
+    // 1. Newly created active bake (no completed phases) -> Ineligible
+    const newBake = {
+      id: "b-new",
+      phases: [{ key: "mix", completedAt: null }],
+    };
+    expect(isBakeEligibleForHistory(newBake)).toBe(false);
+
+    // 2. Bake with partially completed phases (incomplete) -> Ineligible
+    const partialBake = {
+      id: "b-partial",
+      phases: [
+        { key: "mix", completedAt: 100 },
+        { key: "proof", completedAt: null },
+      ],
+    };
+    expect(isBakeEligibleForHistory(partialBake)).toBe(false);
+
+    // 3. Fully completed but unreviewed bake -> Eligible
+    const completedUnreviewedBake = {
+      id: "b-completed",
+      outcome: null,
+      phases: [
+        { key: "mix", completedAt: 100 },
+        { key: "proof", completedAt: 200 },
+      ],
+    };
+    expect(isBakeEligibleForHistory(completedUnreviewedBake)).toBe(true);
+
+    // 4. Reviewed completed bake -> Eligible
+    const reviewedBake = {
+      id: "b-reviewed",
+      outcome: { overallScore: 5, defects: [] },
+      phases: [
+        { key: "mix", completedAt: 100 },
+        { key: "proof", completedAt: 200 },
+      ],
+    };
+    expect(isBakeEligibleForHistory(reviewedBake)).toBe(true);
+  });
 
   it("1. Newly created active bake with no completed phases is excluded by mergeActiveBake", () => {
     const activeBakes = [

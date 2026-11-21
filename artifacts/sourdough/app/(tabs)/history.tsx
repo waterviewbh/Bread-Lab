@@ -55,6 +55,10 @@ export function isOwnerMatch(entry: { userId?: string; user_id?: string }, token
   return owner === token;
 }
 
+export function isBakeEligibleForHistory(bake: { phases?: any[] }): boolean {
+  return !!bake?.phases?.length && bake.phases.every((p: any) => !!p.completedAt);
+}
+
 export function mergeActiveBake(
   list: BakeHistoryEntry[],
   activeRaw: string | null,
@@ -66,10 +70,7 @@ export function mergeActiveBake(
     const activeBakes: any[] = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
     const isOwnerMatchGuard = (entry: { userId?: string }) => isOwnerMatch(entry, token);
     const validActiveBakes = activeBakes.filter(
-      (active) =>
-        isOwnerMatchGuard(active) &&
-        active?.phases?.length > 0 &&
-        active.phases.every((p: any) => !!p.completedAt)
+      (active) => isOwnerMatchGuard(active) && isBakeEligibleForHistory(active)
     );
     let newList = [...list];
     validActiveBakes.forEach((active) => {
@@ -721,10 +722,7 @@ export default function HistoryScreen() {
         }
         const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
         const validBakeList = bakeList.filter(
-          (b) =>
-            isOwnerMatchGuard(b) &&
-            b.phases?.length > 0 &&
-            b.phases.every((p: any) => !!p.completedAt)
+          (b) => isOwnerMatchGuard(b) && isBakeEligibleForHistory(b)
         );
         setBakeHistory(mergeActiveBake(validBakeList, activeStored, token));
       } catch (e) {}
@@ -808,11 +806,7 @@ export default function HistoryScreen() {
       const mergedBakes = [
         ...apiMapped.filter((b) => !deletedBakeIds.has(b.id)),
         ...localOnlyBakes,
-      ].filter(
-        (b) =>
-          b.phases?.length > 0 &&
-          b.phases.every((p: any) => !!p.completedAt)
-      ).sort((a, b) => {
+      ].filter(isBakeEligibleForHistory).sort((a, b) => {
         return (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt);
       });
 
