@@ -49,24 +49,60 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       ]);
       setLoadError(null);
       const combined: BakeHistoryItem[] = [];
-      for (const raw of [historyRaw, flatHistoryRaw]) {
-        if (!raw) continue;
-        const parsed = JSON.parse(raw);
+
+      const sourcesToRead = [
+        { raw: historyRaw, source: "owner_history", storageKey: getOwnerStorageKey(BAKE_HISTORY_KEY, owner) },
+        { raw: flatHistoryRaw, source: "flat_history", storageKey: BAKE_HISTORY_KEY },
+        { raw: activeRaw, source: "owner_active", storageKey: getOwnerStorageKey(BAKE_KEY, owner) },
+      ];
+
+      for (const item of sourcesToRead) {
+        if (!item.raw) continue;
+        const parsed = JSON.parse(item.raw);
         if (Array.isArray(parsed)) {
           for (const bake of parsed as BakeHistoryItem[]) {
-            if (bake?.id && bake.userId === owner && !combined.some(h => h.id === bake.id)) combined.push(bake);
+            if (bake?.id) {
+              const notesPresent = typeof bake.notes === "string" && bake.notes.length > 0;
+              console.log("[BAKE_NOTES_TRACE]", {
+                stage: "DIAGNOSTIC_READ",
+                source: item.source,
+                storageKey: item.storageKey,
+                bakeId: bake.id,
+                owner: bake.userId,
+                notesPresent,
+                notesLength: bake.notes?.length ?? 0,
+                status: (bake as any).status,
+              });
+              if (bake.userId === owner) {
+                const existingIndex = combined.findIndex(h => h.id === bake.id);
+                if (existingIndex === -1) {
+                  console.log("[BAKE_NOTES_TRACE]", {
+                    stage: "DIAGNOSTIC_MERGE",
+                    bakeId: bake.id,
+                    source: item.source,
+                    duplicate: false,
+                    incomingNotesPresent: notesPresent,
+                    winner: item.source,
+                  });
+                  combined.push(bake);
+                } else {
+                  const existing = combined[existingIndex];
+                  const existingNotesPresent = typeof existing.notes === "string" && existing.notes.length > 0;
+                  console.log("[BAKE_NOTES_TRACE]", {
+                    stage: "DIAGNOSTIC_MERGE",
+                    bakeId: bake.id,
+                    source: item.source,
+                    duplicate: true,
+                    incomingNotesPresent: notesPresent,
+                    existingSource: "previously_merged",
+                    existingNotesPresent,
+                    winner: "existing_retained",
+                  });
+                }
+              }
+            }
           }
         }
-      }
-
-      if (activeRaw) {
-        const parsedActive = JSON.parse(activeRaw);
-        const activeBakes: BakeHistoryItem[] = Array.isArray(parsedActive) ? parsedActive : [parsedActive];
-        activeBakes.forEach(ab => {
-          if (ab && ab.id && ab.userId === owner && !combined.some(h => h.id === ab.id)) {
-            combined.push(ab);
-          }
-        });
       }
 
       setHistory(combined);
@@ -75,6 +111,14 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       if (bakeId) {
         const found = combined.find(b => b.id === bakeId);
         if (found) {
+          console.log("[BAKE_NOTES_TRACE]", {
+            stage: "DIAGNOSTIC_SELECT",
+            bakeId: found.id,
+            source: "combined",
+            notesPresent: typeof found.notes === "string" && found.notes.length > 0,
+            notesLength: found.notes?.length ?? 0,
+            selectionReason: "requested_bake_id",
+          });
           setSelectedBake(found);
           return;
         }
@@ -86,6 +130,14 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       // 2. If no specific bake or it was deleted, look for the first unrated bake
       const unrated = combined.find(b => !b.outcome?.overallScore);
       if (unrated) {
+        console.log("[BAKE_NOTES_TRACE]", {
+          stage: "DIAGNOSTIC_SELECT",
+          bakeId: unrated.id,
+          source: "combined",
+          notesPresent: typeof unrated.notes === "string" && unrated.notes.length > 0,
+          notesLength: unrated.notes?.length ?? 0,
+          selectionReason: "first_unrated",
+        });
         setSelectedBake(unrated);
         return;
       }
@@ -94,14 +146,38 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       if (selectedBake?.id) {
         const stillExists = combined.find(b => b.id === selectedBake.id);
         if (stillExists) {
+          console.log("[BAKE_NOTES_TRACE]", {
+            stage: "DIAGNOSTIC_SELECT",
+            bakeId: stillExists.id,
+            source: "combined",
+            notesPresent: typeof stillExists.notes === "string" && stillExists.notes.length > 0,
+            notesLength: stillExists.notes?.length ?? 0,
+            selectionReason: "previous_selection",
+          });
           setSelectedBake(stillExists);
           return;
         }
       }
 
       if (combined.length > 0) {
+        console.log("[BAKE_NOTES_TRACE]", {
+          stage: "DIAGNOSTIC_SELECT",
+          bakeId: combined[0].id,
+          source: "combined",
+          notesPresent: typeof combined[0].notes === "string" && combined[0].notes.length > 0,
+          notesLength: combined[0].notes?.length ?? 0,
+          selectionReason: "newest_fallback",
+        });
         setSelectedBake(combined[0]);
       } else {
+        console.log("[BAKE_NOTES_TRACE]", {
+          stage: "DIAGNOSTIC_SELECT",
+          bakeId: null,
+          source: "combined",
+          notesPresent: false,
+          notesLength: 0,
+          selectionReason: "newest_fallback",
+        });
         setSelectedBake(null);
       }
     } catch (e) {

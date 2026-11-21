@@ -876,6 +876,15 @@ export async function writeBakeLocal(bake: ActiveBake): Promise<void> {
     ...bake,
     userId: owner
   };
+  console.log("[BAKE_NOTES_TRACE]", {
+    stage: "ACTIVE_WRITE",
+    bakeId: stampedBake.id,
+    owner,
+    storageKey: bakeKey,
+    notesPresent: typeof stampedBake.notes === "string" && stampedBake.notes.length > 0,
+    notesLength: stampedBake.notes?.length ?? 0,
+    status: stampedBake.status,
+  });
   return storageMutex.run(async () => {
     const raw = await AsyncStorage.getItem(bakeKey).catch(() => null);
     let bakes = safeParse<ActiveBake[]>(raw, [], Array.isArray);
@@ -900,10 +909,20 @@ export async function writeBakesLocal(bakes: ActiveBake[]): Promise<void> {
     if (recordOwner !== owner) {
       throw new Error(`Write ownership validation failed: bake belongs to foreign owner ${recordOwner}, active workspace is ${owner}.`);
     }
-    return {
+    const stamped = {
       ...b,
       userId: owner
     };
+    console.log("[BAKE_NOTES_TRACE]", {
+      stage: "ACTIVE_BATCH_WRITE",
+      bakeId: stamped.id,
+      owner,
+      storageKey: bakeKey,
+      notesPresent: typeof stamped.notes === "string" && stamped.notes.length > 0,
+      notesLength: stamped.notes?.length ?? 0,
+      status: stamped.status,
+    });
+    return stamped;
   });
   return storageMutex.run(() => AsyncStorage.setItem(bakeKey, JSON.stringify(stampedBakes)));
 }
@@ -919,6 +938,16 @@ export function upsertBakeRemote(bake: ActiveBake): Promise<void> {
     }
     const deviceId = await getDeviceId();
     await assertWorkspaceOperationCurrent(context);
+    console.log("[BAKE_NOTES_TRACE]", {
+      stage: "REMOTE_UPSERT",
+      bakeId: bake.id,
+      owner: context.owner,
+      notesPresent: typeof bake.notes === "string" && bake.notes.length > 0,
+      notesLength: bake.notes?.length ?? 0,
+      status: bake.status,
+      completedAt: bake.completedAt ?? null,
+      inProgress: true,
+    });
     await api.history.bakes.upsert({
       id: bake.id,
       deviceId,
@@ -1004,6 +1033,16 @@ export async function archiveBakeWithDiagnostics(
         savedAt,
         status: (bake.status === 'post_mortem' ? 'post_mortem' : 'completed') as any,
       };
+
+      console.log("[BAKE_NOTES_TRACE]", {
+        stage: "ARCHIVE_CREATE",
+        bakeId: historyItem.id,
+        owner: historyItem.userId,
+        storageKey: bakeHistoryKey,
+        notesPresent: typeof historyItem.notes === "string" && historyItem.notes.length > 0,
+        notesLength: historyItem.notes?.length ?? 0,
+        status: historyItem.status,
+      });
 
       existing.unshift(historyItem);
       await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(existing.slice(0, 500)));
@@ -1103,10 +1142,46 @@ export async function updateBakeOutcomeInHistory(
             const history = safeParse<ActiveBake[]>(storedHistory, [], Array.isArray);
             const flatHistory = safeParse<ActiveBake[]>(storedFlatHistory, [], Array.isArray);
             const activeBakes = safeParse<ActiveBake[]>(storedActive, [], Array.isArray);
+
+            console.log("[BAKE_NOTES_TRACE]", {
+                stage: "STORAGE_READ",
+                source: "owner_history",
+                storageKey: bakeHistoryKey,
+                bakeIds: history.map(h => h.id),
+                notesDetails: history.map(h => ({ id: h.id, notesPresent: typeof h.notes === "string" && h.notes.length > 0, notesLength: h.notes?.length ?? 0 })),
+                owner,
+            });
+            console.log("[BAKE_NOTES_TRACE]", {
+                stage: "STORAGE_READ",
+                source: "flat_history",
+                storageKey: flatHistoryKey,
+                bakeIds: flatHistory.map(h => h.id),
+                notesDetails: flatHistory.map(h => ({ id: h.id, notesPresent: typeof h.notes === "string" && h.notes.length > 0, notesLength: h.notes?.length ?? 0 })),
+                owner,
+            });
+            console.log("[BAKE_NOTES_TRACE]", {
+                stage: "STORAGE_READ",
+                source: "owner_active",
+                storageKey: bakeKey,
+                bakeIds: activeBakes.map(b => b.id),
+                notesDetails: activeBakes.map(b => ({ id: b.id, notesPresent: typeof b.notes === "string" && b.notes.length > 0, notesLength: b.notes?.length ?? 0 })),
+                owner,
+            });
+
             const index = history.findIndex(h => h.id === bakeId);
             const flatIndex = flatHistory.findIndex(h => h.id === bakeId);
             const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
             const candidate = index !== -1 ? history[index] : flatIndex !== -1 ? flatHistory[flatIndex] : activeBakes[activeIndex] ?? null;
+
+            console.log("[BAKE_NOTES_TRACE]", {
+                stage: "STORAGE_MERGE",
+                bakeId,
+                source: index !== -1 ? "owner_history" : flatIndex !== -1 ? "flat_history" : activeIndex !== -1 ? "owner_active" : "none",
+                duplicateExists: index !== -1 && flatIndex !== -1,
+                incomingHasNotes: Boolean(candidate?.notes),
+                existingHasNotes: Boolean(candidate?.notes),
+                winner: index !== -1 ? "owner_history" : flatIndex !== -1 ? "flat_history" : "owner_active",
+            });
             if (!candidate) throw new Error(`Bake ${bakeId} was not found in review history or active bakes.`);
             if (candidate.userId !== owner) throw new Error("Bake owner does not match the current workspace.");
             if (flatIndex !== -1 && flatHistory[flatIndex].userId !== owner) {

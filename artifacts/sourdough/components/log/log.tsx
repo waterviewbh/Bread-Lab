@@ -311,6 +311,36 @@ export function HistorySection() {
       const parsedFeed: HistoryEntry[] = feedStored ? JSON.parse(feedStored) : [];
       setHistory(parsedFeed.filter(isOwnerMatch));
       const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
+      bakeList.forEach(b => {
+        console.log("[BAKE_NOTES_TRACE]", {
+          stage: "LOG_LOCAL_READ",
+          source: "flat_history",
+          storageKey: BAKE_HISTORY_KEY,
+          bakeId: b.id,
+          owner: b.userId,
+          notesPresent: typeof b.notes === "string" && b.notes.length > 0,
+          notesLength: b.notes?.length ?? 0,
+          status: (b as any).status,
+        });
+      });
+      if (activeStored) {
+        const parsedActive = JSON.parse(activeStored);
+        const activeBakes = Array.isArray(parsedActive) ? parsedActive : [parsedActive];
+        activeBakes.forEach(ab => {
+          if (ab) {
+            console.log("[BAKE_NOTES_TRACE]", {
+              stage: "LOG_LOCAL_READ",
+              source: "flat_active",
+              storageKey: ACTIVE_BAKE_KEY,
+              bakeId: ab.id,
+              owner: ab.userId,
+              notesPresent: typeof ab.notes === "string" && ab.notes.length > 0,
+              notesLength: ab.notes?.length ?? 0,
+              status: ab.status,
+            });
+          }
+        });
+      }
       const validBakeList = bakeList.filter(
         (b) => isOwnerMatch(b) && isBakeEligibleForHistory(b)
       );
@@ -348,26 +378,36 @@ export function HistorySection() {
       const localOnlyFeed = localFeed.filter(e => !supabaseFeedIds.has(e.id) && !deletedFeedIds.has(e.id) && isOwnerMatch(e));
       const mergedFeed = [...mapped.filter(e => !deletedFeedIds.has(e.id)), ...localOnlyFeed].sort((a, b) => (b.completedAt ?? b.savedAt) - (a.completedAt ?? a.savedAt));
 
-      const apiMapped: BakeHistoryEntry[] = apiBakes.map((b) => ({
-        id: b.id,
-        userId: token ?? undefined,
-        recipeId: b.recipeId ?? "",
-        recipeName: b.recipeName,
-        savedAt: b.savedAt,
-        startedAt: b.startedAt,
-        outcome: b.outcome, // Persist the diagnostic outcome
-        phases: b.phases.map((p) => ({
-          key: p.key,
-          name: p.name,
-          ingredients: p.ingredients,
-          instructions: p.instructions,
-          startedAt: p.startedAt ?? null,
-          completedAt: p.completedAt ?? null,
-          readings: p.readings,
-          startVolume: p.startVolume,
-          foldCount: (p as any).foldCount,
-        })),
-      }));
+      const apiMapped: BakeHistoryEntry[] = apiBakes.map((b) => {
+        console.log("[BAKE_NOTES_TRACE]", {
+          stage: "LOG_REMOTE_MAP",
+          source: "remote",
+          bakeId: b.id,
+          notesPresent: typeof b.notes === "string" && b.notes.length > 0,
+          notesLength: b.notes?.length ?? 0,
+          status: b.status,
+        });
+        return {
+          id: b.id,
+          userId: token ?? undefined,
+          recipeId: b.recipeId ?? "",
+          recipeName: b.recipeName,
+          savedAt: b.savedAt,
+          startedAt: b.startedAt,
+          outcome: b.outcome, // Persist the diagnostic outcome
+          phases: b.phases.map((p) => ({
+            key: p.key,
+            name: p.name,
+            ingredients: p.ingredients,
+            instructions: p.instructions,
+            startedAt: p.startedAt ?? null,
+            completedAt: p.completedAt ?? null,
+            readings: p.readings,
+            startVolume: p.startVolume,
+            foldCount: (p as any).foldCount,
+          })),
+        };
+      });
 
       const localBakes: BakeHistoryEntry[] = localBakeRaw ? JSON.parse(localBakeRaw) : [];
       const supabaseBakeIds = new Set(apiMapped.map(b => b.id));
@@ -375,6 +415,25 @@ export function HistorySection() {
       // SMART MERGE: Preserve local outcome if API version is missing it (sync lag)
       const mergedBakes = apiMapped.map(apiBake => {
         const local = localBakes.find(lb => lb.id === apiBake.id);
+        const localRecordFound = !!local;
+        const localNotesPresent = typeof local?.notes === "string" && local.notes.length > 0;
+        const remoteNotesPresent = typeof apiBake.notes === "string" && apiBake.notes.length > 0;
+        const localOutcomePresent = !!local?.outcome;
+        const remoteOutcomePresent = !!apiBake.outcome;
+        let winner = "remote";
+        if (local?.outcome && !apiBake.outcome) {
+          winner = "local_outcome_preserved";
+        }
+        console.log("[BAKE_NOTES_TRACE]", {
+          stage: "LOG_MERGE",
+          bakeId: apiBake.id,
+          remoteNotesPresent,
+          localRecordFound,
+          localNotesPresent,
+          remoteOutcomePresent,
+          localOutcomePresent,
+          winner,
+        });
         if (local?.outcome && !apiBake.outcome) {
           return { ...apiBake, outcome: local.outcome };
         }
@@ -385,6 +444,16 @@ export function HistorySection() {
       const finalBakes = [...mergedBakes.filter(b => !deletedBakeIds.has(b.id)), ...localOnlyBakes]
         .filter(isBakeEligibleForHistory)
         .sort((a, b) => (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt));
+      finalBakes.forEach(b => {
+        console.log("[BAKE_NOTES_TRACE]", {
+          stage: "LOG_FINAL_HISTORY",
+          bakeId: b.id,
+          notesPresent: typeof b.notes === "string" && b.notes.length > 0,
+          notesLength: b.notes?.length ?? 0,
+          status: (b as any).status,
+          source: "final_bakes",
+        });
+      });
 
       if (loadSequenceRef.current !== sequenceId) return;
 

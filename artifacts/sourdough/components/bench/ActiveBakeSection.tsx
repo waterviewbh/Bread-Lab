@@ -285,6 +285,18 @@ export function ActiveBakeSection() {
         completedAt: isLastPhase ? Date.now() : undefined
     };
 
+    console.log("[BAKE_NOTES_TRACE]", {
+      stage: "PHASE_COMPLETE",
+      bakeId: updatedBake.id,
+      phaseKey: key,
+      owner: updatedBake.userId,
+      status: updatedBake.status,
+      completedAt: updatedBake.completedAt ?? null,
+      notesPresent: typeof updatedBake.notes === "string" && updatedBake.notes.length > 0,
+      notesLength: updatedBake.notes?.length ?? 0,
+      allPhasesCompleted: isLastPhase,
+    });
+
     setRecentlyCompletedKey(key);
     setTimeout(() => setRecentlyCompletedKey(null), 800);
 
@@ -476,6 +488,13 @@ export function ActiveBakeSection() {
   const handleSaveNotesOverlay = async () => {
     if (!bake) return;
     const updatedBake = { ...bake, notes: overlayDraft };
+    console.log("[BAKE_NOTES_TRACE]", {
+      stage: "OVERLAY_SAVE",
+      bakeId: updatedBake.id,
+      owner: updatedBake.userId,
+      notesPresent: typeof updatedBake.notes === "string" && updatedBake.notes.length > 0,
+      notesLength: updatedBake.notes?.length ?? 0,
+    });
     setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     setBakeNotes(overlayDraft);
     await writeBakeLocal(updatedBake);
