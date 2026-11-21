@@ -272,7 +272,12 @@ export function HistorySection() {
       try {
         const parsed = JSON.parse(activeRaw);
         const activeBakes: any[] = Array.isArray(parsed) ? parsed : [parsed];
-        const validActiveBakes = activeBakes.filter(isOwnerMatch);
+        const validActiveBakes = activeBakes.filter(
+          (active) =>
+            isOwnerMatch(active) &&
+            active?.phases?.length > 0 &&
+            active.phases.every((p: any) => !!p.completedAt)
+        );
         let newList = [...list];
         validActiveBakes.forEach((active) => {
           if (!active?.id || !active?.startedAt) return;
@@ -308,7 +313,13 @@ export function HistorySection() {
       const parsedFeed: HistoryEntry[] = feedStored ? JSON.parse(feedStored) : [];
       setHistory(parsedFeed.filter(isOwnerMatch));
       const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
-      setBakeHistory(mergeActiveBake(bakeList.filter(isOwnerMatch), activeStored));
+      const validBakeList = bakeList.filter(
+        (b) =>
+          isOwnerMatch(b) &&
+          b.phases?.length > 0 &&
+          b.phases.every((p: any) => !!p.completedAt)
+      );
+      setBakeHistory(mergeActiveBake(validBakeList, activeStored));
     } catch {}
 
     if (!token || loadSequenceRef.current !== sequenceId) return;
@@ -376,7 +387,9 @@ export function HistorySection() {
       });
 
       const localOnlyBakes = localBakes.filter(b => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id) && isOwnerMatch(b));
-      const finalBakes = [...mergedBakes.filter(b => !deletedBakeIds.has(b.id)), ...localOnlyBakes].sort((a, b) => (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt));
+      const finalBakes = [...mergedBakes.filter(b => !deletedBakeIds.has(b.id)), ...localOnlyBakes]
+        .filter((b) => b.phases?.length > 0 && b.phases.every((p: any) => !!p.completedAt))
+        .sort((a, b) => (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt));
 
       if (loadSequenceRef.current !== sequenceId) return;
 

@@ -656,7 +656,12 @@ export default function HistoryScreen() {
       try {
         const parsed = JSON.parse(activeRaw);
         const activeBakes: any[] = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
-        const validActiveBakes = activeBakes.filter(isOwnerMatchGuard);
+        const validActiveBakes = activeBakes.filter(
+          (active) =>
+            isOwnerMatchGuard(active) &&
+            active?.phases?.length > 0 &&
+            active.phases.every((p: any) => !!p.completedAt)
+        );
         let newList = [...list];
         validActiveBakes.forEach((active) => {
           if (!active?.id || !active?.startedAt) return;
@@ -712,7 +717,13 @@ export default function HistoryScreen() {
           setHistory(parsedFeed.filter(isOwnerMatchGuard));
         }
         const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
-        setBakeHistory(mergeActiveBake(bakeList.filter(isOwnerMatchGuard), activeStored));
+        const validBakeList = bakeList.filter(
+          (b) =>
+            isOwnerMatchGuard(b) &&
+            b.phases?.length > 0 &&
+            b.phases.every((p: any) => !!p.completedAt)
+        );
+        setBakeHistory(mergeActiveBake(validBakeList, activeStored));
       } catch (e) {}
 
       const [apiFeed, apiBakes, activeStored] = await Promise.all([
@@ -794,7 +805,11 @@ export default function HistoryScreen() {
       const mergedBakes = [
         ...apiMapped.filter((b) => !deletedBakeIds.has(b.id)),
         ...localOnlyBakes,
-      ].sort((a, b) => {
+      ].filter(
+        (b) =>
+          b.phases?.length > 0 &&
+          b.phases.every((p: any) => !!p.completedAt)
+      ).sort((a, b) => {
         return (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt);
       });
 

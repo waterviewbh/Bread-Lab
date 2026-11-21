@@ -598,7 +598,7 @@ export default function AuthModal({ visible, currentUser, onClose, onAuthChange,
             <View style={[s.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={s.cardHeader}>
                 <View style={[s.avatar, { backgroundColor: colors.primary }]}>
-                  <Text style={s.avatarText}>{currentUser.firstName.charAt(0).toUpperCase()}</Text>
+                  <Text style={[s.avatarText, { color: colors.primaryForeground }]}>{currentUser.firstName.charAt(0).toUpperCase()}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.cardName, { color: colors.foreground }]}>{displayName}</Text>
@@ -743,7 +743,6 @@ const s = StyleSheet.create({
     marginRight: 14,
   },
   avatarText: {
-    color: "#FFFFFF",
     fontSize: 20,
     fontWeight: "700",
   },
