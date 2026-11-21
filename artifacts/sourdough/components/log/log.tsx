@@ -415,9 +415,9 @@ export function HistorySection() {
       // SMART MERGE: Preserve local outcome if API version is missing it (sync lag)
       const mergedBakes = apiMapped.map(apiBake => {
         const local = localBakes.find(lb => lb.id === apiBake.id);
+        const remote = apiBakes.find(b => b.id === apiBake.id);
         const localRecordFound = !!local;
         const localNotesPresent = typeof local?.notes === "string" && local.notes.length > 0;
-        const remoteNotesPresent = typeof apiBake.notes === "string" && apiBake.notes.length > 0;
         const localOutcomePresent = !!local?.outcome;
         const remoteOutcomePresent = !!apiBake.outcome;
         let winner = "remote";
@@ -427,9 +427,15 @@ export function HistorySection() {
         console.log("[BAKE_NOTES_TRACE]", {
           stage: "LOG_MERGE",
           bakeId: apiBake.id,
-          remoteNotesPresent,
+          remoteRecordFound: !!remote,
+          remoteNotesPresent: typeof remote?.notes === "string" && remote.notes.length > 0,
+          remoteNotesLength: typeof remote?.notes === "string" ? remote.notes.length : 0,
           localRecordFound,
           localNotesPresent,
+          localNotesLength: typeof local?.notes === "string" ? local.notes.length : 0,
+          mappedNotesPresent: typeof apiBake.notes === "string" && apiBake.notes.length > 0,
+          mappedNotesLength: typeof apiBake.notes === "string" ? apiBake.notes.length : 0,
+          notesWinner: "none_mapped_record_omits_notes_local_notes_not_preserved",
           remoteOutcomePresent,
           localOutcomePresent,
           winner,

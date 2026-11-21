@@ -1176,11 +1176,19 @@ export async function updateBakeOutcomeInHistory(
             console.log("[BAKE_NOTES_TRACE]", {
                 stage: "STORAGE_MERGE",
                 bakeId,
-                source: index !== -1 ? "owner_history" : flatIndex !== -1 ? "flat_history" : activeIndex !== -1 ? "owner_active" : "none",
-                duplicateExists: index !== -1 && flatIndex !== -1,
-                incomingHasNotes: Boolean(candidate?.notes),
-                existingHasNotes: Boolean(candidate?.notes),
-                winner: index !== -1 ? "owner_history" : flatIndex !== -1 ? "flat_history" : "owner_active",
+                ownerHistoryFound: index !== -1,
+                ownerHistoryNotesPresent: typeof history[index]?.notes === "string" && history[index].notes.length > 0,
+                ownerHistoryNotesLength: typeof history[index]?.notes === "string" ? history[index].notes.length : 0,
+                flatHistoryFound: flatIndex !== -1,
+                flatHistoryNotesPresent: typeof flatHistory[flatIndex]?.notes === "string" && flatHistory[flatIndex].notes.length > 0,
+                flatHistoryNotesLength: typeof flatHistory[flatIndex]?.notes === "string" ? flatHistory[flatIndex].notes.length : 0,
+                activeBakeFound: activeIndex !== -1,
+                activeNotesPresent: typeof activeBakes[activeIndex]?.notes === "string" && activeBakes[activeIndex].notes.length > 0,
+                activeNotesLength: typeof activeBakes[activeIndex]?.notes === "string" ? activeBakes[activeIndex].notes.length : 0,
+                duplicateAcrossSources: [index, flatIndex, activeIndex].filter(i => i !== -1).length > 1,
+                selectedSource: index !== -1 ? "owner_history" : flatIndex !== -1 ? "flat_history" : activeIndex !== -1 ? "owner_active" : "none",
+                selectedNotesPresent: typeof candidate?.notes === "string" && candidate.notes.length > 0,
+                selectedNotesLength: typeof candidate?.notes === "string" ? candidate.notes.length : 0,
             });
             if (!candidate) throw new Error(`Bake ${bakeId} was not found in review history or active bakes.`);
             if (candidate.userId !== owner) throw new Error("Bake owner does not match the current workspace.");

@@ -59,8 +59,8 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       for (const item of sourcesToRead) {
         if (!item.raw) continue;
         const parsed = JSON.parse(item.raw);
-        if (Array.isArray(parsed)) {
-          for (const bake of parsed as BakeHistoryItem[]) {
+        if (Array.isArray(parsed) || (item.source === "owner_active" && parsed && typeof parsed === "object")) {
+          for (const bake of (Array.isArray(parsed) ? parsed : [parsed]) as BakeHistoryItem[]) {
             if (bake?.id) {
               const notesPresent = typeof bake.notes === "string" && bake.notes.length > 0;
               console.log("[BAKE_NOTES_TRACE]", {
