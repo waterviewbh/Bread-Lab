@@ -395,6 +395,7 @@ export function HistorySection() {
           savedAt: b.savedAt,
           startedAt: b.startedAt,
           outcome: b.outcome, // Persist the diagnostic outcome
+          notes: b.notes,
           phases: b.phases.map((p) => ({
             key: p.key,
             name: p.name,
@@ -420,6 +421,11 @@ export function HistorySection() {
         const localNotesPresent = typeof local?.notes === "string" && local.notes.length > 0;
         const localOutcomePresent = !!local?.outcome;
         const remoteOutcomePresent = !!apiBake.outcome;
+        const notes = typeof apiBake.notes === "string" && apiBake.notes.trim().length > 0
+          ? apiBake.notes
+          : typeof local?.notes === "string" && local.notes.trim().length > 0
+            ? local.notes
+            : apiBake.notes;
         let winner = "remote";
         if (local?.outcome && !apiBake.outcome) {
           winner = "local_outcome_preserved";
@@ -435,15 +441,17 @@ export function HistorySection() {
           localNotesLength: typeof local?.notes === "string" ? local.notes.length : 0,
           mappedNotesPresent: typeof apiBake.notes === "string" && apiBake.notes.length > 0,
           mappedNotesLength: typeof apiBake.notes === "string" ? apiBake.notes.length : 0,
-          notesWinner: "none_mapped_record_omits_notes_local_notes_not_preserved",
+          notesWinner: notes === apiBake.notes ? "remote" : "local_preserved",
+          mergedNotesPresent: typeof notes === "string" && notes.trim().length > 0,
+          mergedNotesLength: typeof notes === "string" ? notes.length : 0,
           remoteOutcomePresent,
           localOutcomePresent,
           winner,
         });
         if (local?.outcome && !apiBake.outcome) {
-          return { ...apiBake, outcome: local.outcome };
+          return { ...apiBake, notes, outcome: local.outcome };
         }
-        return apiBake;
+        return { ...apiBake, notes };
       });
 
       const localOnlyBakes = localBakes.filter(b => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id) && isOwnerMatch(b));

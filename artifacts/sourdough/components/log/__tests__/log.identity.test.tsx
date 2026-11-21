@@ -44,7 +44,7 @@ const BAKES_KEY = "bread_lab_bake_history_v1";
 const TOKEN_KEY = "bread_lab_auth_token_v1";
 const USER_KEY = "bread_lab_auth_user_v1";
 const now = Date.now();
-const bake = (id: string, userId: string, recipeName: string) => ({ id, userId, recipeName, savedAt: now, startedAt: now, phases: [] });
+const bake = (id: string, userId: string, recipeName: string) => ({ id, userId, recipeName, savedAt: now, startedAt: now, phases: [{ key: "mix", name: "Mix", startedAt: now, completedAt: now }] });
 const seedBakes = () => {
   mockStore[BAKES_KEY] = JSON.stringify([bake("b-nla", "anonymous", "NLA Loaf"), bake("b-a", "acct-A", "Account A Loaf")]);
 };
@@ -87,6 +87,26 @@ describe("History (log.tsx) under each identity state", () => {
     await render(<HistorySection />);
     await waitFor(() => expect(screen.getByText("Account A Loaf")).toBeTruthy());
     expect(screen.queryByText("NLA Loaf")).toBeNull();
+  });
+
+  it.each([undefined, "", "   "])("preserves local notes when remote notes are %p", async (remoteNotes) => {
+    validPair("acct-A");
+    mockStore[BAKES_KEY] = JSON.stringify([{ ...bake("notes-bake", "acct-A", "Local Loaf"), notes: "Local journal" }]);
+    jest.mocked(api.history.bakes.list).mockResolvedValueOnce([{ ...bake("notes-bake", "acct-A", "Remote Loaf"), notes: remoteNotes }] as any);
+
+    await act(async () => { render(<HistorySection />); });
+    await waitFor(() => expect(JSON.parse(mockStore[BAKES_KEY])[0].recipeName).toBe("Remote Loaf"));
+    expect(JSON.parse(mockStore[BAKES_KEY])[0].notes).toBe("Local journal");
+  });
+
+  it("uses valid remote notes over local notes", async () => {
+    validPair("acct-A");
+    mockStore[BAKES_KEY] = JSON.stringify([{ ...bake("notes-bake", "acct-A", "Local Loaf"), notes: "Local journal" }]);
+    jest.mocked(api.history.bakes.list).mockResolvedValueOnce([{ ...bake("notes-bake", "acct-A", "Remote Loaf"), notes: "Remote journal" }] as any);
+
+    await act(async () => { render(<HistorySection />); });
+    await waitFor(() => expect(JSON.parse(mockStore[BAKES_KEY])[0].recipeName).toBe("Remote Loaf"));
+    expect(JSON.parse(mockStore[BAKES_KEY])[0].notes).toBe("Remote journal");
   });
 
   it("refreshes mounted History on workspace changes and ignores a late account response", async () => {
