@@ -274,10 +274,7 @@ export function HistorySection() {
         const parsed = JSON.parse(activeRaw);
         const activeBakes: any[] = Array.isArray(parsed) ? parsed : [parsed];
         const validActiveBakes = activeBakes.filter(
-          (active) =>
-            isOwnerMatch(active) &&
-            active?.phases?.length > 0 &&
-            active.phases.every((p: any) => !!p.completedAt)
+          (active) => isOwnerMatch(active) && isBakeEligibleForHistory(active)
         );
         let newList = [...list];
         validActiveBakes.forEach((active) => {
