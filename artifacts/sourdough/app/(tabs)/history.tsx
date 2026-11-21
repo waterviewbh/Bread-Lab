@@ -55,6 +55,51 @@ export function isOwnerMatch(entry: { userId?: string; user_id?: string }, token
   return owner === token;
 }
 
+export function mergeActiveBake(
+  list: BakeHistoryEntry[],
+  activeRaw: string | null,
+  token: string | null = null
+): BakeHistoryEntry[] {
+  if (!activeRaw) return list;
+  try {
+    const parsed = JSON.parse(activeRaw);
+    const activeBakes: any[] = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+    const isOwnerMatchGuard = (entry: { userId?: string }) => isOwnerMatch(entry, token);
+    const validActiveBakes = activeBakes.filter(
+      (active) =>
+        isOwnerMatchGuard(active) &&
+        active?.phases?.length > 0 &&
+        active.phases.every((p: any) => !!p.completedAt)
+    );
+    let newList = [...list];
+    validActiveBakes.forEach((active) => {
+      if (!active?.id || !active?.startedAt) return;
+      if (newList.some((e) => e.id === active.id)) return;
+      newList.unshift({
+        id: active.id,
+        recipeId: active.recipeId ?? "",
+        recipeName: active.recipeName,
+        savedAt: active.startedAt,
+        startedAt: active.startedAt,
+        phases: (active.phases || []).map((p: any) => ({
+          key: p.key,
+          name: p.name,
+          startedAt: p.startedAt ?? null,
+          completedAt: p.completedAt ?? null,
+          foldCount: p.foldCount,
+          foldTimestamps: p.foldTimestamps,
+        })),
+        notes: active.notes ?? "",
+        yieldValue: active.yieldValue ?? "",
+        outcome: active.outcome ?? null,
+      });
+    });
+    return newList;
+  } catch {
+    return list;
+  }
+}
+
 function ensureString(val: string | any[] | undefined): string {
   if (!val) return "";
   if (Array.isArray(val)) {
@@ -648,48 +693,6 @@ export default function HistoryScreen() {
     } catch (e) {
       console.warn("[History] background deletion sync failed:", e);
     }
-    const mergeActiveBake = (
-      list: BakeHistoryEntry[],
-      activeRaw: string | null
-    ): BakeHistoryEntry[] => {
-      if (!activeRaw) return list;
-      try {
-        const parsed = JSON.parse(activeRaw);
-        const activeBakes: any[] = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
-        const validActiveBakes = activeBakes.filter(
-          (active) =>
-            isOwnerMatchGuard(active) &&
-            active?.phases?.length > 0 &&
-            active.phases.every((p: any) => !!p.completedAt)
-        );
-        let newList = [...list];
-        validActiveBakes.forEach((active) => {
-          if (!active?.id || !active?.startedAt) return;
-          if (newList.some((e) => e.id === active.id)) return;
-          newList.unshift({
-            id: active.id,
-            recipeId: active.recipeId ?? "",
-            recipeName: active.recipeName,
-            savedAt: active.startedAt,
-            startedAt: active.startedAt,
-            phases: (active.phases || []).map((p: any) => ({
-              key: p.key,
-              name: p.name,
-              startedAt: p.startedAt ?? null,
-              completedAt: p.completedAt ?? null,
-              foldCount: p.foldCount,
-              foldTimestamps: p.foldTimestamps,
-            })),
-            notes: active.notes ?? "",
-            yieldValue: active.yieldValue ?? "",
-            outcome: active.outcome ?? null,
-          });
-        });
-        return newList;
-      } catch {
-        return list;
-      }
-    };
 
     try {
       const deviceId = await getDeviceId();
@@ -723,7 +726,7 @@ export default function HistoryScreen() {
             b.phases?.length > 0 &&
             b.phases.every((p: any) => !!p.completedAt)
         );
-        setBakeHistory(mergeActiveBake(validBakeList, activeStored));
+        setBakeHistory(mergeActiveBake(validBakeList, activeStored, token));
       } catch (e) {}
 
       const [apiFeed, apiBakes, activeStored] = await Promise.all([
@@ -816,7 +819,7 @@ export default function HistoryScreen() {
       if (token || apiBakes.length > 0) {
         await AsyncStorage.setItem(BAKE_HISTORY_KEY, JSON.stringify(mergedBakes));
       }
-      setBakeHistory(mergeActiveBake(mergedBakes, activeStored));
+      setBakeHistory(mergeActiveBake(mergedBakes, activeStored, token));
       setLastSynced(Date.now());
     } catch {}
   };
