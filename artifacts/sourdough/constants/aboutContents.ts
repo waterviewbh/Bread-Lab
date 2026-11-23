@@ -128,13 +128,19 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
-      version: "v2.6", /* -- published 2026XXXX -- */
+      version: "v2.6.1 delta-1 thru ", /* -- published 2026XXXX -- */
+      changes: [
+        { type: "Changed", content: "Iterated recipe names now show their iteration number in the name field automatically - nothing needed on your end." },
+      ],
+    },
+    {
+      version: "v2.6", /* -- published 20261121 -- */
       changes: [
         { type: "Added", content: "If sharing a recipe into the app runs into a network problem, the URL is stored until access is restored. This cache DOES NOT survive signing in or out before the candidate is brought in." },
         { type: "Fixed", content: "The overlay journal used for active bakes in Recipe Runner didn't have a dark mode treatment; now it does." },
         { type: "Fixed", content: "Better functionality in the Diagnostic Review page (some recipes would get stuck and report completed without completing)." },
-        { type: "Modified", content: "Added more detail to the (shared or printed) Feed Session report." },
-        { type: "Modified", content: "Cleaned up the Select Recipe (picker) screen to look more like Recipe Builder - rather than a long list, the recipes now show as stacked cards." },
+        { type: "Changed", content: "Added more detail to the (shared or printed) Feed Session report." },
+        { type: "Changed", content: "Cleaned up the Select Recipe (picker) screen to look more like Recipe Builder - rather than a long list, the recipes now show as stacked cards." },
       ],
     },
     {
@@ -146,7 +152,7 @@ export const CHANGELOG: ChangelogVersion[] = [
         { type: "Fixed", content: "Improved use and functionality of the recipe cards in Recipe Builder. Duplicated recipes are now treated as Masters, etc." },
         { type: "Fixed", content: "UI tweaks (better contrast for some elements, both in light and dark mode), clearer wording of hints, etc." },
         { type: "Added", content: "Bake Data Collection and Governance: we are working toward a system of anonymized data collection to help improve the Bulk Fermentation engine, and to improve how bakers interact with the app. This is a notification only, implementation (and the tool to opt-out) will be released in the 3.0 update." },
-        { type: "Modified", content: "Improving robustness: we have found some fragile workflows and are working to resolve them. We're starting upstream and working our way to the end. This will be an ongoing effort." },
+        { type: "Changed", content: "Improving robustness: we have found some fragile workflows and are working to resolve them. We're starting upstream and working our way to the end. This will be an ongoing effort." },
       ],
     },
     {

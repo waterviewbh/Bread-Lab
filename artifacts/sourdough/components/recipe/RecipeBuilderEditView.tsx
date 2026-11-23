@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { YieldPill } from "@/components/YieldPill";
 import type { SavedRecipe, RecipePhaseConfig } from "@/lib/recipeTypes";
+import { getEditableRecipeName, getRecipeNameWithVersion } from "@/lib/recipeCanonical";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import { ContinuousListInput } from "./ContinuousListInput";
 import { CheckableLine } from "@/types/recipe";
@@ -107,8 +108,8 @@ export function RecipeBuilderEditView({
             ]}
             placeholder="e.g., Saturday Country Loaf"
             placeholderTextColor={colors.mutedForeground}
-            value={editingRecipe.name}
-            onChangeText={onChangeName}
+            value={getRecipeNameWithVersion(editingRecipe)}
+            onChangeText={(text) => onChangeName(getEditableRecipeName(text, editingRecipe.versionLabel))}
             returnKeyType="done"
             testID="recipe-name-input"
           />

@@ -486,6 +486,11 @@ const saveBakeToHistory = async (b: ActiveBake) => {
     setIsNewRecipe(false);
   };
 
+  const duplicateRecipe = (r: SavedRecipe) => {
+    setEditingRecipe({ ...r, id: Date.now().toString(), name: `${r.name} (Copy)` });
+    setIsNewRecipe(true);
+  };
+
   const updateEditName = (name: string) =>
     setEditingRecipe((prev) => prev ? { ...prev, name } : null);
 
@@ -1222,7 +1227,7 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
           onEditRecipe={openEditRecipe}
           onPrintRecipe={printRecipe}
           onShareRecipe={shareAsPdf}
-          onDuplicateRecipe={(r) => { setEditingRecipe({ ...r, id: Date.now().toString(), name: `${r.name} (Copy)` }); setIsNewRecipe(true); }}
+          onDuplicateRecipe={duplicateRecipe}
           onSetLetterFilter={setLetterFilter}
           onRefresh={refresh}
         />
@@ -1364,6 +1369,7 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
         onOpenPhasePicker={() => setShowPhasePicker(true)}
         onSave={saveRecipe}
         onCancel={cancelEdit}
+        onDuplicate={() => duplicateRecipe(editingRecipe)}
         onDelete={deleteRecipe}
       />
     )}
@@ -1388,6 +1394,7 @@ function textToCheckableLines(text: string, prefix: string): CheckableLine[] {
         {section === "runner" && !!bake && (
           <RecipeRunnerActiveView
             bake={bake}
+            recipeVersionLabel={recipes.find((recipe) => recipe.id === bake.recipeId)?.versionLabel}
             elapsed={elapsed}
             scaleMultiplier={scaleMultiplier}
             refreshing={refreshing}

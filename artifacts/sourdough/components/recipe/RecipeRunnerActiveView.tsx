@@ -25,12 +25,14 @@ import {
   ActivePhaseCard,
 } from "@/components/recipe/PhaseCard";
 import { formatTimer } from "@/lib/recipeUtils";
+import { getRecipeNameWithVersion } from "@/lib/recipeCanonical";
 import type { ActiveBake, BakePhase, BulkEstimatorState } from "@/lib/recipeTypes";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import { BulkEstimatorSettingsModal } from "./BulkEstimatorSettingsModal";
 
 interface Props {
   bake: ActiveBake;
+  recipeVersionLabel?: string;
   elapsed: Record<string, number>;
   scaleMultiplier: number;
   refreshing: boolean;
@@ -84,6 +86,7 @@ interface Props {
 
 export function RecipeRunnerActiveView({
   bake,
+  recipeVersionLabel,
   elapsed,
   scaleMultiplier,
   refreshing,
@@ -165,7 +168,7 @@ export function RecipeRunnerActiveView({
         <View style={s.trackerHeader}>
           <View style={{ flex: 1 }}>
             <Text selectable={true} style={[s.trackerRecipeName, { color: colors.mutedForeground }]}>
-              {bake.recipeName}
+              {getRecipeNameWithVersion({ name: bake.recipeName, versionLabel: recipeVersionLabel })}
             </Text>
             <View style={s.statusRow}>
               {activePhase ? (

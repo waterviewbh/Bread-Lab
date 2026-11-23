@@ -1,5 +1,15 @@
 // lib/__tests__/recipeCanonical.test.ts
-import { getCanonicalRecipeContent, areCanonicalContentsEqual, findMatchingLineageVersion, getDisplayVersionLabel } from "../recipeCanonical";
+import { getCanonicalRecipeContent, areCanonicalContentsEqual, findMatchingLineageVersion, getDisplayVersionLabel, getRecipeNameWithVersion, getEditableRecipeName } from "../recipeCanonical";
+
+test("recipe identity display and editing preserve version metadata", () => {
+  const master = { name: "Bayside 20" };
+  const iteration = { name: "Bayside 20", versionLabel: "v3" };
+  expect(getRecipeNameWithVersion(master)).toBe("Bayside 20");
+  expect(getRecipeNameWithVersion(iteration)).toBe("Bayside 20 v3");
+  expect(getRecipeNameWithVersion({ ...iteration, name: "Bayside 20 v3" })).toBe("Bayside 20 v3");
+  const editedName = getEditableRecipeName("Bayside Rye v3", iteration.versionLabel);
+  expect({ ...iteration, name: editedName }).toEqual({ name: "Bayside Rye", versionLabel: "v3" });
+});
 import { SavedRecipe } from "../recipeTypes";
 
 describe("Recipe Canonicalization & Lineage Matching", () => {

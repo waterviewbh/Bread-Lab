@@ -37,6 +37,9 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: React 19 & RNTL v14 Testing Infrastructure Baseline (2026-09-27)](file:///E:/Bread-Lab/docs/journal/2026-09-27_react19_rntl14_testing_stack.artifact.md)
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
+#### 📦 Version 2.6.1
+- [Session: Optional Portrait Hardware Feature (2026-11-22)](file:///E:/Bread-Lab/docs/journal/2026-11-22_optional_portrait_feature.artifact.md) [SOURCE UPDATED; RELEASE VERIFICATION OPEN]
+
 #### 📦 Version 2.6
 - [Session: Diagnostic Review Persistence for a Flat-Cache Bake (2026-11-19)](file:///E:/Bread-Lab/docs/journal/2026-11-19_diagnostic_review_persistence.artifact.md) [FOCUSED TESTS PASSED; PRODUCTION REVIEW OPEN]
 - [Session: Issue #24 Offline Theory Refresh Preservation (2026-11-16)](file:///E:/Bread-Lab/docs/journal/2026-11-16_issue_24_offline_theory_refresh.artifact.md) [FOCUSED TESTS PASSED; DEVICE RECOVERY OPEN]

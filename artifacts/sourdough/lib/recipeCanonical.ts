@@ -7,6 +7,20 @@ export function getDisplayRecipeName(recipe: SavedRecipe): string {
   return recipe.name.replace(/\s*\(Iterated\)/gi, "").trim();
 }
 
+/** Appends the stored version only when it is not already the name's suffix. */
+export function getRecipeNameWithVersion(recipe: Pick<SavedRecipe, "name" | "versionLabel">): string {
+  const label = recipe.versionLabel;
+  if (!label || !recipe.name || recipe.name.endsWith(` ${label}`)) return recipe.name;
+  return `${recipe.name} ${label}`;
+}
+
+/** Removes only the displayed suffix before updating the canonical name. */
+export function getEditableRecipeName(displayName: string, versionLabel?: string): string {
+  return versionLabel && displayName.endsWith(` ${versionLabel}`)
+    ? displayName.slice(0, -versionLabel.length - 1)
+    : displayName;
+}
+
 /** Normalizes legacy iteration labels while leaving master and import labels unchanged. */
 export function getDisplayVersionLabel(recipe: SavedRecipe): string | undefined {
   const label = recipe.versionLabel;
