@@ -77,8 +77,24 @@ describe("Issue #69 — Bake Reset vs History Archival Suite", () => {
     expect(upsert).toHaveBeenCalledTimes(2);
     expect(upsert.mock.calls[0][0].savedAt).toBe(first.savedAt);
     expect(upsert.mock.calls[1][0].savedAt).toBe(first.savedAt);
+    expect(upsert.mock.calls[0][0].completedAt).toBe(first.completedAt);
+    expect(upsert.mock.calls[1][0].completedAt).toBe(first.completedAt);
     expect(callbacks.reportSyncFailure).toHaveBeenCalledTimes(1);
     expect(callbacks.reportSyncSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a foreign bake without writing into the current account", async () => {
+    jest.spyOn(require("@/lib/auth"), "getStoredToken").mockResolvedValue("account-a");
+    const bake: ActiveBake = {
+      id: "foreign-bake", userId: "account-b", recipeId: "recipe", recipeName: "Loaf",
+      startedAt: 1, completedAt: 2, status: "completed",
+      phases: [{ key: "baking", name: "Baking", ingredients: [], instructions: [], startedAt: 1, completedAt: 2, readings: [] }],
+    };
+    await expect(archiveBakeWithDiagnostics(bake, {
+      reportSyncStart: jest.fn(), reportSyncSuccess: jest.fn(), reportSyncFailure: jest.fn(),
+    })).rejects.toThrow(/owner/);
+    expect(await AsyncStorage.getItem(getOwnerStorageKey(BAKE_HISTORY_KEY, "account-a"))).toBeNull();
+    expect(await AsyncStorage.getItem(getOwnerStorageKey(BAKE_HISTORY_KEY, "account-b"))).toBeNull();
   });
 
   it("does not remove an active bake when local history archival fails", async () => {

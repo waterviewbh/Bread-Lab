@@ -7,7 +7,7 @@ import { useColors } from "@/hooks/useColors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fonts, spacing, radius, typography } from "@/constants/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BAKE_HISTORY_KEY, BAKE_KEY, BakeHistoryItem, SavedRecipe, DefectSlug } from "@/lib/recipeTypes";
+import { BAKE_HISTORY_KEY, BakeHistoryItem, SavedRecipe, DefectSlug } from "@/lib/recipeTypes";
 import { DEFECT_LIBRARY, generateDiagnosticSummary, DiagnosticPayload, GlossaryCategory } from "@/lib/diagnosticLogic";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -42,10 +42,9 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
   const loadHistory = useCallback(async () => {
     try {
       const { owner } = await getWorkspaceIdentity();
-      const [historyRaw, flatHistoryRaw, activeRaw] = await Promise.all([
+      const [historyRaw, flatHistoryRaw] = await Promise.all([
         AsyncStorage.getItem(getOwnerStorageKey(BAKE_HISTORY_KEY, owner)),
         AsyncStorage.getItem(BAKE_HISTORY_KEY),
-        AsyncStorage.getItem(getOwnerStorageKey(BAKE_KEY, owner)),
       ]);
       setLoadError(null);
       const combined: BakeHistoryItem[] = [];
@@ -53,14 +52,13 @@ export function DiagnosticSection({ bakeId }: { bakeId?: string }) {
       const sourcesToRead = [
         { raw: historyRaw, source: "owner_history", storageKey: getOwnerStorageKey(BAKE_HISTORY_KEY, owner) },
         { raw: flatHistoryRaw, source: "flat_history", storageKey: BAKE_HISTORY_KEY },
-        { raw: activeRaw, source: "owner_active", storageKey: getOwnerStorageKey(BAKE_KEY, owner) },
       ];
 
       for (const item of sourcesToRead) {
         if (!item.raw) continue;
         const parsed = JSON.parse(item.raw);
-        if (Array.isArray(parsed) || (item.source === "owner_active" && parsed && typeof parsed === "object")) {
-          for (const bake of (Array.isArray(parsed) ? parsed : [parsed]) as BakeHistoryItem[]) {
+        if (Array.isArray(parsed)) {
+          for (const bake of parsed as BakeHistoryItem[]) {
             if (bake?.id) {
               const notesPresent = typeof bake.notes === "string" && bake.notes.length > 0;
               console.log("[BAKE_NOTES_TRACE]", {

@@ -273,16 +273,17 @@ export function ActiveBakeSection() {
 
   const handleCompletePhase = async (key: string) => {
     if (!bake) return;
+    const now = Date.now();
     const phases = bake.phases.map((p) =>
-      p.key === key ? { ...p, completedAt: Date.now() } : p
+      p.key === key ? { ...p, completedAt: p.completedAt ?? now } : p
     );
 
-    const isLastPhase = phases.every(p => !!p.completedAt);
+    const isLastPhase = phases.length > 0 && phases.every(p => !!p.completedAt);
     const updatedBake: ActiveBake = {
         ...bake,
         phases,
         status: isLastPhase ? 'completed' : 'active',
-        completedAt: isLastPhase ? Date.now() : undefined
+        completedAt: isLastPhase ? (bake.completedAt ?? now) : undefined
     };
 
     console.log("[BAKE_NOTES_TRACE]", {
