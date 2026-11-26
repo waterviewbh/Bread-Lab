@@ -3,6 +3,12 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react-nativ
 import { ActiveBakeSection } from '../ActiveBakeSection';
 import * as recipeStorage from '@/lib/recipeStorage';
 
+jest.mock('@/hooks/useColors', () => ({ useColors: () => ({
+  background: '#fff', foreground: '#000', card: '#fff', border: '#ccc',
+  primary: '#333', mutedForeground: '#666', accent: '#888',
+}) }));
+jest.mock('@/components/AffiliateCarousel', () => () => null);
+
 jest.mock('@/lib/recipeStorage', () => ({
   loadAll: jest.fn(),
   writeBakeLocal: jest.fn().mockResolvedValue(undefined),

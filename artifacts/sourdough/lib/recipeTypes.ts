@@ -251,6 +251,7 @@ export interface ActiveBake {
   recipeId: string;
   recipeName: string;
   startedAt: number;
+  /** Actual final-phase completion time; review never changes it. */
   completedAt?: number;
   status: BakeStatus;
   phases: BakePhase[];
@@ -265,8 +266,14 @@ export interface ActiveBake {
 
 export interface BakeHistoryItem extends Omit<ActiveBake, 'status'> {
   userId?: string;
+  /** Original local archival time; review never changes it. Legacy records lacking completedAt use this for display. */
   savedAt: number;
   status: 'completed' | 'post_mortem';
+}
+
+/** Completion controls History placement; savedAt is the legacy fallback only. */
+export function bakeHistoryTimestamp(bake: { completedAt?: number | null; savedAt: number }): number {
+  return bake.completedAt ?? bake.savedAt;
 }
 
 // ─── Phase catalogue (hierarchical) ──────────────────────────────────────────

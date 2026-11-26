@@ -34,6 +34,8 @@ import { computeSessionAcidVelocity } from "@/lib/analytics";
 import { TourStep, CopilotView } from "@/components/TourStep";
 import { typography, spacing, radius, fonts } from "@/constants/theme";
 import { SafePrint } from "@/lib/printUtils";
+import { getOwnerStorageKey } from "@/lib/storageUtils";
+import { bakeHistoryTimestamp } from "@/lib/recipeTypes";
 import {
   addToFeedTombstone,
   removeFromFeedTombstone,
@@ -64,41 +66,8 @@ export function mergeActiveBake(
   activeRaw: string | null,
   token: string | null = null
 ): BakeHistoryEntry[] {
-  if (!activeRaw) return list;
-  try {
-    const parsed = JSON.parse(activeRaw);
-    const activeBakes: any[] = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
-    const isOwnerMatchGuard = (entry: { userId?: string }) => isOwnerMatch(entry, token);
-    const validActiveBakes = activeBakes.filter(
-      (active) => isOwnerMatchGuard(active) && isBakeEligibleForHistory(active)
-    );
-    let newList = [...list];
-    validActiveBakes.forEach((active) => {
-      if (!active?.id || !active?.startedAt) return;
-      if (newList.some((e) => e.id === active.id)) return;
-      newList.unshift({
-        id: active.id,
-        recipeId: active.recipeId ?? "",
-        recipeName: active.recipeName,
-        savedAt: active.startedAt,
-        startedAt: active.startedAt,
-        phases: (active.phases || []).map((p: any) => ({
-          key: p.key,
-          name: p.name,
-          startedAt: p.startedAt ?? null,
-          completedAt: p.completedAt ?? null,
-          foldCount: p.foldCount,
-          foldTimestamps: p.foldTimestamps,
-        })),
-        notes: active.notes ?? "",
-        yieldValue: active.yieldValue ?? "",
-        outcome: active.outcome ?? null,
-      });
-    });
-    return newList;
-  } catch {
-    return list;
-  }
+  // Only persisted History records are eligible. Active storage is never an archive source.
+  return list;
 }
 
 function ensureString(val: string | any[] | undefined): string {
@@ -711,16 +680,19 @@ export default function HistoryScreen() {
       const isOwnerMatchGuard = (entry: { userId?: string }) => isOwnerMatch(entry, token);
 
       try {
-        const [feedStored, bakeStored, activeStored] = await Promise.all([
+        const [feedStored, bakeStored, ownerBakeStored, activeStored] = await Promise.all([
           AsyncStorage.getItem(HISTORY_KEY),
           AsyncStorage.getItem(BAKE_HISTORY_KEY),
+          AsyncStorage.getItem(getOwnerStorageKey(BAKE_HISTORY_KEY, token ?? "anonymous")),
           AsyncStorage.getItem(ACTIVE_BAKE_KEY),
         ]);
         if (feedStored) {
           const parsedFeed = JSON.parse(feedStored) as HistoryEntry[];
           setHistory(parsedFeed.filter(isOwnerMatchGuard));
         }
-        const bakeList: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
+        const flatBakes: BakeHistoryEntry[] = bakeStored ? JSON.parse(bakeStored) : [];
+      const ownerBakes: BakeHistoryEntry[] = ownerBakeStored ? JSON.parse(ownerBakeStored) : [];
+      const bakeList = [...ownerBakes, ...flatBakes.filter(b => !ownerBakes.some(o => o.id === b.id))];
         const validBakeList = bakeList.filter(
           (b) => isOwnerMatchGuard(b) && isBakeEligibleForHistory(b)
         );
@@ -740,9 +712,10 @@ export default function HistoryScreen() {
       // Merge Supabase results with local-only entries so a failed or
       // incomplete sync never silently erases sessions that exist only
       // in AsyncStorage (e.g., the session from last night that didn't sync).
-      const [localFeedRaw, localBakeRaw, feedTombs, bakeTombs] = await Promise.all([
+      const [localFeedRaw, localBakeRaw, ownerBakeRaw, feedTombs, bakeTombs] = await Promise.all([
         AsyncStorage.getItem(HISTORY_KEY),
         AsyncStorage.getItem(BAKE_HISTORY_KEY),
+        AsyncStorage.getItem(getOwnerStorageKey(BAKE_HISTORY_KEY, token ?? "anonymous")),
         getFeedTombstone(),
         getBakeTombstone(),
       ]);
@@ -767,12 +740,13 @@ export default function HistoryScreen() {
         await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(mergedFeed));
       }
 
-      const apiMapped: BakeHistoryEntry[] = apiBakes.map((b) => ({
+      const apiMapped: BakeHistoryEntry[] = apiBakes.filter(b => !b.inProgress).map((b) => ({
         id: b.id,
         userId: token ?? undefined,
         recipeId: b.recipeId ?? "",
         recipeName: b.recipeName,
         savedAt: b.savedAt,
+        completedAt: b.completedAt ?? undefined,
         startedAt: b.startedAt,
         phases: b.phases.map((p) => ({
           key: p.key,
@@ -798,7 +772,9 @@ export default function HistoryScreen() {
         })),
       }));
 
-      const localBakes: BakeHistoryEntry[] = localBakeRaw ? JSON.parse(localBakeRaw) : [];
+      const flatLocalBakes: BakeHistoryEntry[] = localBakeRaw ? JSON.parse(localBakeRaw) : [];
+      const ownerLocalBakes: BakeHistoryEntry[] = ownerBakeRaw ? JSON.parse(ownerBakeRaw) : [];
+      const localBakes = [...ownerLocalBakes, ...flatLocalBakes.filter(b => !ownerLocalBakes.some(o => o.id === b.id))];
       const supabaseBakeIds = new Set(apiMapped.map((b) => b.id));
       const localOnlyBakes = localBakes.filter(
         (b) => !supabaseBakeIds.has(b.id) && !deletedBakeIds.has(b.id) && isOwnerMatch(b)
@@ -807,7 +783,7 @@ export default function HistoryScreen() {
         ...apiMapped.filter((b) => !deletedBakeIds.has(b.id)),
         ...localOnlyBakes,
       ].filter(isBakeEligibleForHistory).sort((a, b) => {
-        return (b.startedAt ?? b.savedAt) - (a.startedAt ?? a.savedAt);
+        return bakeHistoryTimestamp(b) - bakeHistoryTimestamp(a);
       });
 
       if (token || apiBakes.length > 0) {
@@ -1091,7 +1067,7 @@ export default function HistoryScreen() {
   const bakeDayMap = useMemo(() => {
     const map: Record<string, BakeHistoryEntry[]> = {};
     bakeHistory.forEach((entry) => {
-      const d = new Date(entry.savedAt);
+      const d = new Date(bakeHistoryTimestamp(entry));
       if (d.getMonth() === displayMonth && d.getFullYear() === displayYear) {
         const key = d.getDate().toString();
         if (!map[key]) map[key] = [];
@@ -1105,7 +1081,7 @@ export default function HistoryScreen() {
     if (history.length === 0 && bakeHistory.length === 0) return 0;
     const fedDays = new Set([
       ...history.map((e) => dayKey(e.completedAt ?? e.savedAt)),
-      ...bakeHistory.map((e) => dayKey(e.savedAt)),
+      ...bakeHistory.map((e) => dayKey(bakeHistoryTimestamp(e))),
     ]);
     const check = new Date();
     check.setHours(0, 0, 0, 0);
@@ -1601,7 +1577,7 @@ export default function HistoryScreen() {
                         {bake.recipeName}
                       </Text>
                       <Text style={[styles.flourNote, { color: colors.mutedForeground, marginTop: 0 }]}>
-                        {formatTime(bake.savedAt)}
+                        {formatTime(bakeHistoryTimestamp(bake))}
                       </Text>
                     </View>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

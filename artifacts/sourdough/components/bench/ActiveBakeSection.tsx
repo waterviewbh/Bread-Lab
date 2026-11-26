@@ -300,9 +300,22 @@ export function ActiveBakeSection() {
     setRecentlyCompletedKey(key);
     setTimeout(() => setRecentlyCompletedKey(null), 800);
 
-    setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
     await writeBakeLocal(updatedBake);
-    upsertBakeRemote(updatedBake).catch(() => {});
+    if (isLastPhase) {
+      try {
+        await archiveBakeWithDiagnostics(updatedBake, { reportSyncStart, reportSyncSuccess, reportSyncFailure });
+        const remaining = bakes.filter(b => b.id !== updatedBake.id);
+        setBakes(remaining);
+        setActiveBakeId(remaining[0]?.id ?? null);
+      } catch (error) {
+        setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
+        Alert.alert("Archive failed", "Your completed bake is still on the Bench. Please retry completion.");
+        return;
+      }
+    } else {
+      setBakes(bakes.map(b => b.id === updatedBake.id ? updatedBake : b));
+      upsertBakeRemote(updatedBake).catch(() => {});
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const nextPhase = phases.find(p => !p.completedAt);

@@ -7,6 +7,7 @@ import { getStoredToken } from "@/lib/auth";
 import {
   type SavedRecipe,
   type ActiveBake,
+  type BakeHistoryItem,
   type BakeOutcome,
   RECIPES_KEY,
   BAKE_KEY,
@@ -1018,60 +1019,65 @@ export async function archiveBakeWithDiagnostics(
     reportSyncFailure: () => void;
   }
 ): Promise<void> {
-  const savedAt = Date.now();
-  const owner = await resolveOwner();
+  const context = await getWorkspaceIdentity();
+  const owner = context.owner;
+  if (bake.userId != null && bake.userId !== owner) {
+    throw new Error("Bake owner does not match the current workspace.");
+  }
+  if (!bake.phases.length || !bake.phases.every(p => !!p.completedAt) || !bake.completedAt) {
+    throw new Error("Only a completed bake can be archived.");
+  }
   const bakeHistoryKey = getOwnerStorageKey(BAKE_HISTORY_KEY, owner);
+  const bakeKey = getOwnerStorageKey(BAKE_KEY, owner);
+  let historyItem: BakeHistoryItem;
 
   await storageMutex.run(async () => {
-    try {
-      const stored = await AsyncStorage.getItem(bakeHistoryKey);
-      const existing = safeParse<ActiveBake[]>(stored, [], Array.isArray);
-
-      const historyItem = {
-        ...bake,
-        userId: bake.userId ?? owner,
-        savedAt,
-        status: (bake.status === 'post_mortem' ? 'post_mortem' : 'completed') as any,
-      };
-
-      console.log("[BAKE_NOTES_TRACE]", {
-        stage: "ARCHIVE_CREATE",
-        bakeId: historyItem.id,
-        owner: historyItem.userId,
-        storageKey: bakeHistoryKey,
-        notesPresent: typeof historyItem.notes === "string" && historyItem.notes.length > 0,
-        notesLength: historyItem.notes?.length ?? 0,
-        status: historyItem.status,
-      });
-
-      existing.unshift(historyItem);
-      await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(existing.slice(0, 500)));
-    } catch (e) {
-      console.error("[recipeStorage] Archive failed local", e);
+    await assertWorkspaceOperationCurrent(context);
+    const stored = await AsyncStorage.getItem(bakeHistoryKey);
+    const existing = safeParse<BakeHistoryItem[]>(stored, [], Array.isArray);
+    const prior = existing.find(item => item.id === bake.id);
+    if (prior && prior.userId !== owner) throw new Error("History bake owner does not match the current workspace.");
+    historyItem = prior ?? {
+      ...bake,
+      userId: owner,
+      savedAt: Date.now(),
+      status: 'completed',
+    };
+    if (!prior) {
+      await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify([historyItem, ...existing].slice(0, 500)));
+    }
+    const activeRaw = await AsyncStorage.getItem(bakeKey);
+    const active = safeParse<ActiveBake[]>(activeRaw, [], Array.isArray);
+    if (active.some(item => item.id === bake.id)) {
+      await AsyncStorage.setItem(bakeKey, JSON.stringify(active.filter(item => item.id !== bake.id)));
     }
   });
 
   callbacks.reportSyncStart();
-  const deviceId = await getDeviceId();
-
-  api.history.bakes.upsert({
-    id: bake.id,
-    deviceId,
-    userId: bake.userId ?? owner ?? undefined,
-    recipeId: bake.recipeId,
-    recipeName: bake.recipeName,
-    yield_value: bake.yieldValue ? parseInt(bake.yieldValue, 10) : 0,
-    savedAt,
-    startedAt: bake.startedAt,
-    completedAt: bake.completedAt,
-    status: bake.status,
-    outcome: bake.outcome,
-    notes: bake.notes,
-    phases: bake.phases as any,
-    inProgress: false,
-  })
-  .then(() => callbacks.reportSyncSuccess())
-  .catch(() => callbacks.reportSyncFailure());
+  try {
+    const deviceId = await getDeviceId();
+    await assertWorkspaceOperationCurrent(context);
+    await api.history.bakes.upsert({
+      id: historyItem!.id,
+      deviceId,
+      userId: owner,
+      recipeId: historyItem!.recipeId,
+      recipeName: historyItem!.recipeName,
+      yield_value: historyItem!.yieldValue ? parseInt(historyItem!.yieldValue, 10) : 0,
+      savedAt: historyItem!.savedAt!,
+      startedAt: historyItem!.startedAt,
+      completedAt: historyItem!.completedAt,
+      status: historyItem!.status,
+      outcome: historyItem!.outcome,
+      notes: historyItem!.notes,
+      estimatorState: historyItem!.estimatorState,
+      phases: historyItem!.phases as any,
+      inProgress: false,
+    });
+    callbacks.reportSyncSuccess();
+  } catch (error) {
+    callbacks.reportSyncFailure();
+  }
 }
 
 export async function archiveIntermediateIterations(masterId: string): Promise<void> {
@@ -1171,7 +1177,7 @@ export async function updateBakeOutcomeInHistory(
             const index = history.findIndex(h => h.id === bakeId);
             const flatIndex = flatHistory.findIndex(h => h.id === bakeId);
             const activeIndex = activeBakes.findIndex(b => b.id === bakeId);
-            const candidate = index !== -1 ? history[index] : flatIndex !== -1 ? flatHistory[flatIndex] : activeBakes[activeIndex] ?? null;
+            const candidate = index !== -1 ? history[index] : flatIndex !== -1 ? flatHistory[flatIndex] : null;
 
             console.log("[BAKE_NOTES_TRACE]", {
                 stage: "STORAGE_MERGE",
@@ -1190,17 +1196,13 @@ export async function updateBakeOutcomeInHistory(
                 selectedNotesPresent: typeof candidate?.notes === "string" && candidate.notes.length > 0,
                 selectedNotesLength: typeof candidate?.notes === "string" ? candidate.notes.length : 0,
             });
-            if (!candidate) throw new Error(`Bake ${bakeId} was not found in review history or active bakes.`);
+            if (!candidate) throw new Error(`Bake ${bakeId} was not found in archived history.`);
             if (candidate.userId !== owner) throw new Error("Bake owner does not match the current workspace.");
             if (flatIndex !== -1 && flatHistory[flatIndex].userId !== owner) {
                 throw new Error("Flat bake owner does not match the current workspace.");
             }
             if (activeIndex !== -1 && activeBakes[activeIndex].userId !== owner) {
                 throw new Error("Active bake owner does not match the current workspace.");
-            }
-            if (index === -1 && flatIndex === -1 &&
-                (!candidate.phases?.length || !candidate.phases.every(p => !!p.completedAt))) {
-                throw new Error("Only a completed active bake can be moved into review history.");
             }
 
             const updatedBake: ActiveBake = { ...candidate, outcome };
@@ -1216,10 +1218,12 @@ export async function updateBakeOutcomeInHistory(
                     deviceId: remote.deviceId,
                     userId: owner,
                     yield_value: remote.yield_value,
-                    savedAt: Date.now(),
+                    savedAt: remote.savedAt,
+                    completedAt: remote.completedAt,
                     inProgress: false,
                 } as any);
-                if (saved.id !== bakeId || !saved.outcome ||
+                if (saved.id !== bakeId || saved.savedAt !== remote.savedAt ||
+                    saved.completedAt !== remote.completedAt || !saved.outcome ||
                     (["crumbScore", "crustScore", "flavorScore", "overallScore", "defects", "reflectionNotes"] as const)
                         .some(key => JSON.stringify((saved.outcome as any)[key]) !== JSON.stringify((outcome as any)[key]))) {
                     throw new Error("Review outcome was not verified after cloud save.");
@@ -1227,17 +1231,12 @@ export async function updateBakeOutcomeInHistory(
             }
 
             if (index !== -1) history[index] = updatedBake;
-            else if (flatIndex === -1) history.unshift({ ...updatedBake, status: 'completed' });
-            if (index !== -1 || flatIndex === -1) {
+            if (index !== -1) {
                 await AsyncStorage.setItem(bakeHistoryKey, JSON.stringify(history));
             }
             if (flatIndex !== -1) {
                 flatHistory[flatIndex] = updatedBake;
                 await AsyncStorage.setItem(flatHistoryKey, JSON.stringify(flatHistory));
-            }
-            if (activeIndex !== -1) {
-                activeBakes.splice(activeIndex, 1);
-                await AsyncStorage.setItem(bakeKey, JSON.stringify(activeBakes));
             }
         } catch (e) {
             console.error("[recipeStorage] updateBakeOutcomeInHistory failed", e);
