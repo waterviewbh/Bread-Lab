@@ -1,0 +1,14 @@
+appId: com.waterviewbakehouse.breadlab
+---
+# Precondition: dedicated test account or isolated app data only.
+# The operator seeds "E2E Lifecycle Loaf" with every phase except the final
+# phase complete, opens Bench > Recipe Runner, and starts the final phase.
+# Confirm this starting screen separately before executing the flow.
+- assertVisible: "E2E Lifecycle Loaf"
+- assertVisible: "Complete Phase"
+- tapOn: "Complete Phase"
+- waitForAnimationToEnd
+- tapOn: "Log"
+- extendedWaitUntil:
+    visible: "E2E Lifecycle Loaf"
+    timeout: 10000
