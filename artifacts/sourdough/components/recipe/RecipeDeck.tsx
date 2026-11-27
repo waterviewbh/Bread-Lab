@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  useColorScheme,
 } from "react-native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
@@ -29,6 +30,7 @@ interface Props {
  */
 export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShareRecipe }: Props) {
   const colors = useColors();
+  const dark = useColorScheme() === "dark";
 
   // Helper to strip redundant iteration suffixes from the title for display
   const cleanTitle = (name: string) => {
@@ -86,7 +88,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
               <View style={[s.badge, { backgroundColor: colors.primary + '15' }]}>
                 <Text selectable={true} style={[s.badgeText, { color: colors.primary }]}>MASTER FORMULA · UNTOUCHED</Text>
               </View>
-              <InoculantPill identity={classifyInoculant(master.phases)} />
+              <InoculantPill identity={classifyInoculant(master.phases)} dark={dark} />
               <Text selectable={true} style={[s.title, { color: colors.foreground }]} numberOfLines={2}>{getDisplayRecipeName(master)}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -188,7 +190,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
             <Text selectable={true} style={[s.lineageChip, { color: colors.mutedForeground }]}>
               {isMasterActive ? 'MASTER BASELINE' : 'ITERATION'} · {iterations.length} {iterations.length === 1 ? 'Iteration' : 'Iterations'}
             </Text>
-            <InoculantPill identity={classifyInoculant(activeRecipe.phases)} />
+            <InoculantPill identity={classifyInoculant(activeRecipe.phases)} dark={dark} />
             <Text selectable={true} style={[s.title, { color: colors.foreground }]} numberOfLines={2}>
               {cleanTitle(getDisplayRecipeName(activeRecipe))}
             </Text>

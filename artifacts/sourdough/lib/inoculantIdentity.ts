@@ -21,7 +21,7 @@ export function classifyInoculant(phases: readonly IngredientPhase[]): Inoculant
     for (const entry of lines) {
       const line = (typeof entry === "string" ? entry : entry?.text || "").toLowerCase();
       for (const part of line.split(/\s+(?:and|&)\s+|,\s*/)) {
-        const hasStarter = /\b(?:sourdough\s+(?:starter|discard|culture)|levain)\b/.test(part);
+        const hasStarter = /\b(?:sourdough\s+(?:starter|discard|culture)|peak\s+starter|levain)\b/.test(part);
         const hasCommercial = /\b(?:instant\s+yeast|active\s+dry\s+yeast|dry\s+active\s+yeast|saf(?:-instant)?\s+yeast)\b/.test(part);
         const unclear = /\b(?:yeast|starter|discard|leaven|preferment|poolish|biga|sponge|mother|culture)\b/.test(part)
           && !hasStarter && !hasCommercial;
