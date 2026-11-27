@@ -11,6 +11,8 @@ import { fonts, radius, spacing } from "@/constants/theme";
 import { SavedRecipe } from "@/lib/recipeTypes";
 import { calculateRecipeMetrics, formatDate } from "@/lib/recipeUtils";
 import { getRecipeDelta } from "@/lib/recipeDiff";
+import { classifyInoculant } from "@/lib/inoculantIdentity";
+import { InoculantPill } from "@/components/recipe/InoculantPill";
 import { findMatchingLineageVersion, getDisplayRecipeName, getDisplayVersionLabel } from "@/lib/recipeCanonical";
 
 interface Props {
@@ -84,6 +86,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
               <View style={[s.badge, { backgroundColor: colors.primary + '15' }]}>
                 <Text selectable={true} style={[s.badgeText, { color: colors.primary }]}>MASTER FORMULA · UNTOUCHED</Text>
               </View>
+              <InoculantPill identity={classifyInoculant(master.phases)} />
               <Text selectable={true} style={[s.title, { color: colors.foreground }]} numberOfLines={2}>{getDisplayRecipeName(master)}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -185,6 +188,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
             <Text selectable={true} style={[s.lineageChip, { color: colors.mutedForeground }]}>
               {isMasterActive ? 'MASTER BASELINE' : 'ITERATION'} · {iterations.length} {iterations.length === 1 ? 'Iteration' : 'Iterations'}
             </Text>
+            <InoculantPill identity={classifyInoculant(activeRecipe.phases)} />
             <Text selectable={true} style={[s.title, { color: colors.foreground }]} numberOfLines={2}>
               {cleanTitle(getDisplayRecipeName(activeRecipe))}
             </Text>
