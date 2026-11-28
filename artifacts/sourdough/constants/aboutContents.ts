@@ -51,6 +51,7 @@ export const HELP: HelpTab[] = [
           "Purpose: Your master formula creation hub in the Lab.",
           "Phase Selection: Select from 21 baking-related phases (scald, autolyse, bulk ferment, etc.), each with customizable ingredients and instructions.",
           "Lineage Tracking: Recipes can be duplicated, allowing you to iterate on a formula while preserving the original version's data.",
+          "How recipe labels are chosen: An inoculant label identifies the leavening ingredients Bread Lab can confidently recognize in a recipe: sourdough starter, commercial yeast, a combination of both, or a measured poolish, biga, or sponge. The label describes what the ingredient list specifies—not how the dough will ferment. If the ingredients are vague or incomplete, Bread Lab leaves the label off rather than guessing. No label doesn’t necessarily mean no leavening; it means there isn’t enough information to identify it confidently.",
         ],
       },
     ],

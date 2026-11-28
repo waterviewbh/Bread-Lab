@@ -1,14 +1,19 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { Feather } from "@expo/vector-icons";
 import { fonts } from "@/constants/theme";
 import type { InoculantIdentity } from "@/lib/inoculantIdentity";
+import {
+  WildYeastIcon,
+  CommercialYeastIcon,
+  HybridCultureIcon,
+  PrefermentIcon,
+} from "@/components/recipe/InoculationIcons";
 
-// Placeholder icons are mapped here so supplied SVGs can replace them later.
 const variants = {
-  sourdough: { label: "Sourdough Starter", icon: "archive", light: { background: "#FDF0E6", border: "#F0CCB3", foreground: "#9A3F00" }, dark: { background: "#543624", border: "#A66B45", foreground: "#FFD0AD" } },
-  commercial: { label: "Commercial Yeast", icon: "sun", light: { background: "#FBF4DC", border: "#E9D696", foreground: "#805600" }, dark: { background: "#514321", border: "#9B8140", foreground: "#F8DE91" } },
-  hybrid: { label: "Hybrid Culture", icon: "link-2", light: { background: "#EEF3F0", border: "#C4D4CB", foreground: "#14513B" }, dark: { background: "#243F33", border: "#5B8973", foreground: "#BCE8CF" } },
+  sourdough: { label: "Sourdough Starter", Icon: WildYeastIcon, light: { background: "#FDF0E6", border: "#F0CCB3", foreground: "#9A3F00" }, dark: { background: "#543624", border: "#A66B45", foreground: "#FFD0AD" } },
+  commercial: { label: "Commercial Yeast", Icon: CommercialYeastIcon, light: { background: "#FBF4DC", border: "#E9D696", foreground: "#805600" }, dark: { background: "#514321", border: "#9B8140", foreground: "#F8DE91" } },
+  hybrid: { label: "Hybrid Culture", Icon: HybridCultureIcon, light: { background: "#EEF3F0", border: "#C4D4CB", foreground: "#14513B" }, dark: { background: "#243F33", border: "#5B8973", foreground: "#BCE8CF" } },
+  preferment: { label: "Preferment / Poolish", Icon: PrefermentIcon, light: { background: "#F6F1EB", border: "#DDD0C3", foreground: "#5D3A26" }, dark: { background: "#46372D", border: "#927966", foreground: "#F1D8C5" } },
 } as const;
 
 export function InoculantPill({ identity, dark = false }: { identity: InoculantIdentity | null; dark?: boolean }) {
@@ -17,7 +22,7 @@ export function InoculantPill({ identity, dark = false }: { identity: InoculantI
   const palette = dark ? variant.dark : variant.light;
   return (
     <View testID="inoculant-pill" style={[styles.pill, { backgroundColor: palette.background, borderColor: palette.border }]}>
-      <Feather name={variant.icon} size={11} color={palette.foreground} />
+      <variant.Icon size={16} color={palette.foreground} accent={palette.border} fillDough={palette.background} fillSurface={palette.background} />
       <Text selectable style={[styles.label, { color: palette.foreground }]}>{variant.label}</Text>
     </View>
   );

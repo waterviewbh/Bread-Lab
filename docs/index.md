@@ -38,6 +38,7 @@ Welcome to the central documentation hub for Bread Lab. This directory serves as
 - [Session: AGP Upgrade to 8.13.2 & Buildscript Configuration (2026-09-26)](file:///E:/Bread-Lab/docs/journal/2026-09-26_agp_upgrade_and_ide_admin.artifact.md)
 
 #### 📦 Version 2.6.1
+- [Session: Recipe Inoculant Identity Pills (2026-11-27)](file:///E:/Bread-Lab/docs/journal/2026-11-27_recipe_inoculant_pills.artifact.md) [FOCUSED TESTS PASSED; PARTIAL DEVICE VERIFICATION]
 - [Session: Bake Completion and History Lifecycle (2026-11-26)](file:///E:/Bread-Lab/docs/journal/2026-11-26_bake_history_maestro_smoke.artifact.md) [ISOLATED DEVICE SMOKE PASSED]
 - [Session: Issue #64 Recipe Iteration Name Display (2026-11-23)](file:///E:/Bread-Lab/docs/journal/2026-11-23_issue_64_recipe_iteration_name.artifact.md) [FOCUSED TESTS PASSED; DEVICE VERIFICATION OPEN]
 - [Session: Optional Portrait Hardware Feature (2026-11-22)](file:///E:/Bread-Lab/docs/journal/2026-11-22_optional_portrait_feature.artifact.md) [SOURCE UPDATED; RELEASE VERIFICATION OPEN]
