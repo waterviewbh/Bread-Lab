@@ -456,22 +456,31 @@ export function calculateCardInoculant(phases: { ingredients?: string | readonly
   const starterPattern = /\b(?:sourdough\s+(?:starter|discard|culture)|peak\s+starter|levain)\b/;
   const prefermentPattern = /\b(?:poolish|biga|sponge)\b/;
   const inoculantTerms = new RegExp(`${COMMERCIAL_YEAST_PATTERN.source}|${starterPattern.source}|${prefermentPattern.source}`, 'g');
-  const adjacentMass = (part: string, term: RegExpMatchArray): number | null => {
-    // Bind the nearest mass to its ingredient name. A preceding flour quantity
-    // or a following water quantity must not become inoculant mass.
+  const adjacentMass = (part: string, term: RegExpMatchArray, nextTermIndex: number, usedMasses: Set<number>): number | null => {
+    // Restrict a following mass to the space before the next inoculant term.
+    // Track its position so two terms cannot claim the same measurement.
+    const termEnd = term.index! + term[0].length;
     const before = part.slice(0, term.index).match(/\b(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\s*(?:of\s*)?$/);
-    const after = part.slice(term.index! + term[0].length).match(/^\s*(?:[:—-]\s*)?(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\s*$/);
-    const measured = before || after;
+    const after = part.slice(termEnd, nextTermIndex).match(/^\s*(?:[:—-]\s*)?(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\s*$/);
+    const candidates = [
+      before && { match: before, position: before.index! },
+      after && { match: after, position: termEnd + after[0].search(/\d/) },
+    ];
+    const measured = candidates.find(candidate => candidate && !usedMasses.has(candidate.position));
     if (!measured) return null;
-    return Number(measured[1]) * (measured[2] === 'kg' ? 1000 : measured[2] === 'oz' ? 28.35 : measured[2].startsWith('lb') ? 453.59 : 1);
+    usedMasses.add(measured.position);
+    const [, value, unit] = measured.match;
+    return Number(value) * (unit === 'kg' ? 1000 : unit === 'oz' ? 28.35 : unit.startsWith('lb') ? 453.59 : 1);
   };
   for (const phase of phases) {
     const lines = typeof phase.ingredients === 'string' ? phase.ingredients.split('\n') : phase.ingredients ?? [];
     for (const entry of lines) {
       const line = (typeof entry === 'string' ? entry : entry.text).toLowerCase();
       for (const part of line.split(/\s+(?:and|&)\s+|,\s*/)) {
-        for (const term of part.matchAll(inoculantTerms)) {
-          const amount = adjacentMass(part, term);
+        const terms = Array.from(part.matchAll(inoculantTerms));
+        const usedMasses = new Set<number>();
+        for (const [index, term] of terms.entries()) {
+          const amount = adjacentMass(part, term, terms[index + 1]?.index ?? part.length, usedMasses);
           if (amount === null) { unmeasured = true; continue; }
           if (COMMERCIAL_YEAST_PATTERN.test(term[0])) yeast += amount;
           else if (starterPattern.test(term[0])) starter += amount;

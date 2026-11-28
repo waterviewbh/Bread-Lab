@@ -81,6 +81,12 @@ describe('card inoculant mass', () => {
     ['500 g flour, levain 0.1 kg, instant yeast 0.5 oz', '100 g starter + 14.2 g yeast'],
     ['500 g flour, 90 g levain, 10 g salt', '90 g'],
     ['90 g levain 20 g levain', '110 g'],
+    ['levain 90 g levain 20 g', '110 g'],
+    ['2 g instant yeast 1 g instant yeast', '3 g'],
+    ['instant yeast 2 g instant yeast 1 g', '3 g'],
+    ['0.1 kg levain 1 oz levain', '128.3 g'],
+    ['90 g levain 20 g levain 2 g instant yeast', '—'],
+    ['90 g levain levain', '—'],
     ['levain 90 g water', '—'],
     ['500 g flour levain', '—'],
   ])('associates inoculant mass in %s', (ingredient, expected) => {
