@@ -3,7 +3,7 @@ export type InoculantIdentity = "sourdough" | "commercial" | "hybrid" | "preferm
 type IngredientLine = string | { text: string };
 type IngredientPhase = { ingredients?: string | readonly IngredientLine[] | null };
 
-export const COMMERCIAL_YEAST_PATTERN = /\b(?:instant\s+yeast|active\s+dry\s+yeast|dry\s+active\s+yeast|saf(?:-instant)?\s+yeast)\b/;
+export const COMMERCIAL_YEAST_PATTERN = /\b(?:commercial\s+yeast|instant\s+yeast|active\s+dry\s+yeast|dry\s+active\s+yeast|saf(?:-instant)?\s+yeast)\b/;
 
 /**
  * Presentation identity only. Calculator yeast defaults and weights are intentionally
