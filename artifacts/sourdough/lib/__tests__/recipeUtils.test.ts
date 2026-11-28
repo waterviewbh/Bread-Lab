@@ -12,6 +12,25 @@ describe('card inoculant mass', () => {
   ])('displays physical mass for %j', (ingredients, expected) => {
     expect(calculateCardInoculant(phases(...ingredients))).toBe(expected);
   });
+  it.each([
+    ['instant yeast', '2 g', '2 g'],
+    ['active dry yeast', '0.5 kg', '500 g'],
+    ['dry active yeast', '1 oz', '28.4 g'],
+    ['saf yeast', '2 grams', '2 g'],
+    ['saf-instant yeast', '0.5 lb', '226.8 g'],
+  ])('measures classifier terminology %s with %s', (term, quantity, expected) => {
+    expect(calculateCardInoculant(phases(`${quantity} ${term}`))).toBe(expected);
+  });
+  it('does not borrow another ingredient quantity or show zero for unmeasured yeast', () => {
+    expect(calculateCardInoculant(phases('500 g flour', 'instant yeast'))).toBe('—');
+    expect(calculateCardInoculant(phases('500 g flour instant yeast'))).toBe('—');
+    expect(calculateCardInoculant(phases('90 g levain', 'active dry yeast'))).toBe('—');
+    expect(calculateCardInoculant(phases('2 g yeast'))).toBe('—');
+  });
+  it('keeps starter and preferment out of commercial yeast mass', () => {
+    expect(calculateCardInoculant(phases('90 g levain', '2 g instant yeast'))).toBe('90 g starter + 2 g yeast');
+    expect(calculateCardInoculant(phases('100 g poolish'))).toBe('100 g');
+  });
   it('leaves normalized yeast equivalents unchanged', () => {
     expect(calculateRecipeMetrics(phases('500 g flour', '2 g instant yeast')).inoculationPct).toBeCloseTo(11.4);
     expect(calculateRecipeMetrics(phases('500 g flour', '90 g peak starter', '2 g instant yeast')).inoculationPct).toBeCloseTo(147 / 545 * 100);

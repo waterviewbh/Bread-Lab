@@ -3,6 +3,8 @@ export type InoculantIdentity = "sourdough" | "commercial" | "hybrid" | "preferm
 type IngredientLine = string | { text: string };
 type IngredientPhase = { ingredients?: string | readonly IngredientLine[] | null };
 
+export const COMMERCIAL_YEAST_PATTERN = /\b(?:instant\s+yeast|active\s+dry\s+yeast|dry\s+active\s+yeast|saf(?:-instant)?\s+yeast)\b/;
+
 /**
  * Presentation identity only. Calculator yeast defaults and weights are intentionally
  * independent from these conservative text rules.
@@ -23,7 +25,7 @@ export function classifyInoculant(phases: readonly IngredientPhase[]): Inoculant
       const line = (typeof entry === "string" ? entry : entry?.text || "").toLowerCase();
       for (const part of line.split(/\s+(?:and|&)\s+|,\s*/)) {
         const hasStarter = /\b(?:sourdough\s+(?:starter|discard|culture)|peak\s+starter|levain)\b/.test(part);
-        const hasCommercial = /\b(?:instant\s+yeast|active\s+dry\s+yeast|dry\s+active\s+yeast|saf(?:-instant)?\s+yeast)\b/.test(part);
+        const hasCommercial = COMMERCIAL_YEAST_PATTERN.test(part);
         // Require a measured, explicitly named preferment ingredient. Descriptive
         // phrases such as "poolish-style" and a bare "preferment" stay unresolved.
         const hasPreferment = /\b\d+(?:\.\d+)?\s*(?:g|kg|grams?|oz|lbs?)\b/.test(part)
