@@ -20,9 +20,14 @@ export function InoculantPill({ identity, dark = false }: { identity: InoculantI
   if (!identity) return null;
   const variant = variants[identity];
   const palette = dark ? variant.dark : variant.light;
+  const fillProps = identity === "commercial"
+    ? { fillSurface: palette.background }
+    : identity === "preferment"
+      ? { fillDough: palette.background }
+      : { fillDough: palette.background, fillSurface: palette.background };
   return (
     <View testID="inoculant-pill" style={[styles.pill, { backgroundColor: palette.background, borderColor: palette.border }]}>
-      <variant.Icon size={16} color={palette.foreground} accent={palette.border} fillDough={palette.background} fillSurface={palette.background} />
+      <variant.Icon size={16} color={palette.foreground} accent={palette.border} {...fillProps} />
       <Text selectable style={[styles.label, { color: palette.foreground }]}>{variant.label}</Text>
     </View>
   );

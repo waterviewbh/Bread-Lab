@@ -29,6 +29,8 @@ describe("InoculantPill", () => {
     expect(pill.props.style[0]).toEqual(expect.objectContaining({ height: 25, alignItems: "center" }));
     expect(children[0].type).toBe(Icon);
     expect(children[0].props).toEqual(expect.objectContaining({ size: 16, color }));
+    expect(children[0].props.fillDough).toBe(identity === "commercial" ? undefined : backgroundColor);
+    expect(children[0].props.fillSurface).toBe(identity === "preferment" ? undefined : backgroundColor);
     expect(children[1].props.children).toBe(label);
     expect(children[1].props.style[1]).toEqual({ color });
   });
