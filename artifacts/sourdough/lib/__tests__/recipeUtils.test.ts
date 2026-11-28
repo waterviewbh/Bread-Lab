@@ -1,4 +1,5 @@
 import { scalePhaseText, parseIngredientsForMetrics, calculateRecipeMetrics, calculateCardInoculant, sortRecipePhases } from '../recipeUtils';
+import { classifyInoculant } from '../inoculantIdentity';
 
 describe('card inoculant mass', () => {
   const phases = (...ingredients: string[]) => [{ ingredients: ingredients.map(text => ({ text })) }];
@@ -11,6 +12,21 @@ describe('card inoculant mass', () => {
     [['500 g flour', '2 g yeast'], '—'],
   ])('displays physical mass for %j', (ingredients, expected) => {
     expect(calculateCardInoculant(phases(...ingredients))).toBe(expected);
+  });
+  it.each([
+    ['sourdough starter', '90 g'],
+    ['sourdough discard', '80 g'],
+    ['sourdough culture', '70 g'],
+    ['levain', '60 g'],
+  ])('classifies and measures %s', (term, expected) => {
+    const input = phases(`${expected} ${term}`);
+    expect(classifyInoculant(input)).toBe('sourdough');
+    expect(calculateCardInoculant(input)).toBe(expected);
+  });
+  it('does not classify a measured generic starter', () => {
+    const input = phases('90 g starter');
+    expect(classifyInoculant(input)).toBeNull();
+    expect(calculateCardInoculant(input)).toBe('—');
   });
   it.each([
     ['instant yeast', '2 g', '2 g'],
