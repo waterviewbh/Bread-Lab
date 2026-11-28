@@ -17,6 +17,7 @@ describe('card inoculant mass', () => {
     ['sourdough starter', '90 g'],
     ['sourdough discard', '80 g'],
     ['sourdough culture', '70 g'],
+    ['peak starter', '90 g'],
     ['levain', '60 g'],
   ])('classifies and measures %s', (term, expected) => {
     const input = phases(`${expected} ${term}`);
