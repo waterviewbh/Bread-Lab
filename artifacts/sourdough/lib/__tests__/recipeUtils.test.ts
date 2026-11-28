@@ -48,6 +48,27 @@ describe('card inoculant mass', () => {
     expect(calculateCardInoculant(phases('90 g levain', '2 g instant yeast'))).toBe('90 g starter + 2 g yeast');
     expect(calculateCardInoculant(phases('100 g poolish'))).toBe('100 g');
   });
+  it.each([
+    ['100 g poolish', '100 g'],
+    ['0.5 kg biga', '500 g'],
+    ['1 oz sponge', '28.4 g'],
+    ['0.5 lb poolish', '226.8 g'],
+  ])('classifies and measures preferment %s', (ingredient, expected) => {
+    const input = phases(ingredient);
+    expect(classifyInoculant(input)).toBe('preferment');
+    expect(calculateCardInoculant(input)).toBe(expected);
+  });
+  it.each([
+    ['poolish'],
+    ['100 g preferment'],
+    ['100 g poolish-style dough'],
+    ['100 g biga', '90 g peak starter'],
+    ['100 g sponge', '2 g instant yeast'],
+  ])('does not present unresolved preferment ingredients %j', (...ingredients) => {
+    const input = phases(...ingredients);
+    expect(classifyInoculant(input)).toBeNull();
+    expect(calculateCardInoculant(input)).toBe('—');
+  });
   it('leaves normalized yeast equivalents unchanged', () => {
     expect(calculateRecipeMetrics(phases('500 g flour', '2 g instant yeast')).inoculationPct).toBeCloseTo(11.4);
     expect(calculateRecipeMetrics(phases('500 g flour', '90 g peak starter', '2 g instant yeast')).inoculationPct).toBeCloseTo(147 / 545 * 100);
