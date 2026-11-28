@@ -129,9 +129,11 @@ export const HELP: HelpTab[] = [
 
 export const CHANGELOG: ChangelogVersion[] = [
     {
-      version: "v2.6.1 delta-1 thru ", /* -- published 2026XXXX -- */
+      version: "v2.6.1 delta-1 thru zeta-14", /* -- published 20261128 -- */
       changes: [
         { type: "Changed", content: "Iterated recipe names now show their iteration number in the name field automatically - nothing needed on your end." },
+        { type: "Changed", content: "Improved the handoff from completed bake to the History page; bakes now show up in History before they're reviewed and scored." },
+        { type: "Added", content: "Added inoculation pills to the Recipe Builder cards, and improved the %age calculation." },
       ],
     },
     {
