@@ -451,38 +451,41 @@ export function calculateCardInoculant(phases: { ingredients?: string | readonly
   if (!identity) return '—';
   let starter = 0;
   let yeast = 0;
-  let yeastUnmeasured = false;
   let preferment = 0;
+  let unmeasured = false;
+  const starterPattern = /\b(?:sourdough\s+(?:starter|discard|culture)|peak\s+starter|levain)\b/;
+  const prefermentPattern = /\b(?:poolish|biga|sponge)\b/;
+  const inoculantTerms = new RegExp(`${COMMERCIAL_YEAST_PATTERN.source}|${starterPattern.source}|${prefermentPattern.source}`, 'g');
+  const adjacentMass = (part: string, term: RegExpMatchArray): number | null => {
+    // Bind the nearest mass to its ingredient name. A preceding flour quantity
+    // or a following water quantity must not become inoculant mass.
+    const before = part.slice(0, term.index).match(/\b(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\s*(?:of\s*)?$/);
+    const after = part.slice(term.index! + term[0].length).match(/^\s*(?:[:—-]\s*)?(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\s*$/);
+    const measured = before || after;
+    if (!measured) return null;
+    return Number(measured[1]) * (measured[2] === 'kg' ? 1000 : measured[2] === 'oz' ? 28.35 : measured[2].startsWith('lb') ? 453.59 : 1);
+  };
   for (const phase of phases) {
     const lines = typeof phase.ingredients === 'string' ? phase.ingredients.split('\n') : phase.ingredients ?? [];
     for (const entry of lines) {
       const line = (typeof entry === 'string' ? entry : entry.text).toLowerCase();
       for (const part of line.split(/\s+(?:and|&)\s+|,\s*/)) {
-        const commercial = COMMERCIAL_YEAST_PATTERN.exec(part);
-        if (commercial) {
-          // A yeast quantity must be adjacent to the classified term; a flour
-          // quantity elsewhere on the line is not a reliable yeast measurement.
-          const before = part.slice(0, commercial.index).match(/\b(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\s*(?:of\s*)?$/);
-          const after = part.slice(commercial.index + commercial[0].length).match(/^\s*(?:[:—-]\s*)?(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\b/);
-          const measured = before || after;
-          if (!measured) { yeastUnmeasured = true; continue; }
-          const amount = Number(measured[1]) * (measured[2] === 'kg' ? 1000 : measured[2] === 'oz' ? 28.35 : measured[2].startsWith('lb') ? 453.59 : 1);
-          yeast += amount;
-          continue;
+        for (const term of part.matchAll(inoculantTerms)) {
+          const amount = adjacentMass(part, term);
+          if (amount === null) { unmeasured = true; continue; }
+          if (COMMERCIAL_YEAST_PATTERN.test(term[0])) yeast += amount;
+          else if (starterPattern.test(term[0])) starter += amount;
+          else preferment += amount;
         }
-        const match = part.match(/\b(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\b/);
-        if (!match) continue;
-        const amount = Number(match[1]) * (match[2] === 'kg' ? 1000 : match[2] === 'oz' ? 28.35 : match[2].startsWith('lb') ? 453.59 : 1);
-        if (/\b(?:sourdough\s+(?:starter|discard|culture)|peak\s+starter|levain)\b/.test(part)) starter += amount;
-        else if (/\b(?:poolish|biga|sponge)\b/.test(part)) preferment += amount;
       }
     }
   }
+  if (unmeasured) return '—';
   const format = (amount: number) => `${Number(amount.toFixed(1))} g`;
-  if (identity === 'hybrid') return yeastUnmeasured || yeast === 0 ? '—' : `${format(starter)} starter + ${format(yeast)} yeast`;
-  if (identity === 'sourdough') return format(starter);
-  if (identity === 'commercial') return yeastUnmeasured || yeast === 0 ? '—' : format(yeast);
-  return format(preferment);
+  if (identity === 'hybrid') return starter > 0 && yeast > 0 ? `${format(starter)} starter + ${format(yeast)} yeast` : '—';
+  if (identity === 'sourdough') return starter > 0 ? format(starter) : '—';
+  if (identity === 'commercial') return yeast > 0 ? format(yeast) : '—';
+  return preferment > 0 ? format(preferment) : '—';
 }
 
 /**

@@ -69,6 +69,23 @@ describe('card inoculant mass', () => {
     expect(classifyInoculant(input)).toBeNull();
     expect(calculateCardInoculant(input)).toBe('—');
   });
+  it.each([
+    ['500 g bread flour, 90 g levain', '90 g'],
+    ['500 g flour and 90 g sourdough starter', '90 g'],
+    ['500 g flour, 2 g instant yeast', '2 g'],
+    ['500 g flour, 90 g levain, 2 g instant yeast', '90 g starter + 2 g yeast'],
+    ['150 g poolish', '150 g'],
+    ['500 g flour 90 g levain', '90 g'],
+    ['500 g flour levain: 90 g', '90 g'],
+    ['500 g flour instant yeast: 2 g', '2 g'],
+    ['500 g flour, levain 0.1 kg, instant yeast 0.5 oz', '100 g starter + 14.2 g yeast'],
+    ['500 g flour, 90 g levain, 10 g salt', '90 g'],
+    ['90 g levain 20 g levain', '110 g'],
+    ['levain 90 g water', '—'],
+    ['500 g flour levain', '—'],
+  ])('associates inoculant mass in %s', (ingredient, expected) => {
+    expect(calculateCardInoculant(phases(ingredient))).toBe(expected);
+  });
   it('leaves normalized yeast equivalents unchanged', () => {
     expect(calculateRecipeMetrics(phases('500 g flour', '2 g instant yeast')).inoculationPct).toBeCloseTo(11.4);
     expect(calculateRecipeMetrics(phases('500 g flour', '90 g peak starter', '2 g instant yeast')).inoculationPct).toBeCloseTo(147 / 545 * 100);
