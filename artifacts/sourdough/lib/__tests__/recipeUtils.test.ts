@@ -1,4 +1,22 @@
-import { scalePhaseText, parseIngredientsForMetrics, calculateRecipeMetrics, sortRecipePhases } from '../recipeUtils';
+import { scalePhaseText, parseIngredientsForMetrics, calculateRecipeMetrics, calculateCardInoculant, sortRecipePhases } from '../recipeUtils';
+
+describe('card inoculant mass', () => {
+  const phases = (...ingredients: string[]) => [{ ingredients: ingredients.map(text => ({ text })) }];
+  it.each([
+    [['500 g flour', '90 g peak starter'], '90 g'],
+    [['500 g flour', '2 g instant yeast'], '2 g'],
+    [['500 g flour', '2 g active dry yeast'], '2 g'],
+    [['500 g flour', '90 g peak starter', '2 g instant yeast'], '90 g starter + 2 g yeast'],
+    [['500 g flour', '100 g poolish'], '100 g'],
+    [['500 g flour', '2 g yeast'], '—'],
+  ])('displays physical mass for %j', (ingredients, expected) => {
+    expect(calculateCardInoculant(phases(...ingredients))).toBe(expected);
+  });
+  it('leaves normalized yeast equivalents unchanged', () => {
+    expect(calculateRecipeMetrics(phases('500 g flour', '2 g instant yeast')).inoculationPct).toBeCloseTo(11.4);
+    expect(calculateRecipeMetrics(phases('500 g flour', '90 g peak starter', '2 g instant yeast')).inoculationPct).toBeCloseTo(147 / 545 * 100);
+  });
+});
 
 describe('recipeUtils', () => {
   describe('scalePhaseText', () => {

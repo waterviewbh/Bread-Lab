@@ -1,4 +1,5 @@
 import { CheckableLine } from '../types/recipe';
+import { classifyInoculant } from './inoculantIdentity';
 import { RecipePhaseConfig, SavedRecipe, PHASE_CATEGORIES } from './recipeTypes';
 
 /**
@@ -442,6 +443,34 @@ export function calculateRecipeMetrics(phases: any[]) {
     saltPct: totalFlour > 0 ? (salt / totalFlour) * 100 : 0,
     enriched: additionalWater > 0 || additionalSolids > 0,
   };
+}
+
+/** Physical inoculant mass for card display. Unidentified ingredients are omitted. */
+export function calculateCardInoculant(phases: { ingredients?: string | readonly (string | { text: string })[] | null }[]): string {
+  const identity = classifyInoculant(phases);
+  if (!identity) return '—';
+  let starter = 0;
+  let yeast = 0;
+  let preferment = 0;
+  for (const phase of phases) {
+    const lines = typeof phase.ingredients === 'string' ? phase.ingredients.split('\n') : phase.ingredients ?? [];
+    for (const entry of lines) {
+      const line = (typeof entry === 'string' ? entry : entry.text).toLowerCase();
+      for (const part of line.split(/\s+(?:and|&)\s+|,\s*/)) {
+        const match = part.match(/\b(\d+(?:\.\d+)?)\s*(kg|grams?|g|oz|lbs?)\b/);
+        if (!match) continue;
+        const amount = Number(match[1]) * (match[2] === 'kg' ? 1000 : match[2] === 'oz' ? 28.35 : match[2].startsWith('lb') ? 453.59 : 1);
+        if (/\b(?:sourdough\s+(?:starter|discard|culture)|peak\s+starter|levain)\b/.test(part)) starter += amount;
+        else if (/\b(?:instant\s+yeast|active\s+dry\s+yeast|dry\s+active\s+yeast|saf(?:-instant)?\s+yeast)\b/.test(part)) yeast += amount;
+        else if (/\b(?:poolish|biga|sponge)\b/.test(part)) preferment += amount;
+      }
+    }
+  }
+  const format = (amount: number) => `${Number(amount.toFixed(1))} g`;
+  if (identity === 'hybrid') return `${format(starter)} starter + ${format(yeast)} yeast`;
+  if (identity === 'sourdough') return format(starter);
+  if (identity === 'commercial') return format(yeast);
+  return format(preferment);
 }
 
 /**

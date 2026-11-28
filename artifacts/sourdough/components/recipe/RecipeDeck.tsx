@@ -10,7 +10,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { fonts, radius, spacing } from "@/constants/theme";
 import { SavedRecipe } from "@/lib/recipeTypes";
-import { calculateRecipeMetrics, formatDate } from "@/lib/recipeUtils";
+import { calculateCardInoculant, calculateRecipeMetrics, formatDate } from "@/lib/recipeUtils";
 import { getRecipeDelta } from "@/lib/recipeDiff";
 import { classifyInoculant } from "@/lib/inoculantIdentity";
 import { InoculantPill } from "@/components/recipe/InoculantPill";
@@ -62,6 +62,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
 
   const isMasterActive = activeRecipe.id === master.id;
   const metrics = calculateRecipeMetrics(activeRecipe.phases);
+  const cardInoculant = calculateCardInoculant(activeRecipe.phases);
   const deltas = !isMasterActive ? getRecipeDelta(master, activeRecipe) : [];
   const matchingVersion = useMemo(() => findMatchingLineageVersion(activeRecipe, [master, ...iterations]), [activeRecipe, master, iterations]);
 
@@ -116,7 +117,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
 
           <View style={s.metricsRow}>
              <Metric label="Hydration" value={`${metrics.hydrationPct}%`} color={colors.mutedForeground} />
-             <Metric label="Starter" value={`${Math.round(metrics.inoculationPct)}%`} color={colors.mutedForeground} />
+             <Metric label="Inoculation" value={cardInoculant} color={colors.mutedForeground} />
              <Metric label="Yield" value={master.yieldValue || "1 Loaf"} color={colors.mutedForeground} />
           </View>
 
@@ -220,7 +221,7 @@ export function RecipeDeck({ master, iterations, onSelect, onPrintRecipe, onShar
 
         <View style={s.metricsRow}>
            <Metric label="Hydration" value={`${metrics.hydrationPct}%`} color={colors.mutedForeground} />
-           <Metric label="Starter" value={`${Math.round(metrics.inoculationPct)}%`} color={colors.mutedForeground} />
+           <Metric label="Inoculation" value={cardInoculant} color={colors.mutedForeground} />
            <Metric label="Yield" value={activeRecipe.yieldValue || "1 Loaf"} color={colors.mutedForeground} />
         </View>
 
